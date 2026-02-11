@@ -1,14 +1,23 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 
 RUN npm run build
 
-RUN cp -r .next/standalone/* . && cp -r .next/static .next/static
+FROM node:20-alpine AS runner
 
-CMD sh -c "echo 'PORT is:' $PORT && node server.js"
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
