@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+CMD sh -c "for i in 1 2 3 4 5; do alembic upgrade head && break; echo \"Alembic attempt $i failed, retrying in 5s...\"; sleep 5; done; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
