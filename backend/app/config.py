@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "postgresql+asyncpg://sales_user:sales_password@localhost:5432/sales_automation"
-    database_url_sync: str = "postgresql://sales_user:sales_password@localhost:5432/sales_automation"
+    database_url_sync: str = ""
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -33,6 +33,15 @@ class Settings(BaseSettings):
         if v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+asyncpg://", 1)
         return v
+
+    @model_validator(mode="after")
+    def derive_sync_url(self) -> "Settings":
+        """Derive sync URL from async URL for alembic migrations."""
+        if not self.database_url_sync:
+            self.database_url_sync = self.database_url.replace(
+                "postgresql+asyncpg://", "postgresql://", 1
+            )
+        return self
 
 
 settings = Settings()
