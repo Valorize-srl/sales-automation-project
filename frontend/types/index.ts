@@ -1,0 +1,93 @@
+// === Enums ===
+
+export type ICPStatus = "draft" | "active" | "archived";
+export type LeadSource = "csv" | "apollo" | "manual";
+export type CampaignStatus = "draft" | "active" | "paused" | "completed";
+export type MessageDirection = "inbound" | "outbound";
+export type Sentiment = "positive" | "negative" | "neutral" | "interested";
+export type ResponseStatus = "pending" | "ai_replied" | "human_approved" | "sent" | "ignored";
+
+// === Models ===
+
+export interface ICP {
+  id: number;
+  name: string;
+  description: string | null;
+  industry: string | null;
+  company_size: string | null;
+  job_titles: string | null;
+  geography: string | null;
+  revenue_range: string | null;
+  keywords: string | null;
+  raw_input: string | null;
+  status: ICPStatus;
+  created_at: string;
+}
+
+export interface Lead {
+  id: number;
+  icp_id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  company: string | null;
+  job_title: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+  source: LeadSource;
+  verified: boolean;
+  score: number | null;
+  created_at: string;
+}
+
+export interface Campaign {
+  id: number;
+  icp_id: number;
+  instantly_campaign_id: string | null;
+  name: string;
+  status: CampaignStatus;
+  subject_lines: string | null;
+  email_templates: string | null;
+  total_sent: number;
+  total_opened: number;
+  total_replied: number;
+  created_at: string;
+}
+
+export interface EmailResponse {
+  id: number;
+  campaign_id: number;
+  lead_id: number;
+  message_body: string | null;
+  direction: MessageDirection;
+  sentiment: Sentiment | null;
+  sentiment_score: number | null;
+  ai_suggested_reply: string | null;
+  human_approved_reply: string | null;
+  status: ResponseStatus;
+  created_at: string;
+}
+
+export interface AnalyticsEntry {
+  id: number;
+  campaign_id: number;
+  date: string;
+  emails_sent: number;
+  opens: number;
+  replies: number;
+  positive_replies: number;
+  meetings_booked: number;
+}
+
+// === API Responses ===
+
+export interface HealthCheckResponse {
+  status: string;
+  version: string;
+  environment: string;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
