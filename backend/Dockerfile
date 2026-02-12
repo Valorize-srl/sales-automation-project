@@ -1,5 +1,5 @@
 FROM python:3.12-slim
-# Force rebuild v2
+
 WORKDIR /app
 
 RUN apt-get update && \
@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["sh", "-c", "echo 'PORT='$PORT && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info"]
+CMD ["sh", "-c", "alembic upgrade head; uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
