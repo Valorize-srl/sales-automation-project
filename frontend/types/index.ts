@@ -91,3 +91,25 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface ICPExtracted {
+  name: string;
+  description?: string | null;
+  industry?: string | null;
+  company_size?: string | null;
+  job_titles?: string | null;
+  geography?: string | null;
+  revenue_range?: string | null;
+  keywords?: string | null;
+}
+
+export interface ICPListResponse {
+  icps: ICP[];
+  total: number;
+}
+
+export interface FileUploadResponse {
+  filename: string;
+  text: string;
+  length: number;
+}
