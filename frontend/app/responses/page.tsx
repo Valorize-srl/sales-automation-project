@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Download, Loader2, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ResponsesTable } from "@/components/responses/responses-table";
@@ -34,13 +34,47 @@ export default function ResponsesPage() {
     loadCampaigns();
   }, []);
 
-  useEffect(() => {
-    if (selectedCampaignIds.length > 0) {
-      loadResponses();
-    } else {
+  const loadResponses = useCallback(async (campaignIds: number[]) => {
+    if (campaignIds.length === 0) {
       setResponses([]);
+      return;
     }
-  }, [selectedCampaignIds]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLoading(true);
+    try {
+      const idsParam = campaignIds.join(",");
+      const data = await api.get<EmailResponseListResponse>(
+        `/responses?campaign_ids=${idsParam}`
+      );
+      // Already sorted by backend (received_at DESC)
+      setResponses(data.responses);
+    } catch (err) {
+      console.error("Failed to load responses:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadResponses(selectedCampaignIds);
+  }, [selectedCampaignIds, loadResponses]);
+
+  // Auto-refresh every 5 minutes
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    if (selectedCampaignIds.length > 0) {
+      intervalRef.current = setInterval(() => {
+        loadResponses(selectedCampaignIds);
+      }, 5 * 60 * 1000);
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [selectedCampaignIds, loadResponses]);
 
   const loadCampaigns = async () => {
     try {
@@ -48,28 +82,6 @@ export default function ResponsesPage() {
       setCampaigns(data.campaigns);
     } catch (err) {
       console.error("Failed to load campaigns:", err);
-    }
-  };
-
-  const loadResponses = async () => {
-    setLoading(true);
-    try {
-      const allResponses: EmailResponseWithDetails[] = [];
-      for (const campaignId of selectedCampaignIds) {
-        const data = await api.get<EmailResponseListResponse>(
-          `/responses?campaign_id=${campaignId}`
-        );
-        allResponses.push(...data.responses);
-      }
-      allResponses.sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      setResponses(allResponses);
-    } catch (err) {
-      console.error("Failed to load responses:", err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -82,7 +94,7 @@ export default function ResponsesPage() {
       });
       setFetchResult(result);
       // Reload to see new responses
-      await loadResponses();
+      await loadResponses(selectedCampaignIds);
     } catch (err) {
       console.error("Fetch failed:", err);
       alert("Failed to fetch replies. Check console.");
@@ -138,7 +150,7 @@ export default function ResponsesPage() {
   const handleSend = async (id: number) => {
     try {
       await api.post(`/responses/${id}/send`, {});
-      loadResponses();
+      loadResponses(selectedCampaignIds);
       setDetailOpen(false);
     } catch (err) {
       console.error("Failed to send:", err);

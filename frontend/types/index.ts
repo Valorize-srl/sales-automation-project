@@ -77,6 +77,7 @@ export interface EmailResponse {
   ai_suggested_reply: string | null;
   human_approved_reply: string | null;
   status: ResponseStatus;
+  received_at: string | null;
   created_at: string;
 }
 

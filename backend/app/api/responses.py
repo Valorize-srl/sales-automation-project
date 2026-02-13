@@ -1,8 +1,9 @@
 """Email responses API routes - fetch, analyze, approve, send replies."""
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -50,6 +51,7 @@ def _response_to_out(resp: EmailResponse) -> EmailResponseOut:
 @router.get("", response_model=EmailResponseListResponse)
 async def list_responses(
     campaign_id: int | None = Query(None),
+    campaign_ids: str | None = Query(None, description="Comma-separated campaign IDs"),
     status: str | None = Query(None),
     sentiment: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -62,9 +64,15 @@ async def list_responses(
             selectinload(EmailResponse.campaign),
         )
         .where(EmailResponse.direction == MessageDirection.INBOUND)
-        .order_by(EmailResponse.created_at.desc())
+        .order_by(
+            sa_func.coalesce(EmailResponse.received_at, EmailResponse.created_at).desc()
+        )
     )
-    if campaign_id is not None:
+    if campaign_ids:
+        ids = [int(x.strip()) for x in campaign_ids.split(",") if x.strip()]
+        if ids:
+            query = query.where(EmailResponse.campaign_id.in_(ids))
+    elif campaign_id is not None:
         query = query.where(EmailResponse.campaign_id == campaign_id)
     if status:
         query = query.where(EmailResponse.status == status)
@@ -148,6 +156,17 @@ async def fetch_replies(
                     else:
                         body_text = str(body_raw)
 
+                    # Parse received timestamp from Instantly
+                    received_at = None
+                    ts_raw = email_item.get("timestamp_created")
+                    if ts_raw:
+                        try:
+                            received_at = datetime.fromisoformat(
+                                ts_raw.replace("Z", "+00:00")
+                            )
+                        except (ValueError, AttributeError):
+                            pass
+
                     # Create record with PENDING status (no Claude analysis yet)
                     email_response = EmailResponse(
                         campaign_id=campaign.id,
@@ -159,6 +178,7 @@ async def fetch_replies(
                         message_body=body_text,
                         direction=MessageDirection.INBOUND,
                         status=ResponseStatus.PENDING,
+                        received_at=received_at,
                     )
                     db.add(email_response)
                     await db.flush()

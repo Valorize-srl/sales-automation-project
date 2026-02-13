@@ -20,6 +20,7 @@ class EmailResponseOut(BaseModel):
     ai_suggested_reply: str | None = None
     human_approved_reply: str | None = None
     status: str
+    received_at: datetime | None = None
     created_at: datetime
     # Joined fields
     lead_name: str | None = None

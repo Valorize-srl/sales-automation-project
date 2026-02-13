@@ -120,7 +120,9 @@ export function ResponseDetailDialog({
           {response.subject && <p>Subject: {response.subject}</p>}
           <p>
             Received:{" "}
-            {new Date(response.created_at).toLocaleString()}
+            {new Date(
+              response.received_at || response.created_at
+            ).toLocaleString()}
           </p>
         </div>
 

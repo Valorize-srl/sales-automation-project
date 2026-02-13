@@ -78,6 +78,7 @@ export function ResponsesTable({
             <TableHead>Sentiment</TableHead>
             <TableHead>AI Reply</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Received</TableHead>
             <TableHead className="w-[140px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -128,6 +129,21 @@ export function ResponsesTable({
                 >
                   {resp.status.replace("_", " ")}
                 </Badge>
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                {resp.received_at
+                  ? new Date(resp.received_at).toLocaleDateString("it-IT", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : new Date(resp.created_at).toLocaleDateString("it-IT", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
               </TableCell>
               <TableCell>
                 <div
