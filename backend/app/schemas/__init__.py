@@ -9,6 +9,17 @@ from app.schemas.lead import (
     CSVImportRequest,
     CSVImportResponse,
 )
+from app.schemas.campaign import (
+    CampaignCreate,
+    CampaignUpdate,
+    CampaignResponse,
+    CampaignListResponse,
+    InstantlySyncResponse,
+    LeadUploadRequest,
+    LeadUploadResponse,
+    EmailTemplateGenerateRequest,
+    EmailTemplateGenerateResponse,
+)
 
 __all__ = [
     "ICPCreate",
@@ -24,4 +35,13 @@ __all__ = [
     "CSVUploadResponse",
     "CSVImportRequest",
     "CSVImportResponse",
+    "CampaignCreate",
+    "CampaignUpdate",
+    "CampaignResponse",
+    "CampaignListResponse",
+    "InstantlySyncResponse",
+    "LeadUploadRequest",
+    "LeadUploadResponse",
+    "EmailTemplateGenerateRequest",
+    "EmailTemplateGenerateResponse",
 ]

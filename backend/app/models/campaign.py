@@ -19,7 +19,7 @@ class Campaign(Base):
     __tablename__ = "campaigns"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    icp_id: Mapped[int] = mapped_column(ForeignKey("icps.id", ondelete="CASCADE"), nullable=False)
+    icp_id: Mapped[int | None] = mapped_column(ForeignKey("icps.id", ondelete="SET NULL"), nullable=True)
     instantly_campaign_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[CampaignStatus] = mapped_column(
@@ -38,6 +38,6 @@ class Campaign(Base):
     )
 
     # Relationships
-    icp: Mapped["ICP"] = relationship(back_populates="campaigns")
+    icp: Mapped["ICP | None"] = relationship(back_populates="campaigns")
     email_responses: Mapped[list["EmailResponse"]] = relationship(back_populates="campaign", cascade="all, delete-orphan")
     analytics_entries: Mapped[list["Analytics"]] = relationship(back_populates="campaign", cascade="all, delete-orphan")

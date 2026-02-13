@@ -49,7 +49,8 @@ export interface Lead {
 
 export interface Campaign {
   id: number;
-  icp_id: number;
+  icp_id: number | null;
+  icp_name: string | null;
   instantly_campaign_id: string | null;
   name: string;
   status: CampaignStatus;
@@ -155,4 +156,32 @@ export interface CSVImportResponse {
   imported: number;
   duplicates_skipped: number;
   errors: number;
+}
+
+export interface CampaignListResponse {
+  campaigns: Campaign[];
+  total: number;
+}
+
+export interface InstantlySyncResponse {
+  imported: number;
+  updated: number;
+  errors: number;
+}
+
+export interface LeadUploadResponse {
+  pushed: number;
+  errors: number;
+}
+
+export interface EmailStep {
+  step: number;
+  subject: string;
+  body: string;
+  wait_days: number;
+}
+
+export interface EmailTemplateGenerateResponse {
+  subject_lines: string[];
+  email_steps: EmailStep[];
 }

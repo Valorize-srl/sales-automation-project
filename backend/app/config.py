@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Instantly
     instantly_api_key: str = ""
 
+    # Webhooks
+    webhook_base_url: str = ""
+
     # App
     app_env: str = "development"
     debug: bool = True
