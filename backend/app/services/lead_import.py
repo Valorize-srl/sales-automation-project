@@ -1,10 +1,18 @@
 """
 Lead import service - handles CSV data import with deduplication.
+Supports standard fields + custom_fields JSON for unmapped columns.
 """
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lead import Lead, LeadSource
+
+# Fields that map directly to Lead model columns
+STANDARD_FIELDS = {
+    "first_name", "last_name", "email", "company", "job_title",
+    "linkedin_url", "phone", "address", "city", "state",
+    "zip_code", "country", "website",
+}
 
 
 async def import_leads_from_csv(
@@ -28,6 +36,13 @@ async def import_leads_from_csv(
     imported = 0
     duplicates_skipped = 0
     errors = 0
+
+    # Determine which CSV columns are mapped vs unmapped
+    mapped_columns = {v for v in mapping.values() if v}
+    all_headers = set()
+    if rows:
+        all_headers = set(rows[0].keys())
+    unmapped_headers = all_headers - mapped_columns
 
     # Fetch existing emails for this ICP to deduplicate
     result = await db.execute(
@@ -61,15 +76,29 @@ async def import_leads_from_csv(
             if not last_name.strip():
                 last_name = "Unknown"
 
+            # Build custom_fields from unmapped CSV columns
+            custom_fields = {}
+            for header in unmapped_headers:
+                val = row.get(header, "").strip()
+                if val:
+                    custom_fields[header] = val
+
             lead = Lead(
                 icp_id=icp_id,
                 first_name=first_name.strip(),
                 last_name=last_name.strip(),
                 email=email,
-                company=(_get_mapped_value(row, mapping.get("company")) or "").strip() or None,
-                job_title=(_get_mapped_value(row, mapping.get("job_title")) or "").strip() or None,
-                linkedin_url=(_get_mapped_value(row, mapping.get("linkedin_url")) or "").strip() or None,
-                phone=(_get_mapped_value(row, mapping.get("phone")) or "").strip() or None,
+                company=_clean(row, mapping.get("company")),
+                job_title=_clean(row, mapping.get("job_title")),
+                linkedin_url=_clean(row, mapping.get("linkedin_url")),
+                phone=_clean(row, mapping.get("phone")),
+                address=_clean(row, mapping.get("address")),
+                city=_clean(row, mapping.get("city")),
+                state=_clean(row, mapping.get("state")),
+                zip_code=_clean(row, mapping.get("zip_code")),
+                country=_clean(row, mapping.get("country")),
+                website=_clean(row, mapping.get("website")),
+                custom_fields=custom_fields or None,
                 source=LeadSource.CSV,
                 verified=False,
             )
@@ -90,3 +119,12 @@ def _get_mapped_value(row: dict, column_name: str | None) -> str | None:
     if not column_name:
         return None
     return row.get(column_name)
+
+
+def _clean(row: dict, column_name: str | None) -> str | None:
+    """Get and clean a mapped value, returning None for empty strings."""
+    val = _get_mapped_value(row, column_name)
+    if not val:
+        return None
+    val = val.strip()
+    return val or None

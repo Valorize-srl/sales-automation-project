@@ -85,6 +85,7 @@ async def upload_csv(file: UploadFile = File(...)):
         raise HTTPException(400, "CSV file is empty or has no data rows")
 
     mapping = await csv_mapper_service.map_columns(headers, rows[:3])
+    unmapped = csv_mapper_service.get_unmapped_headers(headers, mapping)
 
     return CSVUploadResponse(
         headers=headers,
@@ -92,6 +93,7 @@ async def upload_csv(file: UploadFile = File(...)):
         rows=rows,
         preview_rows=rows[:5],
         total_rows=len(rows),
+        unmapped_headers=unmapped,
     )
 
 

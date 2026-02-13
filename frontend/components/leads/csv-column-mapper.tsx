@@ -23,8 +23,14 @@ const LEAD_FIELDS: { key: keyof CSVColumnMapping; label: string; required?: bool
   { key: "last_name", label: "Last Name" },
   { key: "company", label: "Company" },
   { key: "job_title", label: "Job Title" },
-  { key: "linkedin_url", label: "LinkedIn URL" },
   { key: "phone", label: "Phone" },
+  { key: "address", label: "Address" },
+  { key: "city", label: "City" },
+  { key: "state", label: "State" },
+  { key: "zip_code", label: "ZIP Code" },
+  { key: "country", label: "Country" },
+  { key: "website", label: "Website" },
+  { key: "linkedin_url", label: "LinkedIn URL" },
 ];
 
 const NOT_MAPPED = "__not_mapped__";

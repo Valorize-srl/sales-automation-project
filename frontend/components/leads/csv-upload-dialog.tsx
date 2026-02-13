@@ -48,15 +48,12 @@ export function CSVUploadDialog({
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadData, setUploadData] = useState<CSVUploadResponse | null>(null);
-  const [mapping, setMapping] = useState<CSVColumnMapping>({
-    first_name: null,
-    last_name: null,
-    email: null,
-    company: null,
-    job_title: null,
-    linkedin_url: null,
-    phone: null,
-  });
+  const emptyMapping: CSVColumnMapping = {
+    first_name: null, last_name: null, email: null, company: null,
+    job_title: null, linkedin_url: null, phone: null, address: null,
+    city: null, state: null, zip_code: null, country: null, website: null,
+  };
+  const [mapping, setMapping] = useState<CSVColumnMapping>(emptyMapping);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<CSVImportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,15 +64,7 @@ export function CSVUploadDialog({
     setFile(null);
     setUploading(false);
     setUploadData(null);
-    setMapping({
-      first_name: null,
-      last_name: null,
-      email: null,
-      company: null,
-      job_title: null,
-      linkedin_url: null,
-      phone: null,
-    });
+    setMapping(emptyMapping);
     setImporting(false);
     setImportResult(null);
     setError(null);

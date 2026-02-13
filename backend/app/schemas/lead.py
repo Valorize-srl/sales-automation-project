@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,13 @@ class LeadCreate(BaseModel):
     job_title: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    website: Optional[str] = None
+    custom_fields: Optional[dict[str, Any]] = None
 
 
 class LeadResponse(BaseModel):
@@ -25,6 +32,13 @@ class LeadResponse(BaseModel):
     job_title: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    website: Optional[str] = None
+    custom_fields: Optional[dict[str, Any]] = None
     source: str
     verified: bool
     score: Optional[float] = None
@@ -46,6 +60,12 @@ class CSVColumnMapping(BaseModel):
     job_title: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    country: Optional[str] = None
+    website: Optional[str] = None
 
 
 class CSVUploadResponse(BaseModel):
@@ -54,6 +74,7 @@ class CSVUploadResponse(BaseModel):
     rows: list[dict]
     preview_rows: list[dict]
     total_rows: int
+    unmapped_headers: list[str]
 
 
 class CSVImportRequest(BaseModel):

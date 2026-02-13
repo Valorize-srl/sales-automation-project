@@ -40,6 +40,12 @@ export function LeadsTable({ leads, onDelete, loading }: LeadsTableProps) {
     );
   }
 
+  // Build location string from city/state/country
+  const getLocation = (lead: Lead) => {
+    const parts = [lead.city, lead.state, lead.country].filter(Boolean);
+    return parts.join(", ") || null;
+  };
+
   return (
     <div className="rounded-md border">
       <Table>
@@ -49,6 +55,7 @@ export function LeadsTable({ leads, onDelete, loading }: LeadsTableProps) {
             <TableHead>Email</TableHead>
             <TableHead>Company</TableHead>
             <TableHead>Job Title</TableHead>
+            <TableHead>Location</TableHead>
             <TableHead>Source</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
@@ -60,8 +67,23 @@ export function LeadsTable({ leads, onDelete, loading }: LeadsTableProps) {
                 {lead.first_name} {lead.last_name}
               </TableCell>
               <TableCell>{lead.email}</TableCell>
-              <TableCell>{lead.company || "—"}</TableCell>
+              <TableCell>
+                <div>
+                  {lead.company || "—"}
+                  {lead.website && (
+                    <a
+                      href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-xs text-muted-foreground hover:underline truncate max-w-[150px]"
+                    >
+                      {lead.website}
+                    </a>
+                  )}
+                </div>
+              </TableCell>
               <TableCell>{lead.job_title || "—"}</TableCell>
+              <TableCell>{getLocation(lead) || "—"}</TableCell>
               <TableCell>
                 <Badge
                   variant="outline"

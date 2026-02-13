@@ -34,6 +34,13 @@ export interface Lead {
   job_title: string | null;
   linkedin_url: string | null;
   phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  country: string | null;
+  website: string | null;
+  custom_fields: Record<string, string> | null;
   source: LeadSource;
   verified: boolean;
   score: number | null;
@@ -127,6 +134,12 @@ export interface CSVColumnMapping {
   job_title: string | null;
   linkedin_url: string | null;
   phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  country: string | null;
+  website: string | null;
 }
 
 export interface CSVUploadResponse {
@@ -135,6 +148,7 @@ export interface CSVUploadResponse {
   rows: Record<string, string>[];
   preview_rows: Record<string, string>[];
   total_rows: number;
+  unmapped_headers: string[];
 }
 
 export interface CSVImportResponse {

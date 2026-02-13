@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import String, Text, Boolean, Float, ForeignKey, DateTime, Enum as SAEnum
+from sqlalchemy import String, Text, Boolean, Float, ForeignKey, DateTime, Enum as SAEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -26,6 +26,13 @@ class Lead(Base):
     job_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    zip_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    custom_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     source: Mapped[LeadSource] = mapped_column(
         SAEnum(LeadSource, native_enum=False),
         default=LeadSource.MANUAL,

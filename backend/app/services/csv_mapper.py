@@ -1,6 +1,6 @@
 """
 CSV mapper service - parses CSV files and uses Claude to map columns
-to lead database fields via tool use.
+to lead database fields via tool use. Unmapped columns are saved as custom_fields.
 """
 import csv
 import io
@@ -9,6 +9,13 @@ import json
 import anthropic
 
 from app.config import settings
+
+# All known lead fields that Claude can map to
+KNOWN_FIELDS = [
+    "first_name", "last_name", "email", "company", "job_title",
+    "linkedin_url", "phone", "address", "city", "state",
+    "zip_code", "country", "website",
+]
 
 CSV_MAPPING_SYSTEM_PROMPT = """You are a data mapping assistant. You receive CSV column headers \
 and sample data, and must map them to lead database fields.
@@ -21,11 +28,17 @@ Lead fields to map:
 - job_title: Job title/role/position
 - linkedin_url: LinkedIn profile URL
 - phone: Phone/telephone number
+- address: Street address
+- city: City name
+- state: State/province/region
+- zip_code: ZIP/postal code
+- country: Country name
+- website: Company or personal website URL
 
 Rules:
 - Map each CSV column to the most appropriate lead field
 - If a CSV has a single "name" or "full_name" column, map it to first_name and set last_name to null
-- If a column clearly does not match any lead field, do not map it
+- If a column clearly does not match any lead field, set it to null - it will be saved as a custom field
 - The email field is the most important - always try to identify it
 - Use the map_columns tool to return your mapping"""
 
@@ -35,44 +48,13 @@ CSV_MAPPING_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "first_name": {
+            field: {
                 "type": ["string", "null"],
-                "description": "CSV column name that maps to first_name",
-            },
-            "last_name": {
-                "type": ["string", "null"],
-                "description": "CSV column name that maps to last_name",
-            },
-            "email": {
-                "type": ["string", "null"],
-                "description": "CSV column name that maps to email",
-            },
-            "company": {
-                "type": ["string", "null"],
-                "description": "CSV column name that maps to company",
-            },
-            "job_title": {
-                "type": ["string", "null"],
-                "description": "CSV column name that maps to job_title",
-            },
-            "linkedin_url": {
-                "type": ["string", "null"],
-                "description": "CSV column name that maps to linkedin_url",
-            },
-            "phone": {
-                "type": ["string", "null"],
-                "description": "CSV column name that maps to phone",
-            },
+                "description": f"CSV column name that maps to {field}",
+            }
+            for field in KNOWN_FIELDS
         },
-        "required": [
-            "first_name",
-            "last_name",
-            "email",
-            "company",
-            "job_title",
-            "linkedin_url",
-            "phone",
-        ],
+        "required": KNOWN_FIELDS,
     },
 }
 
@@ -113,15 +95,12 @@ class CSVMapperService:
             if block.type == "tool_use" and block.name == "map_columns":
                 return block.input
 
-        return {
-            "first_name": None,
-            "last_name": None,
-            "email": None,
-            "company": None,
-            "job_title": None,
-            "linkedin_url": None,
-            "phone": None,
-        }
+        return {field: None for field in KNOWN_FIELDS}
+
+    def get_unmapped_headers(self, headers: list[str], mapping: dict) -> list[str]:
+        """Return CSV headers that are not mapped to any known field."""
+        mapped_columns = {v for v in mapping.values() if v}
+        return [h for h in headers if h not in mapped_columns]
 
 
 csv_mapper_service = CSVMapperService()
