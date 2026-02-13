@@ -105,13 +105,13 @@ class InstantlyService:
         end_date: str | None = None,
     ) -> dict:
         """Retrieve metrics for a campaign."""
-        params: dict[str, Any] = {"campaign_id": campaign_id}
+        params: dict[str, Any] = {"id": campaign_id}
         if start_date:
             params["start_date"] = start_date
         if end_date:
             params["end_date"] = end_date
         return await self._request(
-            "GET", "/analytics/campaign/overview", params=params
+            "GET", "/campaigns/analytics/overview", params=params
         )
 
     # --- Webhook Methods ---

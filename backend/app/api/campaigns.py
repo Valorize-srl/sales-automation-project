@@ -217,13 +217,13 @@ async def sync_campaigns(db: AsyncSession = Depends(get_db)):
                         try:
                             analytics = await instantly_service.get_campaign_analytics(ic_id)
                             campaign.total_sent = analytics.get(
-                                "total_emails_sent", campaign.total_sent
+                                "emails_sent_count", campaign.total_sent
                             )
                             campaign.total_opened = analytics.get(
-                                "total_opened", campaign.total_opened
+                                "open_count", campaign.total_opened
                             )
                             campaign.total_replied = analytics.get(
-                                "total_replied", campaign.total_replied
+                                "reply_count", campaign.total_replied
                             )
                         except InstantlyAPIError:
                             pass
@@ -270,9 +270,9 @@ async def sync_campaign_metrics(
         analytics = await instantly_service.get_campaign_analytics(
             campaign.instantly_campaign_id
         )
-        campaign.total_sent = analytics.get("total_emails_sent", campaign.total_sent)
-        campaign.total_opened = analytics.get("total_opened", campaign.total_opened)
-        campaign.total_replied = analytics.get("total_replied", campaign.total_replied)
+        campaign.total_sent = analytics.get("emails_sent_count", campaign.total_sent)
+        campaign.total_opened = analytics.get("open_count", campaign.total_opened)
+        campaign.total_replied = analytics.get("reply_count", campaign.total_replied)
 
         today = date.today()
         existing = await db.execute(
