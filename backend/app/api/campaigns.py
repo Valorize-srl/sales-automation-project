@@ -24,6 +24,9 @@ from app.schemas.campaign import (
     LeadUploadResponse,
     EmailTemplateGenerateRequest,
     EmailTemplateGenerateResponse,
+    EmailAccountListResponse,
+    EmailAccountOut,
+    PushSequencesResponse,
 )
 from app.services.instantly import instantly_service, InstantlyAPIError
 from app.services.email_generator import email_generator_service
@@ -74,19 +77,39 @@ async def create_campaign(
     instantly_campaign_id = None
     if data.create_on_instantly:
         try:
-            default_schedule = {
+            # Build schedule from frontend data
+            days = data.schedule_days
+            days_dict = {
+                "0": days.d0 if days else False,
+                "1": days.d1 if days else True,
+                "2": days.d2 if days else True,
+                "3": days.d3 if days else True,
+                "4": days.d4 if days else True,
+                "5": days.d5 if days else True,
+                "6": days.d6 if days else False,
+            }
+            campaign_schedule = {
                 "schedules": [{
                     "name": "Default",
-                    "timing": {"from": "09:00", "to": "17:00"},
-                    "days": {
-                        "1": True, "2": True, "3": True,
-                        "4": True, "5": True, "6": False, "0": False,
+                    "timing": {
+                        "from": data.schedule_from,
+                        "to": data.schedule_to,
                     },
-                    "timezone": "Etc/UTC",
+                    "days": days_dict,
+                    "timezone": data.schedule_timezone,
                 }]
             }
             result = await instantly_service.create_campaign(
-                data.name, default_schedule
+                data.name,
+                campaign_schedule,
+                email_list=data.email_accounts if data.email_accounts else None,
+                daily_limit=data.daily_limit,
+                email_gap=data.email_gap,
+                stop_on_reply=data.stop_on_reply,
+                stop_on_auto_reply=data.stop_on_auto_reply,
+                link_tracking=data.link_tracking,
+                open_tracking=data.open_tracking,
+                text_only=data.text_only,
             )
             instantly_campaign_id = result.get("id")
         except InstantlyAPIError as e:
@@ -104,6 +127,39 @@ async def create_campaign(
     await db.flush()
     await db.refresh(campaign, attribute_names=["icp"])
     return _campaign_to_response(campaign)
+
+
+# NOTE: /instantly/accounts MUST be registered before /{campaign_id}
+@router.get("/instantly/accounts", response_model=EmailAccountListResponse)
+async def list_instantly_accounts():
+    """List email accounts from Instantly workspace."""
+    try:
+        all_accounts: list[dict] = []
+        starting_after = None
+        while True:
+            data = await instantly_service.list_accounts(
+                limit=100, starting_after=starting_after
+            )
+            items = data.get("data", data.get("items", []))
+            if not items:
+                break
+            all_accounts.extend(items)
+            if len(items) < 100:
+                break
+            starting_after = items[-1].get("id")
+
+        accounts = [
+            EmailAccountOut(
+                email=a.get("email", ""),
+                first_name=a.get("first_name"),
+                last_name=a.get("last_name"),
+                status=a.get("status"),
+            )
+            for a in all_accounts
+        ]
+        return EmailAccountListResponse(accounts=accounts, total=len(accounts))
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to list accounts: {e.detail}")
 
 
 @router.get("/{campaign_id}", response_model=CampaignResponse)
@@ -355,6 +411,62 @@ async def upload_leads_to_campaign(
             errors_count += len(batch)
 
     return LeadUploadResponse(pushed=pushed, errors=errors_count)
+
+
+# --- Push Sequences to Instantly ---
+
+
+@router.post(
+    "/{campaign_id}/push-sequences",
+    response_model=PushSequencesResponse,
+)
+async def push_sequences_to_instantly(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Push email templates from DB to Instantly as campaign sequences."""
+    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not linked to Instantly")
+    if not campaign.email_templates:
+        raise HTTPException(400, "No email templates to push")
+
+    try:
+        steps_data = json.loads(campaign.email_templates)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(400, "Invalid email templates data")
+
+    # Map internal format to Instantly sequences format
+    instantly_steps = []
+    for step in steps_data:
+        instantly_steps.append({
+            "type": "email",
+            "delay": step.get("wait_days", 0),
+            "delay_unit": "day",
+            "variants": [{
+                "subject": step.get("subject", ""),
+                "body": step.get("body", ""),
+            }],
+        })
+
+    try:
+        await instantly_service.update_campaign(
+            campaign.instantly_campaign_id,
+            {"sequences": [{"steps": instantly_steps}]},
+        )
+    except InstantlyAPIError as e:
+        raise HTTPException(
+            502, f"Failed to push sequences to Instantly: {e.detail}"
+        )
+
+    return PushSequencesResponse(
+        success=True,
+        steps_pushed=len(instantly_steps),
+        message=f"Pushed {len(instantly_steps)} steps to Instantly",
+    )
 
 
 # --- Email Template Generation ---

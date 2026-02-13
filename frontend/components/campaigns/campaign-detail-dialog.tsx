@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Wand2, Upload, Trash2 } from "lucide-react";
+import { RefreshCw, Wand2, Upload, Trash2, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -11,7 +11,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Campaign, CampaignStatus, EmailStep } from "@/types";
+import { api } from "@/lib/api";
+import { Campaign, CampaignStatus, EmailStep, PushSequencesResponse } from "@/types";
 
 interface CampaignDetailDialogProps {
   campaign: Campaign | null;
@@ -49,6 +50,7 @@ export function CampaignDetailDialog({
   onDelete,
 }: CampaignDetailDialogProps) {
   const [deleting, setDeleting] = useState(false);
+  const [pushingSequences, setPushingSequences] = useState(false);
 
   if (!campaign) return null;
 
@@ -69,6 +71,25 @@ export function CampaignDetailDialog({
       return;
     setDeleting(true);
     onDelete(campaign.id);
+  };
+
+  const handlePushSequences = async () => {
+    setPushingSequences(true);
+    try {
+      const result = await api.post<PushSequencesResponse>(
+        `/campaigns/${campaign.id}/push-sequences`,
+        {}
+      );
+      alert(result.message);
+    } catch (err) {
+      alert(
+        err instanceof Error
+          ? err.message
+          : "Failed to push sequences to Instantly"
+      );
+    } finally {
+      setPushingSequences(false);
+    }
   };
 
   return (
@@ -199,6 +220,22 @@ export function CampaignDetailDialog({
             >
               <Upload className="h-3 w-3" />
               Upload Leads
+            </Button>
+          )}
+          {campaign.instantly_campaign_id && emailSteps.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={handlePushSequences}
+              disabled={pushingSequences}
+            >
+              {pushingSequences ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              {pushingSequences ? "Pushing..." : "Push Sequences"}
             </Button>
           )}
           <Button

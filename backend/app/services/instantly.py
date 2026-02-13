@@ -75,14 +75,67 @@ class InstantlyService:
         return await self._request("GET", f"/campaigns/{campaign_id}")
 
     async def create_campaign(
-        self, name: str, campaign_schedule: dict
+        self,
+        name: str,
+        campaign_schedule: dict,
+        *,
+        sequences: list[dict] | None = None,
+        email_list: list[str] | None = None,
+        daily_limit: int | None = None,
+        email_gap: int | None = None,
+        stop_on_reply: bool | None = None,
+        stop_on_auto_reply: bool | None = None,
+        link_tracking: bool | None = None,
+        open_tracking: bool | None = None,
+        text_only: bool | None = None,
     ) -> dict:
-        """Create a new campaign on Instantly."""
-        payload = {
+        """Create a new campaign on Instantly with full options."""
+        payload: dict[str, Any] = {
             "name": name,
             "campaign_schedule": campaign_schedule,
         }
+        if sequences is not None:
+            payload["sequences"] = sequences
+        if email_list is not None:
+            payload["email_list"] = email_list
+        if daily_limit is not None:
+            payload["daily_limit"] = daily_limit
+        if email_gap is not None:
+            payload["email_gap"] = email_gap
+        if stop_on_reply is not None:
+            payload["stop_on_reply"] = stop_on_reply
+        if stop_on_auto_reply is not None:
+            payload["stop_on_auto_reply"] = stop_on_auto_reply
+        if link_tracking is not None:
+            payload["link_tracking"] = link_tracking
+        if open_tracking is not None:
+            payload["open_tracking"] = open_tracking
+        if text_only is not None:
+            payload["text_only"] = text_only
         return await self._request("POST", "/campaigns", json=payload)
+
+    async def update_campaign(self, campaign_id: str, payload: dict) -> dict:
+        """Update an existing campaign via PATCH."""
+        return await self._request("PATCH", f"/campaigns/{campaign_id}", json=payload)
+
+    async def activate_campaign(self, campaign_id: str) -> dict:
+        """Activate a campaign."""
+        return await self._request("POST", f"/campaigns/{campaign_id}/activate")
+
+    async def pause_campaign(self, campaign_id: str) -> dict:
+        """Pause a campaign."""
+        return await self._request("POST", f"/campaigns/{campaign_id}/pause")
+
+    # --- Account Methods ---
+
+    async def list_accounts(
+        self, limit: int = 100, starting_after: str | None = None
+    ) -> dict:
+        """List email accounts in the workspace."""
+        params: dict[str, Any] = {"limit": limit}
+        if starting_after:
+            params["starting_after"] = starting_after
+        return await self._request("GET", "/accounts", params=params)
 
     # --- Lead Methods ---
 

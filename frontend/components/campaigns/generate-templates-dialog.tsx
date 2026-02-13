@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Wand2, Check } from "lucide-react";
+import { Loader2, Wand2, Check, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,7 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
-import { Campaign, ICP, EmailTemplateGenerateResponse } from "@/types";
+import {
+  Campaign,
+  ICP,
+  EmailTemplateGenerateResponse,
+  PushSequencesResponse,
+} from "@/types";
 
 interface GenerateTemplatesDialogProps {
   campaign: Campaign | null;
@@ -49,6 +54,7 @@ export function GenerateTemplatesDialog({
     null
   );
   const [error, setError] = useState<string | null>(null);
+  const [pushingSequences, setPushingSequences] = useState(false);
 
   const reset = () => {
     setIcpId(
@@ -230,7 +236,40 @@ export function GenerateTemplatesDialog({
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {campaign?.instantly_campaign_id && (
+                <Button
+                  variant="outline"
+                  className="gap-1"
+                  disabled={pushingSequences}
+                  onClick={async () => {
+                    if (!campaign) return;
+                    setPushingSequences(true);
+                    try {
+                      const res = await api.post<PushSequencesResponse>(
+                        `/campaigns/${campaign.id}/push-sequences`,
+                        {}
+                      );
+                      alert(res.message);
+                    } catch (err) {
+                      alert(
+                        err instanceof Error
+                          ? err.message
+                          : "Failed to push sequences"
+                      );
+                    } finally {
+                      setPushingSequences(false);
+                    }
+                  }}
+                >
+                  {pushingSequences ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {pushingSequences ? "Pushing..." : "Push to Instantly"}
+                </Button>
+              )}
               <Button onClick={() => handleOpenChange(false)}>Done</Button>
             </div>
           </div>

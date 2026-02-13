@@ -213,3 +213,21 @@ export interface SendReplyResponse {
   success: boolean;
   message: string;
 }
+
+export interface InstantlyEmailAccount {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  status: number | null;
+}
+
+export interface InstantlyEmailAccountListResponse {
+  accounts: InstantlyEmailAccount[];
+  total: number;
+}
+
+export interface PushSequencesResponse {
+  success: boolean;
+  steps_pushed: number;
+  message: string;
+}
