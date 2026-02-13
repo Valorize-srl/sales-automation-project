@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 
 class ApiClient {
   private baseUrl: string;
@@ -11,7 +11,9 @@ class ApiClient {
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    const url = `${this.baseUrl}/api${endpoint}`;
+    // Ensure trailing slash to avoid FastAPI 307 redirects
+    const path = endpoint.endsWith("/") ? endpoint : `${endpoint}/`;
+    const url = `${this.baseUrl}/api${path}`;
     const response = await fetch(url, {
       headers: {
         "Content-Type": "application/json",
@@ -62,7 +64,7 @@ class ApiClient {
     onDone: () => void,
     onError: (error: Error) => void
   ): Promise<void> {
-    const url = `${this.baseUrl}/api/chat/stream`;
+    const url = `${this.baseUrl}/api/chat/stream/`;
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -110,7 +112,7 @@ class ApiClient {
   async uploadFile(file: File): Promise<{ filename: string; text: string; length: number }> {
     const formData = new FormData();
     formData.append("file", file);
-    const url = `${this.baseUrl}/api/chat/upload`;
+    const url = `${this.baseUrl}/api/chat/upload/`;
     const response = await fetch(url, {
       method: "POST",
       body: formData,
