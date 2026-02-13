@@ -118,6 +118,21 @@ class ApiClient {
     if (!response.ok) throw new Error(`Upload error: ${response.status}`);
     return response.json();
   }
+
+  async uploadCSV(file: File): Promise<import("@/types").CSVUploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const url = `${this.baseUrl}/api/leads/csv/upload`;
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || `Upload error: ${response.status}`);
+    }
+    return response.json();
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

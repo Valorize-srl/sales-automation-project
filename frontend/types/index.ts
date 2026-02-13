@@ -113,3 +113,32 @@ export interface FileUploadResponse {
   text: string;
   length: number;
 }
+
+export interface LeadListResponse {
+  leads: Lead[];
+  total: number;
+}
+
+export interface CSVColumnMapping {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  company: string | null;
+  job_title: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+}
+
+export interface CSVUploadResponse {
+  headers: string[];
+  mapping: CSVColumnMapping;
+  rows: Record<string, string>[];
+  preview_rows: Record<string, string>[];
+  total_rows: number;
+}
+
+export interface CSVImportResponse {
+  imported: number;
+  duplicates_skipped: number;
+  errors: number;
+}
