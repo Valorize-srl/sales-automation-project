@@ -22,7 +22,7 @@ class CampaignCreate(BaseModel):
     icp_id: Optional[int] = None
     create_on_instantly: bool = True
     # Schedule
-    schedule_timezone: str = "Europe/Rome"
+    schedule_timezone: str = "Europe/Belgrade"
     schedule_from: str = "09:00"
     schedule_to: str = "17:00"
     schedule_days: Optional[ScheduleDays] = None

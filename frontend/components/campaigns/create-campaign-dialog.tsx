@@ -36,16 +36,39 @@ interface CreateCampaignDialogProps {
 
 const NO_ICP = "__none__";
 
-const TIMEZONES = [
-  "Europe/Rome",
-  "Europe/London",
-  "Europe/Berlin",
-  "Europe/Paris",
-  "America/New_York",
-  "America/Chicago",
-  "America/Los_Angeles",
-  "Asia/Tokyo",
-  "Etc/UTC",
+// Instantly API accepts only a specific subset of IANA timezones.
+// Display label -> Instantly API value
+const TIMEZONES: { label: string; value: string }[] = [
+  { label: "Rome, Berlin, Paris (UTC+1)", value: "Europe/Belgrade" },
+  { label: "London, Dublin (UTC+0)", value: "Europe/Isle_of_Man" },
+  { label: "Athens, Bucharest (UTC+2)", value: "Europe/Bucharest" },
+  { label: "Helsinki, Kiev (UTC+2)", value: "Europe/Helsinki" },
+  { label: "Istanbul (UTC+3)", value: "Europe/Istanbul" },
+  { label: "Moscow (UTC+3)", value: "Europe/Kaliningrad" },
+  { label: "Casablanca (UTC+0/+1)", value: "Africa/Casablanca" },
+  { label: "Cairo (UTC+2)", value: "Africa/Cairo" },
+  { label: "Chicago, Central US (UTC-6)", value: "America/Chicago" },
+  { label: "Detroit, Eastern US (UTC-5)", value: "America/Detroit" },
+  { label: "Denver, Mountain US (UTC-7)", value: "America/Boise" },
+  { label: "Anchorage, Alaska (UTC-9)", value: "America/Anchorage" },
+  { label: "Bogota, Lima (UTC-5)", value: "America/Bogota" },
+  { label: "Santiago (UTC-3/-4)", value: "America/Santiago" },
+  { label: "Sao Paulo (UTC-3)", value: "America/Sao_Paulo" },
+  { label: "Buenos Aires (UTC-3)", value: "America/Montevideo" },
+  { label: "Dubai, Muscat (UTC+4)", value: "Asia/Baku" },
+  { label: "Karachi (UTC+5)", value: "Asia/Karachi" },
+  { label: "Kolkata, Mumbai (UTC+5:30)", value: "Asia/Kolkata" },
+  { label: "Bangkok, Jakarta (UTC+7)", value: "Asia/Krasnoyarsk" },
+  { label: "Hong Kong, Singapore (UTC+8)", value: "Asia/Hong_Kong" },
+  { label: "Taipei (UTC+8)", value: "Asia/Taipei" },
+  { label: "Tokyo, Seoul (UTC+9)", value: "Asia/Irkutsk" },
+  { label: "Sydney, Melbourne (UTC+10/+11)", value: "Australia/Melbourne" },
+  { label: "Perth (UTC+8)", value: "Australia/Perth" },
+  { label: "Auckland (UTC+12/+13)", value: "Pacific/Auckland" },
+  { label: "Fiji (UTC+12)", value: "Pacific/Fiji" },
+  { label: "GMT-12", value: "Etc/GMT+12" },
+  { label: "GMT-11", value: "Etc/GMT+11" },
+  { label: "GMT-10 (Hawaii)", value: "Etc/GMT+10" },
 ];
 
 const DAYS = [
@@ -70,7 +93,7 @@ export function CreateCampaignDialog({
   const [createOnInstantly, setCreateOnInstantly] = useState(true);
 
   // Schedule
-  const [timezone, setTimezone] = useState("Europe/Rome");
+  const [timezone, setTimezone] = useState("Europe/Belgrade");
   const [scheduleFrom, setScheduleFrom] = useState("09:00");
   const [scheduleTo, setScheduleTo] = useState("17:00");
   const [scheduleDays, setScheduleDays] = useState<Record<string, boolean>>({
@@ -128,7 +151,7 @@ export function CreateCampaignDialog({
     setName("");
     setIcpId(NO_ICP);
     setCreateOnInstantly(true);
-    setTimezone("Europe/Rome");
+    setTimezone("Europe/Belgrade");
     setScheduleFrom("09:00");
     setScheduleTo("17:00");
     setScheduleDays({
@@ -293,8 +316,8 @@ export function CreateCampaignDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz} value={tz}>
-                          {tz}
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
