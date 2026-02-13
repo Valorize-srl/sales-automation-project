@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -56,6 +56,22 @@ async def create_lead(data: LeadCreate, db: AsyncSession = Depends(get_db)):
     await db.flush()
     await db.refresh(lead)
     return lead
+
+
+@router.delete("", status_code=200)
+async def delete_leads_by_icp(
+    icp_id: int = Query(..., description="ICP ID to delete all leads for"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all leads for a given ICP."""
+    icp_result = await db.execute(select(ICP).where(ICP.id == icp_id))
+    if not icp_result.scalar_one_or_none():
+        raise HTTPException(404, "ICP not found")
+
+    result = await db.execute(
+        delete(Lead).where(Lead.icp_id == icp_id)
+    )
+    return {"deleted": result.rowcount}
 
 
 @router.delete("/{lead_id}", status_code=204)

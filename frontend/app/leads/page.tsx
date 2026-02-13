@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Upload } from "lucide-react";
+import { Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -68,6 +68,18 @@ export default function LeadsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (filterIcpId === ALL_ICPS) return;
+    const icpName = icps.find((i) => String(i.id) === filterIcpId)?.name || "this ICP";
+    if (!confirm(`Delete ALL leads for "${icpName}"? This cannot be undone.`)) return;
+    try {
+      await api.delete(`/leads?icp_id=${filterIcpId}`);
+      loadLeads();
+    } catch (err) {
+      console.error("Failed to delete leads:", err);
+    }
+  };
+
   const activeIcps = icps.filter((icp) => icp.status === "active" || icp.status === "draft");
 
   return (
@@ -94,6 +106,16 @@ export default function LeadsPage() {
               ))}
             </SelectContent>
           </Select>
+          {filterIcpId !== ALL_ICPS && leads.length > 0 && (
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAll}
+              className="gap-1"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete All
+            </Button>
+          )}
           <Button
             onClick={() => setCsvDialogOpen(true)}
             className="gap-1"
