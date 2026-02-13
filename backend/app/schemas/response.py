@@ -42,7 +42,6 @@ class FetchRepliesRequest(BaseModel):
 
 class FetchRepliesResponse(BaseModel):
     fetched: int
-    analyzed: int
     skipped: int
     errors: int
 

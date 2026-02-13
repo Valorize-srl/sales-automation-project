@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Send, X, Loader2, Pencil } from "lucide-react";
+import { Check, Send, X, Loader2, Pencil, Brain, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +17,7 @@ import {
   Sentiment,
   ResponseStatus,
 } from "@/types";
+import { api } from "@/lib/api";
 
 interface ResponseDetailDialogProps {
   response: EmailResponseWithDetails | null;
@@ -25,6 +26,7 @@ interface ResponseDetailDialogProps {
   onApprove: (id: number, editedReply?: string) => Promise<void>;
   onSend: (id: number) => Promise<void>;
   onIgnore: (id: number) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
   onResponseUpdated: (response: EmailResponseWithDetails) => void;
 }
 
@@ -50,11 +52,14 @@ export function ResponseDetailDialog({
   onApprove,
   onSend,
   onIgnore,
+  onDelete,
+  onResponseUpdated,
 }: ResponseDetailDialogProps) {
   const [editedReply, setEditedReply] = useState("");
   const [editing, setEditing] = useState(false);
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   if (!response) return null;
 
@@ -65,6 +70,22 @@ export function ResponseDetailDialog({
         ""
     );
     setEditing(true);
+  };
+
+  const handleGenerateReply = async () => {
+    setGenerating(true);
+    try {
+      const updated = await api.post<EmailResponseWithDetails>(
+        `/responses/${response.id}/generate-reply`,
+        {}
+      );
+      onResponseUpdated(updated);
+    } catch (err) {
+      console.error("Failed to generate reply:", err);
+      alert("Failed to generate AI reply.");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleApproveWithEdit = async () => {
@@ -92,6 +113,8 @@ export function ResponseDetailDialog({
   const isActionable =
     response.status !== "sent" && response.status !== "ignored";
 
+  const hasReply = !!(response.human_approved_reply || response.ai_suggested_reply);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
@@ -111,12 +134,12 @@ export function ResponseDetailDialog({
         {/* Metadata */}
         <div className="text-sm text-muted-foreground space-y-1">
           <p>
-            Email: {response.lead_email || response.from_email || "—"}
+            Email: {response.lead_email || response.from_email || "\u2014"}
           </p>
           {response.lead_company && (
             <p>Company: {response.lead_company}</p>
           )}
-          <p>Campaign: {response.campaign_name || "—"}</p>
+          <p>Campaign: {response.campaign_name || "\u2014"}</p>
           {response.subject && <p>Subject: {response.subject}</p>}
           <p>
             Received:{" "}
@@ -142,7 +165,7 @@ export function ResponseDetailDialog({
             </Badge>
           ) : (
             <span className="text-sm text-muted-foreground">
-              Not analyzed
+              Not available
             </span>
           )}
         </div>
@@ -159,10 +182,10 @@ export function ResponseDetailDialog({
 
         <Separator />
 
-        {/* AI Suggested Reply */}
+        {/* AI Reply Section */}
         <div>
           <h4 className="font-medium mb-2">
-            {editing ? "Edit Reply" : "AI Suggested Reply"}
+            {editing ? "Edit Reply" : "Reply"}
           </h4>
           {editing ? (
             <Textarea
@@ -171,11 +194,29 @@ export function ResponseDetailDialog({
               rows={5}
               className="text-sm"
             />
-          ) : (
+          ) : hasReply ? (
             <div className="bg-muted p-3 rounded text-sm whitespace-pre-wrap">
-              {response.human_approved_reply ||
-                response.ai_suggested_reply ||
-                "No reply generated"}
+              {response.human_approved_reply || response.ai_suggested_reply}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              No reply generated yet.{" "}
+              {isActionable && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 ml-2"
+                  onClick={handleGenerateReply}
+                  disabled={generating}
+                >
+                  {generating ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Brain className="h-3 w-3" />
+                  )}
+                  {generating ? "Generating..." : "Generate AI Reply"}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -185,7 +226,7 @@ export function ResponseDetailDialog({
           <>
             <Separator />
             <div className="flex flex-wrap gap-2">
-              {!editing ? (
+              {hasReply && !editing && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -195,7 +236,8 @@ export function ResponseDetailDialog({
                   <Pencil className="h-3 w-3" />
                   Edit Reply
                 </Button>
-              ) : (
+              )}
+              {editing && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -204,41 +246,70 @@ export function ResponseDetailDialog({
                   Cancel Edit
                 </Button>
               )}
+              {!hasReply && !generating && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={handleGenerateReply}
+                  disabled={generating}
+                >
+                  {generating ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Brain className="h-3 w-3" />
+                  )}
+                  Generate AI Reply
+                </Button>
+              )}
+              {(hasReply || editing) && (
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  onClick={handleApproveWithEdit}
+                  disabled={approving}
+                >
+                  {approving ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  {editing ? "Approve Edited" : "Approve"}
+                </Button>
+              )}
+              {(hasReply || response.status === "human_approved") && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="gap-1"
+                  onClick={handleSend}
+                  disabled={sending}
+                >
+                  {sending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Send className="h-3 w-3" />
+                  )}
+                  Send
+                </Button>
+              )}
               <Button
+                variant="outline"
                 size="sm"
                 className="gap-1"
-                onClick={handleApproveWithEdit}
-                disabled={approving}
+                onClick={() => onIgnore(response.id)}
               >
-                {approving ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Check className="h-3 w-3" />
-                )}
-                {editing ? "Approve Edited" : "Approve"}
-              </Button>
-              <Button
-                size="sm"
-                variant="default"
-                className="gap-1"
-                onClick={handleSend}
-                disabled={sending}
-              >
-                {sending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Send className="h-3 w-3" />
-                )}
-                Send
+                <X className="h-3 w-3" />
+                Ignore
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
                 className="gap-1 ml-auto"
-                onClick={() => onIgnore(response.id)}
+                onClick={() => onDelete(response.id)}
               >
-                <X className="h-3 w-3" />
-                Ignore
+                <Trash2 className="h-3 w-3" />
+                Delete
               </Button>
             </div>
           </>
@@ -250,9 +321,20 @@ export function ResponseDetailDialog({
           </p>
         )}
         {response.status === "ignored" && (
-          <p className="text-sm text-muted-foreground">
-            This response has been ignored.
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              This response has been ignored.
+            </p>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1"
+              onClick={() => onDelete(response.id)}
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </Button>
+          </div>
         )}
       </DialogContent>
     </Dialog>

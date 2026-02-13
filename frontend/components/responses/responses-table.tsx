@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X, Eye, Send } from "lucide-react";
+import { Check, X, Eye, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,6 +20,7 @@ interface ResponsesTableProps {
   onApprove: (id: number) => void;
   onSend: (id: number) => void;
   onIgnore: (id: number) => void;
+  onDelete: (id: number) => void;
 }
 
 const sentimentColors: Record<Sentiment, string> = {
@@ -38,7 +39,7 @@ const statusColors: Record<ResponseStatus, string> = {
 };
 
 function truncate(text: string | null, max: number): string {
-  if (!text) return "—";
+  if (!text) return "\u2014";
   return text.length > max ? text.slice(0, max) + "..." : text;
 }
 
@@ -49,6 +50,7 @@ export function ResponsesTable({
   onApprove,
   onSend,
   onIgnore,
+  onDelete,
 }: ResponsesTableProps) {
   if (loading) {
     return (
@@ -76,10 +78,9 @@ export function ResponsesTable({
             <TableHead>Campaign</TableHead>
             <TableHead>Message</TableHead>
             <TableHead>Sentiment</TableHead>
-            <TableHead>AI Reply</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Received</TableHead>
-            <TableHead className="w-[140px]">Actions</TableHead>
+            <TableHead className="w-[160px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -95,12 +96,12 @@ export function ResponsesTable({
                     {resp.lead_name || "Unknown"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {resp.lead_email || resp.from_email || "—"}
+                    {resp.lead_email || resp.from_email || "\u2014"}
                   </p>
                 </div>
               </TableCell>
               <TableCell className="text-sm">
-                {resp.campaign_name || "—"}
+                {resp.campaign_name || "\u2014"}
               </TableCell>
               <TableCell className="text-sm max-w-[200px]">
                 {truncate(resp.message_body, 60)}
@@ -116,11 +117,8 @@ export function ResponsesTable({
                       ` (${(resp.sentiment_score * 100).toFixed(0)}%)`}
                   </Badge>
                 ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
+                  <span className="text-xs text-muted-foreground">{"\u2014"}</span>
                 )}
-              </TableCell>
-              <TableCell className="text-sm max-w-[200px]">
-                {truncate(resp.ai_suggested_reply, 50)}
               </TableCell>
               <TableCell>
                 <Badge
@@ -193,6 +191,15 @@ export function ResponsesTable({
                       <X className="h-3 w-3" />
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    title="Delete"
+                    onClick={() => onDelete(resp.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
                 </div>
               </TableCell>
             </TableRow>

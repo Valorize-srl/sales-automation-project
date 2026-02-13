@@ -1,6 +1,6 @@
-"""Email responses API routes - fetch, analyze, approve, send replies."""
+"""Email responses API routes - fetch, generate AI reply, approve, send, delete."""
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func as sa_func
@@ -25,7 +25,7 @@ from app.schemas.response import (
     SendReplyResponse,
 )
 from app.services.instantly import instantly_service, InstantlyAPIError
-from app.services.sentiment import sentiment_reply_service
+from app.services.sentiment import reply_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,6 +43,19 @@ def _response_to_out(resp: EmailResponse) -> EmailResponseOut:
     if resp.campaign:
         out.campaign_name = resp.campaign.name
     return out
+
+
+def _score_to_sentiment(score: float | None) -> Sentiment | None:
+    """Map Instantly ai_interest_value (0-1) to our Sentiment enum."""
+    if score is None:
+        return None
+    if score >= 0.7:
+        return Sentiment.INTERESTED
+    if score >= 0.4:
+        return Sentiment.POSITIVE
+    if score >= 0.2:
+        return Sentiment.NEUTRAL
+    return Sentiment.NEGATIVE
 
 
 # --- List Responses ---
@@ -85,7 +98,7 @@ async def list_responses(
     return EmailResponseListResponse(responses=items, total=len(items))
 
 
-# --- Fetch & Analyze Replies from Instantly ---
+# --- Fetch Replies from Instantly ---
 
 
 @router.post("/fetch", response_model=FetchRepliesResponse)
@@ -95,7 +108,7 @@ async def fetch_replies(
 ):
     """
     Fetch new replies from Instantly for given campaigns.
-    Only imports emails — analysis is done separately via POST /{id}/analyze.
+    Imports emails with sentiment from Instantly's ai_interest_value.
     """
     fetched = 0
     skipped = 0
@@ -156,9 +169,9 @@ async def fetch_replies(
                     else:
                         body_text = str(body_raw)
 
-                    # Parse received timestamp from Instantly
+                    # Parse actual email timestamp from Instantly
                     received_at = None
-                    ts_raw = email_item.get("timestamp_created")
+                    ts_raw = email_item.get("timestamp_email")
                     if ts_raw:
                         try:
                             received_at = datetime.fromisoformat(
@@ -167,7 +180,18 @@ async def fetch_replies(
                         except (ValueError, AttributeError):
                             pass
 
-                    # Create record with PENDING status (no Claude analysis yet)
+                    # Extract sentiment from Instantly's AI interest score
+                    ai_interest = email_item.get("ai_interest_value")
+                    sentiment_score = None
+                    sentiment_val = None
+                    if ai_interest is not None:
+                        try:
+                            sentiment_score = float(ai_interest)
+                            sentiment_val = _score_to_sentiment(sentiment_score)
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Create record
                     email_response = EmailResponse(
                         campaign_id=campaign.id,
                         lead_id=lead_id,
@@ -179,6 +203,8 @@ async def fetch_replies(
                         direction=MessageDirection.INBOUND,
                         status=ResponseStatus.PENDING,
                         received_at=received_at,
+                        sentiment=sentiment_val,
+                        sentiment_score=sentiment_score,
                     )
                     db.add(email_response)
                     await db.flush()
@@ -197,19 +223,19 @@ async def fetch_replies(
             errors += 1
 
     return FetchRepliesResponse(
-        fetched=fetched, analyzed=0, skipped=skipped, errors=errors
+        fetched=fetched, skipped=skipped, errors=errors
     )
 
 
-# --- Analyze Single Response ---
+# --- Generate AI Reply ---
 
 
-@router.post("/{response_id}/analyze", response_model=EmailResponseOut)
-async def analyze_response(
+@router.post("/{response_id}/generate-reply", response_model=EmailResponseOut)
+async def generate_reply(
     response_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Run Claude sentiment analysis + reply generation on a single response."""
+    """Generate an AI reply suggestion using Claude for a single response."""
     result = await db.execute(
         select(EmailResponse)
         .options(
@@ -222,10 +248,6 @@ async def analyze_response(
     if not resp:
         raise HTTPException(404, "Response not found")
 
-    if resp.sentiment is not None:
-        # Already analyzed
-        return _response_to_out(resp)
-
     try:
         lead_name = None
         lead_company = None
@@ -233,23 +255,22 @@ async def analyze_response(
             lead_name = f"{resp.lead.first_name} {resp.lead.last_name}"
             lead_company = resp.lead.company
 
-        analysis = await sentiment_reply_service.analyze_and_generate_reply(
+        suggested_reply = await reply_service.generate_reply(
             email_body=resp.message_body or "",
             lead_name=lead_name,
             lead_company=lead_company,
             campaign_name=resp.campaign.name if resp.campaign else None,
+            sentiment=resp.sentiment.value if resp.sentiment else None,
         )
 
-        resp.sentiment = Sentiment(analysis["sentiment"])
-        resp.sentiment_score = analysis["sentiment_score"]
-        resp.ai_suggested_reply = analysis.get("suggested_reply")
-        if resp.ai_suggested_reply:
+        resp.ai_suggested_reply = suggested_reply
+        if suggested_reply:
             resp.status = ResponseStatus.AI_REPLIED
         await db.flush()
         await db.refresh(resp, attribute_names=["lead", "campaign"])
     except Exception as e:
-        logger.error(f"Failed to analyze response {response_id}: {e}")
-        raise HTTPException(502, f"Analysis failed: {str(e)}")
+        logger.error(f"Failed to generate reply for response {response_id}: {e}")
+        raise HTTPException(502, f"Reply generation failed: {str(e)}")
 
     return _response_to_out(resp)
 
@@ -368,3 +389,47 @@ async def ignore_response(
     await db.flush()
     await db.refresh(resp, attribute_names=["lead", "campaign"])
     return _response_to_out(resp)
+
+
+# --- Delete Response ---
+
+
+@router.delete("/{response_id}")
+async def delete_response(
+    response_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a response from the database (does not affect Instantly)."""
+    result = await db.execute(
+        select(EmailResponse).where(EmailResponse.id == response_id)
+    )
+    resp = result.scalar_one_or_none()
+    if not resp:
+        raise HTTPException(404, "Response not found")
+
+    await db.delete(resp)
+    await db.flush()
+    return {"success": True}
+
+
+# --- Bulk Delete Responses ---
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_responses(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete multiple responses from the database."""
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(400, "No IDs provided")
+
+    result = await db.execute(
+        select(EmailResponse).where(EmailResponse.id.in_(ids))
+    )
+    responses = result.scalars().all()
+    for resp in responses:
+        await db.delete(resp)
+    await db.flush()
+    return {"deleted": len(responses)}

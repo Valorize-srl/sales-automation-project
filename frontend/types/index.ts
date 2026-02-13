@@ -205,7 +205,6 @@ export interface EmailResponseListResponse {
 
 export interface FetchRepliesResponse {
   fetched: number;
-  analyzed: number;
   skipped: number;
   errors: number;
 }
