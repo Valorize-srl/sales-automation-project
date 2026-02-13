@@ -9,7 +9,7 @@ from app.schemas.icp import ICPCreate, ICPUpdate, ICPResponse, ICPListResponse
 router = APIRouter()
 
 
-@router.get("/", response_model=ICPListResponse)
+@router.get("", response_model=ICPListResponse)
 async def list_icps(db: AsyncSession = Depends(get_db)):
     """List all ICPs."""
     result = await db.execute(select(ICP).order_by(ICP.created_at.desc()))
@@ -17,7 +17,7 @@ async def list_icps(db: AsyncSession = Depends(get_db)):
     return ICPListResponse(icps=icps, total=len(icps))
 
 
-@router.post("/", response_model=ICPResponse, status_code=201)
+@router.post("", response_model=ICPResponse, status_code=201)
 async def create_icp(data: ICPCreate, db: AsyncSession = Depends(get_db)):
     """Create a new ICP."""
     icp = ICP(**data.model_dump(), status=ICPStatus.DRAFT)
