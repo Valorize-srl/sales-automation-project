@@ -86,11 +86,10 @@ async def fetch_replies(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Fetch new replies from Instantly for given campaigns,
-    run sentiment analysis + reply generation via Claude.
+    Fetch new replies from Instantly for given campaigns.
+    Only imports emails — analysis is done separately via POST /{id}/analyze.
     """
     fetched = 0
-    analyzed = 0
     skipped = 0
     errors = 0
 
@@ -134,7 +133,6 @@ async def fetch_replies(
                     # Match lead by sender email
                     from_email = email_item.get("from_address_email", "")
                     lead_id = None
-                    lead = None
                     if from_email:
                         lead_result = await db.execute(
                             select(Lead).where(Lead.email == from_email.lower())
@@ -150,7 +148,7 @@ async def fetch_replies(
                     else:
                         body_text = str(body_raw)
 
-                    # Create record
+                    # Create record with PENDING status (no Claude analysis yet)
                     email_response = EmailResponse(
                         campaign_id=campaign.id,
                         lead_id=lead_id,
@@ -166,32 +164,6 @@ async def fetch_replies(
                     await db.flush()
                     fetched += 1
 
-                    # Claude analysis
-                    try:
-                        result = await sentiment_reply_service.analyze_and_generate_reply(
-                            email_body=body_text,
-                            lead_name=(
-                                f"{lead.first_name} {lead.last_name}" if lead else None
-                            ),
-                            lead_company=lead.company if lead else None,
-                            campaign_name=campaign.name,
-                        )
-
-                        email_response.sentiment = Sentiment(result["sentiment"])
-                        email_response.sentiment_score = result["sentiment_score"]
-                        email_response.ai_suggested_reply = result.get(
-                            "suggested_reply"
-                        )
-                        if email_response.ai_suggested_reply:
-                            email_response.status = ResponseStatus.AI_REPLIED
-                        await db.flush()
-                        analyzed += 1
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to analyze email {instantly_id}: {e}"
-                        )
-                        errors += 1
-
                 # Cursor pagination
                 next_cursor = email_data.get("next_starting_after")
                 if not next_cursor or len(items) < 50:
@@ -205,8 +177,61 @@ async def fetch_replies(
             errors += 1
 
     return FetchRepliesResponse(
-        fetched=fetched, analyzed=analyzed, skipped=skipped, errors=errors
+        fetched=fetched, analyzed=0, skipped=skipped, errors=errors
     )
+
+
+# --- Analyze Single Response ---
+
+
+@router.post("/{response_id}/analyze", response_model=EmailResponseOut)
+async def analyze_response(
+    response_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run Claude sentiment analysis + reply generation on a single response."""
+    result = await db.execute(
+        select(EmailResponse)
+        .options(
+            selectinload(EmailResponse.lead),
+            selectinload(EmailResponse.campaign),
+        )
+        .where(EmailResponse.id == response_id)
+    )
+    resp = result.scalar_one_or_none()
+    if not resp:
+        raise HTTPException(404, "Response not found")
+
+    if resp.sentiment is not None:
+        # Already analyzed
+        return _response_to_out(resp)
+
+    try:
+        lead_name = None
+        lead_company = None
+        if resp.lead:
+            lead_name = f"{resp.lead.first_name} {resp.lead.last_name}"
+            lead_company = resp.lead.company
+
+        analysis = await sentiment_reply_service.analyze_and_generate_reply(
+            email_body=resp.message_body or "",
+            lead_name=lead_name,
+            lead_company=lead_company,
+            campaign_name=resp.campaign.name if resp.campaign else None,
+        )
+
+        resp.sentiment = Sentiment(analysis["sentiment"])
+        resp.sentiment_score = analysis["sentiment_score"]
+        resp.ai_suggested_reply = analysis.get("suggested_reply")
+        if resp.ai_suggested_reply:
+            resp.status = ResponseStatus.AI_REPLIED
+        await db.flush()
+        await db.refresh(resp, attribute_names=["lead", "campaign"])
+    except Exception as e:
+        logger.error(f"Failed to analyze response {response_id}: {e}")
+        raise HTTPException(502, f"Analysis failed: {str(e)}")
+
+    return _response_to_out(resp)
 
 
 # --- Approve Reply ---
