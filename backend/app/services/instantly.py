@@ -134,6 +134,23 @@ class InstantlyService:
 
     # --- Email Methods ---
 
+    async def list_emails(
+        self,
+        campaign_id: str,
+        email_type: str = "received",
+        limit: int = 50,
+        starting_after: str | None = None,
+    ) -> dict:
+        """Fetch emails for a campaign, paginated with cursor."""
+        params: dict[str, Any] = {
+            "campaign_id": campaign_id,
+            "email_type": email_type,
+            "limit": limit,
+        }
+        if starting_after:
+            params["starting_after"] = starting_after
+        return await self._request("GET", "/emails", params=params)
+
     async def reply_to_email(self, reply_data: dict) -> dict:
         """Reply to an email (20 req/min limit)."""
         return await self._request("POST", "/emails/reply", json=reply_data)

@@ -20,6 +20,14 @@ from app.schemas.campaign import (
     EmailTemplateGenerateRequest,
     EmailTemplateGenerateResponse,
 )
+from app.schemas.response import (
+    EmailResponseOut,
+    EmailResponseListResponse,
+    FetchRepliesRequest,
+    FetchRepliesResponse,
+    ApproveReplyRequest,
+    SendReplyResponse,
+)
 
 __all__ = [
     "ICPCreate",
@@ -44,4 +52,10 @@ __all__ = [
     "LeadUploadResponse",
     "EmailTemplateGenerateRequest",
     "EmailTemplateGenerateResponse",
+    "EmailResponseOut",
+    "EmailResponseListResponse",
+    "FetchRepliesRequest",
+    "FetchRepliesResponse",
+    "ApproveReplyRequest",
+    "SendReplyResponse",
 ]

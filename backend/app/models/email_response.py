@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Text, Float, ForeignKey, DateTime, Enum as SAEnum
+from sqlalchemy import String, Text, Float, ForeignKey, DateTime, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -33,7 +33,11 @@ class EmailResponse(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
-    lead_id: Mapped[int] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
+    instantly_email_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    from_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     message_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     direction: Mapped[MessageDirection] = mapped_column(
         SAEnum(MessageDirection, native_enum=False),
@@ -58,4 +62,4 @@ class EmailResponse(Base):
 
     # Relationships
     campaign: Mapped["Campaign"] = relationship(back_populates="email_responses")
-    lead: Mapped["Lead"] = relationship(back_populates="email_responses")
+    lead: Mapped["Lead | None"] = relationship(back_populates="email_responses")

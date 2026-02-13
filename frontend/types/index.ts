@@ -65,7 +65,11 @@ export interface Campaign {
 export interface EmailResponse {
   id: number;
   campaign_id: number;
-  lead_id: number;
+  lead_id: number | null;
+  instantly_email_id: string | null;
+  from_email: string | null;
+  subject: string | null;
+  thread_id: string | null;
   message_body: string | null;
   direction: MessageDirection;
   sentiment: Sentiment | null;
@@ -74,6 +78,13 @@ export interface EmailResponse {
   human_approved_reply: string | null;
   status: ResponseStatus;
   created_at: string;
+}
+
+export interface EmailResponseWithDetails extends EmailResponse {
+  lead_name: string | null;
+  lead_email: string | null;
+  lead_company: string | null;
+  campaign_name: string | null;
 }
 
 export interface AnalyticsEntry {
@@ -184,4 +195,21 @@ export interface EmailStep {
 export interface EmailTemplateGenerateResponse {
   subject_lines: string[];
   email_steps: EmailStep[];
+}
+
+export interface EmailResponseListResponse {
+  responses: EmailResponseWithDetails[];
+  total: number;
+}
+
+export interface FetchRepliesResponse {
+  fetched: number;
+  analyzed: number;
+  skipped: number;
+  errors: number;
+}
+
+export interface SendReplyResponse {
+  success: boolean;
+  message: string;
 }
