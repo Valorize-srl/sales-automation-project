@@ -131,3 +131,57 @@ async def backfill_sender_emails(db: AsyncSession = Depends(get_db)):
 
     logger.info(result_message["message"])
     return result_message
+
+
+@router.get("/check-sender-emails")
+async def check_sender_emails(db: AsyncSession = Depends(get_db)):
+    """
+    Check status of sender_email field for all responses.
+
+    Returns statistics and lists of response IDs with/without sender_email.
+    """
+    # Query responses with sender_email
+    result_with = await db.execute(
+        select(EmailResponse.id, EmailResponse.campaign_id, EmailResponse.sender_email)
+        .where(EmailResponse.sender_email.isnot(None))
+        .order_by(EmailResponse.id)
+    )
+    responses_with = result_with.all()
+
+    # Query responses without sender_email but with instantly_email_id
+    result_without = await db.execute(
+        select(EmailResponse.id, EmailResponse.campaign_id, EmailResponse.instantly_email_id)
+        .where(
+            EmailResponse.sender_email.is_(None),
+            EmailResponse.instantly_email_id.isnot(None)
+        )
+        .order_by(EmailResponse.id)
+    )
+    responses_without = result_without.all()
+
+    return {
+        "with_sender_email": {
+            "count": len(responses_with),
+            "response_ids": [r.id for r in responses_with],
+            "details": [
+                {
+                    "id": r.id,
+                    "campaign_id": r.campaign_id,
+                    "sender_email": r.sender_email
+                }
+                for r in responses_with[:20]  # Limit to first 20 for readability
+            ]
+        },
+        "without_sender_email": {
+            "count": len(responses_without),
+            "response_ids": [r.id for r in responses_without],
+            "details": [
+                {
+                    "id": r.id,
+                    "campaign_id": r.campaign_id,
+                    "instantly_email_id": r.instantly_email_id
+                }
+                for r in responses_without[:20]  # Limit to first 20
+            ]
+        }
+    }
