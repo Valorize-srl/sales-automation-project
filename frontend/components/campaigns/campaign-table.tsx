@@ -3,6 +3,7 @@
 import { RefreshCw, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -15,6 +16,9 @@ import { Campaign, CampaignStatus } from "@/types";
 
 interface CampaignTableProps {
   campaigns: Campaign[];
+  selectedIds: number[];
+  onToggleSelect: (id: number) => void;
+  onToggleSelectAll: () => void;
   onSyncMetrics: (id: number) => void;
   onViewDetails: (campaign: Campaign) => void;
   loading: boolean;
@@ -34,10 +38,16 @@ function formatRate(numerator: number, denominator: number): string {
 
 export function CampaignTable({
   campaigns,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
   onSyncMetrics,
   onViewDetails,
   loading,
 }: CampaignTableProps) {
+  const allSelected =
+    campaigns.length > 0 && selectedIds.length === campaigns.length;
+  const someSelected = selectedIds.length > 0 && !allSelected;
   if (loading) {
     return (
       <p className="text-muted-foreground py-8 text-center">Loading...</p>
@@ -59,6 +69,14 @@ export function CampaignTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-[40px]">
+              <Checkbox
+                checked={allSelected}
+                indeterminate={someSelected}
+                onCheckedChange={onToggleSelectAll}
+                aria-label="Select all"
+              />
+            </TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>ICP</TableHead>
@@ -77,6 +95,13 @@ export function CampaignTable({
               className="cursor-pointer"
               onClick={() => onViewDetails(campaign)}
             >
+              <TableCell onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                  checked={selectedIds.includes(campaign.id)}
+                  onCheckedChange={() => onToggleSelect(campaign.id)}
+                  aria-label={`Select ${campaign.name}`}
+                />
+              </TableCell>
               <TableCell className="font-medium">{campaign.name}</TableCell>
               <TableCell>
                 <Badge

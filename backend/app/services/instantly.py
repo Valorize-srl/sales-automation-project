@@ -126,6 +126,10 @@ class InstantlyService:
         """Pause a campaign."""
         return await self._request("POST", f"/campaigns/{campaign_id}/pause")
 
+    async def delete_campaign(self, campaign_id: str) -> dict:
+        """Delete a campaign permanently from Instantly."""
+        return await self._request("DELETE", f"/campaigns/{campaign_id}")
+
     # --- Account Methods ---
 
     async def list_accounts(

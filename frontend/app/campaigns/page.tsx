@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -15,6 +15,7 @@ import { CreateCampaignDialog } from "@/components/campaigns/create-campaign-dia
 import { CampaignDetailDialog } from "@/components/campaigns/campaign-detail-dialog";
 import { GenerateTemplatesDialog } from "@/components/campaigns/generate-templates-dialog";
 import { UploadLeadsDialog } from "@/components/campaigns/upload-leads-dialog";
+import { DeleteConfirmDialog } from "@/components/campaigns/delete-confirm-dialog";
 import { api } from "@/lib/api";
 import {
   Campaign,
@@ -32,6 +33,7 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [filterIcpId, setFilterIcpId] = useState<string>(ALL_ICPS);
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<number[]>([]);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
@@ -40,6 +42,7 @@ export default function CampaignsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [uploadLeadsOpen, setUploadLeadsOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     loadIcps();
@@ -123,6 +126,50 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedCampaignIds.length === 0) return;
+
+    try {
+      const result = await api.post<{
+        deleted: number;
+        instantly_deleted: number;
+        errors: string[];
+        message: string;
+      }>("/campaigns/bulk-delete", { campaign_ids: selectedCampaignIds });
+
+      alert(result.message);
+      if (result.errors.length > 0) {
+        console.error("Delete errors:", result.errors);
+      }
+
+      // Reload campaigns and clear selection
+      setSelectedCampaignIds([]);
+      setDeleteConfirmOpen(false);
+      loadCampaigns();
+    } catch (err: any) {
+      console.error("Failed to bulk delete:", err);
+      const errorMessage =
+        err.response?.data?.detail ||
+        err.message ||
+        "Failed to delete campaigns";
+      alert(`Error: ${errorMessage}`);
+    }
+  };
+
+  const handleToggleSelect = (id: number) => {
+    setSelectedCampaignIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedCampaignIds.length === campaigns.length) {
+      setSelectedCampaignIds([]);
+    } else {
+      setSelectedCampaignIds(campaigns.map((c) => c.id));
+    }
+  };
+
   const handleViewDetails = (campaign: Campaign) => {
     setSelectedCampaign(campaign);
     setDetailOpen(true);
@@ -164,6 +211,16 @@ export default function CampaignsPage() {
               ))}
             </SelectContent>
           </Select>
+          {selectedCampaignIds.length > 0 && (
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="gap-1"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete ({selectedCampaignIds.length})
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={handleSync}
@@ -189,6 +246,9 @@ export default function CampaignsPage() {
 
       <CampaignTable
         campaigns={campaigns}
+        selectedIds={selectedCampaignIds}
+        onToggleSelect={handleToggleSelect}
+        onToggleSelectAll={handleToggleSelectAll}
         onSyncMetrics={handleSyncMetrics}
         onViewDetails={handleViewDetails}
         loading={loading}
@@ -223,6 +283,13 @@ export default function CampaignsPage() {
         campaign={selectedCampaign}
         open={uploadLeadsOpen}
         onOpenChange={setUploadLeadsOpen}
+      />
+
+      <DeleteConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        onConfirm={handleBulkDelete}
+        count={selectedCampaignIds.length}
       />
     </div>
   );

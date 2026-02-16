@@ -1,7 +1,7 @@
 """Campaign management API routes."""
 import json
 import logging
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
@@ -14,6 +14,7 @@ from app.models.analytics import Analytics
 from app.models.email_response import EmailResponse, MessageDirection, ResponseStatus
 from app.models.icp import ICP
 from app.models.lead import Lead
+from app.services.instantly import instantly_service, InstantlyAPIError
 from app.schemas.campaign import (
     CampaignCreate,
     CampaignUpdate,
@@ -49,10 +50,11 @@ async def list_campaigns(
     icp_id: int | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all campaigns, optionally filtered by ICP."""
+    """List all non-deleted campaigns, optionally filtered by ICP."""
     query = (
         select(Campaign)
         .options(selectinload(Campaign.icp))
+        .where(Campaign.deleted_at.is_(None))  # Exclude soft-deleted campaigns
         .order_by(Campaign.created_at.desc())
     )
     if icp_id is not None:
@@ -576,3 +578,78 @@ async def instantly_webhook(request: Request, db: AsyncSession = Depends(get_db)
 
     await db.flush()
     return {"status": "ok"}
+
+
+@router.delete("/bulk-delete")
+async def bulk_delete_campaigns(
+    campaign_ids: list[int],
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Soft delete multiple campaigns (mark as deleted_at).
+
+    Also deletes campaigns from Instantly if they have instantly_campaign_id.
+    If any Instantly deletion fails, the entire transaction is rolled back.
+    """
+    if not campaign_ids:
+        raise HTTPException(400, "No campaign IDs provided")
+
+    logger.info(f"Attempting to delete {len(campaign_ids)} campaigns: {campaign_ids}")
+
+    # Fetch all campaigns to delete
+    result = await db.execute(
+        select(Campaign).where(Campaign.id.in_(campaign_ids))
+    )
+    campaigns = result.scalars().all()
+
+    if not campaigns:
+        raise HTTPException(404, "No campaigns found with provided IDs")
+
+    deleted_count = 0
+    instantly_deleted = 0
+    errors = []
+
+    # Try to delete from Instantly first (before committing to DB)
+    for campaign in campaigns:
+        try:
+            if campaign.instantly_campaign_id:
+                logger.info(f"Deleting campaign {campaign.id} from Instantly: {campaign.instantly_campaign_id}")
+                await instantly_service.delete_campaign(campaign.instantly_campaign_id)
+                instantly_deleted += 1
+                logger.info(f"Successfully deleted campaign {campaign.id} from Instantly")
+        except InstantlyAPIError as e:
+            error_msg = f"Failed to delete campaign {campaign.id} ('{campaign.name}') from Instantly: {e.detail}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+            # Rollback the transaction - don't delete anything if Instantly fails
+            await db.rollback()
+            raise HTTPException(
+                502,
+                f"Failed to delete from Instantly: {e.detail}. No campaigns were deleted."
+            )
+        except Exception as e:
+            error_msg = f"Unexpected error deleting campaign {campaign.id} from Instantly: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+            await db.rollback()
+            raise HTTPException(
+                500,
+                f"Unexpected error: {str(e)}. No campaigns were deleted."
+            )
+
+    # If all Instantly deletions succeeded (or no instantly_campaign_id), mark as deleted in DB
+    now = datetime.utcnow()
+    for campaign in campaigns:
+        campaign.deleted_at = now
+        deleted_count += 1
+
+    await db.commit()
+
+    logger.info(f"Successfully soft-deleted {deleted_count} campaigns, {instantly_deleted} from Instantly")
+
+    return {
+        "deleted": deleted_count,
+        "instantly_deleted": instantly_deleted,
+        "errors": errors,
+        "message": f"Successfully deleted {deleted_count} campaigns"
+    }
