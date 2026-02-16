@@ -25,7 +25,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 border-r bg-card h-screen flex flex-col">
       <div className="p-6">
-        <h2 className="text-lg font-semibold">Sales Automation</h2>
+        <h2 className="text-lg font-semibold">Miriade</h2>
         <p className="text-xs text-muted-foreground mt-1">B2B Outreach Platform</p>
       </div>
       <nav className="flex-1 px-3">
