@@ -68,6 +68,7 @@ export interface EmailResponse {
   lead_id: number | null;
   instantly_email_id: string | null;
   from_email: string | null;
+  sender_email: string | null;
   subject: string | null;
   thread_id: string | null;
   message_body: string | null;

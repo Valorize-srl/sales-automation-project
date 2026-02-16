@@ -197,6 +197,7 @@ async def fetch_replies(
                         lead_id=lead_id,
                         instantly_email_id=instantly_id,
                         from_email=from_email,
+                        sender_email=email_item.get("eaccount"),
                         thread_id=email_item.get("thread_id"),
                         subject=email_item.get("subject", ""),
                         message_body=body_text,
@@ -345,23 +346,33 @@ async def send_reply(
     if not resp.instantly_email_id:
         raise HTTPException(400, "No Instantly email ID - cannot send reply")
 
+    if not resp.sender_email:
+        raise HTTPException(400, "No sender email account (eaccount) - cannot send reply")
+
     try:
+        logger.info(f"Sending reply for response {response_id} from {resp.sender_email} to {resp.from_email}")
         reply_data = {
             "reply_to_uuid": resp.instantly_email_id,
+            "eaccount": resp.sender_email,
             "subject": f"Re: {resp.subject}" if resp.subject else "Re: ",
             "body": {
                 "text": reply_text,
                 "html": f"<p>{reply_text}</p>",
             },
         }
-        await instantly_service.reply_to_email(reply_data)
+        result = await instantly_service.reply_to_email(reply_data)
+        logger.info(f"Reply sent successfully for response {response_id}: {result}")
         resp.status = ResponseStatus.SENT
         await db.flush()
         return SendReplyResponse(success=True, message="Reply sent successfully")
     except InstantlyAPIError as e:
+        logger.error(f"Instantly API error for response {response_id}: {e.detail}")
         raise HTTPException(
             502, f"Failed to send reply via Instantly: {e.detail}"
         )
+    except Exception as e:
+        logger.error(f"Unexpected error sending response {response_id}: {str(e)}")
+        raise HTTPException(500, f"Internal server error while sending reply: {str(e)}")
 
 
 # --- Ignore Response ---

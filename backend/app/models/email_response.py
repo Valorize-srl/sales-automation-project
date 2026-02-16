@@ -36,6 +36,7 @@ class EmailResponse(Base):
     lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
     instantly_email_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     from_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sender_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     message_body: Mapped[str | None] = mapped_column(Text, nullable=True)

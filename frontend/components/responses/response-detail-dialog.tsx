@@ -283,7 +283,8 @@ export function ResponseDetailDialog({
                   variant="default"
                   className="gap-1"
                   onClick={handleSend}
-                  disabled={sending}
+                  disabled={sending || !response.instantly_email_id}
+                  title={!response.instantly_email_id ? "Email cannot be sent: missing Instantly email ID. Please re-fetch replies from Instantly." : ""}
                 >
                   {sending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />

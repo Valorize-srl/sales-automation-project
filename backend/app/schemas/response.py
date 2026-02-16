@@ -11,6 +11,7 @@ class EmailResponseOut(BaseModel):
     lead_id: int | None = None
     instantly_email_id: str | None = None
     from_email: str | None = None
+    sender_email: str | None = None
     subject: str | None = None
     thread_id: str | None = None
     message_body: str | None = None

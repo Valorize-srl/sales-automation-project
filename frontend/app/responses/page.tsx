@@ -120,9 +120,11 @@ export default function ResponsesPage() {
       await api.post(`/responses/${id}/send`, {});
       loadResponses(selectedCampaignIds);
       setDetailOpen(false);
-    } catch (err) {
+      alert("Reply sent successfully!");
+    } catch (err: any) {
       console.error("Failed to send:", err);
-      alert("Failed to send reply. Check console.");
+      const errorMessage = err.response?.data?.detail || err.message || "Unknown error occurred";
+      alert(`Failed to send reply: ${errorMessage}`);
     }
   };
 
