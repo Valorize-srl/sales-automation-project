@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.db.database import get_db
 from app.models.email_response import EmailResponse
 from app.models.campaign import Campaign
 from app.services.instantly import instantly_service
