@@ -175,7 +175,7 @@ export default function ResponsesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Responses</h1>
+          <h1 className="text-2xl font-bold">Replies</h1>
           <p className="text-sm text-muted-foreground">
             {responses.length} response{responses.length !== 1 ? "s" : ""}
             {selectedCampaignIds.length > 0 &&

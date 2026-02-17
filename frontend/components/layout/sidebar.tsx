@@ -16,7 +16,7 @@ const navItems = [
   { href: "/chat", label: "AI Chat", icon: MessageSquare },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
-  { href: "/responses", label: "Responses", icon: MessageSquareReply },
+  { href: "/responses", label: "Replies", icon: MessageSquareReply },
 ];
 
 export function Sidebar() {
