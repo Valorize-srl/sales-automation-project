@@ -67,9 +67,12 @@ async def list_responses(
     campaign_ids: str | None = Query(None, description="Comma-separated campaign IDs"),
     status: str | None = Query(None),
     sentiment: str | None = Query(None),
+    date_from: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    date_to: str | None = Query(None, description="End date YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
 ):
     """List email responses with optional filters."""
+    date_col = sa_func.coalesce(EmailResponse.received_at, EmailResponse.created_at)
     query = (
         select(EmailResponse)
         .options(
@@ -77,9 +80,7 @@ async def list_responses(
             selectinload(EmailResponse.campaign),
         )
         .where(EmailResponse.direction == MessageDirection.INBOUND)
-        .order_by(
-            sa_func.coalesce(EmailResponse.received_at, EmailResponse.created_at).desc()
-        )
+        .order_by(date_col.desc())
     )
     if campaign_ids:
         ids = [int(x.strip()) for x in campaign_ids.split(",") if x.strip()]
@@ -91,6 +92,12 @@ async def list_responses(
         query = query.where(EmailResponse.status == status)
     if sentiment:
         query = query.where(EmailResponse.sentiment == sentiment)
+    if date_from:
+        from_dt = datetime.fromisoformat(date_from)
+        query = query.where(date_col >= from_dt)
+    if date_to:
+        to_dt = datetime.fromisoformat(date_to + "T23:59:59")
+        query = query.where(date_col <= to_dt)
 
     result = await db.execute(query)
     responses = result.scalars().all()

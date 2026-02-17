@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ResponsesTable } from "@/components/responses/responses-table";
 import { ResponseDetailDialog } from "@/components/responses/response-detail-dialog";
@@ -27,22 +27,31 @@ export default function ResponsesPage() {
   const [selectedResponse, setSelectedResponse] =
     useState<EmailResponseWithDetails | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [filterSentiment, setFilterSentiment] = useState<string>("");
+  const [filterDateFrom, setFilterDateFrom] = useState<string>("");
+  const [filterDateTo, setFilterDateTo] = useState<string>("");
 
   useEffect(() => {
     loadCampaigns();
   }, []);
 
-  const loadResponses = useCallback(async (campaignIds: number[]) => {
+  const loadResponses = useCallback(async (
+    campaignIds: number[],
+    sentiment: string,
+    dateFrom: string,
+    dateTo: string
+  ) => {
     if (campaignIds.length === 0) {
       setResponses([]);
       return;
     }
     setLoading(true);
     try {
-      const idsParam = campaignIds.join(",");
-      const data = await api.get<EmailResponseListResponse>(
-        `/responses?campaign_ids=${idsParam}`
-      );
+      const params = new URLSearchParams({ campaign_ids: campaignIds.join(",") });
+      if (sentiment) params.set("sentiment", sentiment);
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+      const data = await api.get<EmailResponseListResponse>(`/responses?${params}`);
       setResponses(data.responses);
     } catch (err) {
       console.error("Failed to load responses:", err);
@@ -52,8 +61,8 @@ export default function ResponsesPage() {
   }, []);
 
   useEffect(() => {
-    loadResponses(selectedCampaignIds);
-  }, [selectedCampaignIds, loadResponses]);
+    loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
+  }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses]);
 
   // Auto-refresh every 5 minutes
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -63,7 +72,7 @@ export default function ResponsesPage() {
     }
     if (selectedCampaignIds.length > 0) {
       intervalRef.current = setInterval(() => {
-        loadResponses(selectedCampaignIds);
+        loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
       }, 5 * 60 * 1000);
     }
     return () => {
@@ -71,7 +80,7 @@ export default function ResponsesPage() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [selectedCampaignIds, loadResponses]);
+  }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses]);
 
   const loadCampaigns = async () => {
     try {
@@ -90,7 +99,7 @@ export default function ResponsesPage() {
         campaign_ids: selectedCampaignIds,
       });
       setFetchResult(result);
-      await loadResponses(selectedCampaignIds);
+      await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
     } catch (err) {
       console.error("Fetch failed:", err);
       alert("Failed to fetch replies. Check console.");
@@ -118,7 +127,7 @@ export default function ResponsesPage() {
   const handleSend = async (id: number) => {
     try {
       await api.post(`/responses/${id}/send`, {});
-      loadResponses(selectedCampaignIds);
+      loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
       setDetailOpen(false);
       alert("Reply sent successfully!");
     } catch (err: any) {
@@ -202,6 +211,81 @@ export default function ResponsesPage() {
           {fetchResult.errors > 0 && `, ${fetchResult.errors} errors`}.
         </div>
       )}
+
+      {/* Filters bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        {/* Sentiment filter */}
+        <div className="flex items-center gap-1">
+          {(["", "interested", "positive", "neutral", "negative"] as const).map(
+            (s) => {
+              const labels: Record<string, string> = {
+                "": "All",
+                interested: "Interested",
+                positive: "Positive",
+                neutral: "Neutral",
+                negative: "Negative",
+              };
+              const colors: Record<string, string> = {
+                "": "",
+                interested: "bg-green-100 text-green-800 border-green-300",
+                positive: "bg-blue-100 text-blue-800 border-blue-300",
+                neutral: "bg-gray-100 text-gray-800 border-gray-300",
+                negative: "bg-red-100 text-red-800 border-red-300",
+              };
+              const isActive = filterSentiment === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setFilterSentiment(s)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                    isActive
+                      ? s === ""
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : colors[s] + " ring-2 ring-offset-1 ring-current"
+                      : s === ""
+                      ? "border-input bg-background hover:bg-accent"
+                      : colors[s] + " opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  {labels[s]}
+                </button>
+              );
+            }
+          )}
+        </div>
+
+        {/* Date range filter */}
+        <div className="flex items-center gap-2 ml-2">
+          <span className="text-xs text-muted-foreground">From</span>
+          <input
+            type="date"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+            className="text-xs border border-input rounded-md px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <span className="text-xs text-muted-foreground">To</span>
+          <input
+            type="date"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+            className="text-xs border border-input rounded-md px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          {(filterDateFrom || filterDateTo) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => {
+                setFilterDateFrom("");
+                setFilterDateTo("");
+              }}
+              title="Clear dates"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      </div>
 
       <ResponsesTable
         responses={responses}
