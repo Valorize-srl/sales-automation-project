@@ -89,6 +89,85 @@ export interface EmailResponseWithDetails extends EmailResponse {
   campaign_name: string | null;
 }
 
+export interface Person {
+  id: number;
+  first_name: string;
+  last_name: string;
+  company_id: number | null;
+  company_name: string | null;
+  email: string;
+  linkedin_url: string | null;
+  phone: string | null;
+  industry: string | null;
+  location: string | null;
+  created_at: string;
+}
+
+export interface Company {
+  id: number;
+  name: string;
+  email: string | null;
+  email_domain: string | null;
+  phone: string | null;
+  linkedin_url: string | null;
+  industry: string | null;
+  location: string | null;
+  signals: string | null;
+  website: string | null;
+  created_at: string;
+  people_count: number;
+}
+
+export interface PersonListResponse {
+  people: Person[];
+  total: number;
+}
+
+export interface CompanyListResponse {
+  companies: Company[];
+  total: number;
+}
+
+export interface PersonCSVMapping {
+  first_name: string | null;
+  last_name: string | null;
+  company_name: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+  industry: string | null;
+  location: string | null;
+}
+
+export interface CompanyCSVMapping {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedin_url: string | null;
+  industry: string | null;
+  location: string | null;
+  signals: string | null;
+  website: string | null;
+}
+
+export interface PersonCSVUploadResponse {
+  headers: string[];
+  mapping: PersonCSVMapping;
+  rows: Record<string, string>[];
+  preview_rows: Record<string, string>[];
+  total_rows: number;
+  unmapped_headers: string[];
+}
+
+export interface CompanyCSVUploadResponse {
+  headers: string[];
+  mapping: CompanyCSVMapping;
+  rows: Record<string, string>[];
+  preview_rows: Record<string, string>[];
+  total_rows: number;
+  unmapped_headers: string[];
+}
+
 export interface AnalyticsEntry {
   id: number;
   campaign_id: number;
