@@ -1,6 +1,7 @@
 """
 ICP Parser service - uses Claude API to extract structured ICP data
 from natural language conversation via tool use and SSE streaming.
+Also handles Apollo lead search intent detection.
 """
 import json
 from typing import AsyncIterator
@@ -11,24 +12,36 @@ from app.config import settings
 from app.schemas.chat import ChatMessage
 
 ICP_SYSTEM_PROMPT = """You are an AI assistant helping a B2B sales professional define their \
-Ideal Customer Profile (ICP). Your goal is to have a natural conversation to gather the \
-following information:
+Ideal Customer Profile (ICP) and find leads.
 
-1. **Industry/Sector**: What industry do their ideal customers operate in?
-2. **Company Size**: How many employees? (e.g., 10-50, 50-200, 200-1000, 1000+)
-3. **Job Titles**: What roles/titles should be targeted? (e.g., CTO, VP Engineering, Head of Sales)
-4. **Geography**: What regions/countries are they targeting?
-5. **Revenue Range**: What annual revenue range? (e.g., $1M-$10M, $10M-$50M)
-6. **Keywords**: Specific technologies, pain points, or characteristics
-7. **Description**: A brief summary of the ideal customer
+You have two modes:
 
-Start by asking what their business does and who they typically sell to. Ask follow-up \
-questions naturally. Don't ask all questions at once -- be conversational.
+**Mode 1 – ICP Definition**
+Help the user define their Ideal Customer Profile by gathering:
+1. Industry/Sector
+2. Company Size (employees)
+3. Job Titles to target
+4. Geography
+5. Revenue Range
+6. Keywords/technologies
+7. Description
 
-When you have gathered enough information (at minimum: industry, job titles, and one of \
-company_size/geography/revenue_range), use the save_icp tool to propose the structured ICP. \
-Include a conversational message confirming what you've captured and asking if they want \
-to adjust anything.
+Ask follow-up questions naturally. When you have enough info (at minimum: industry, job titles, \
+and one of company_size/geography/revenue_range), use the save_icp tool.
+
+**Mode 2 – Lead Search**
+If the user asks to search, find, or look for people or companies (e.g. "trova gli SEO specialist \
+in Italia", "find marketing directors in Germany", "search for SaaS companies in Milan"), \
+use the search_apollo tool immediately with the extracted parameters. \
+Do NOT ask clarifying questions — extract what you can from the user's message and search.
+
+For search_type:
+- Use "people" if they want contacts/persons/people/professionals
+- Use "companies" if they want organizations/aziende/companies/firms
+
+For person_seniorities use only: senior, manager, director, vp, c_suite, entry, intern
+
+For organization_sizes use only the formats: "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001+"
 
 If the user uploads a document, analyze it to extract ICP-relevant information and propose \
 an ICP based on what you find, asking for confirmation or adjustments.
@@ -79,6 +92,62 @@ ICP_TOOL = {
     },
 }
 
+APOLLO_SEARCH_TOOL = {
+    "name": "search_apollo",
+    "description": "Search Apollo.io for people or companies matching the specified criteria. "
+    "Use this when the user asks to find, search for, or look for leads, contacts, people, or companies.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "search_type": {
+                "type": "string",
+                "enum": ["people", "companies"],
+                "description": "Whether to search for people (contacts) or companies (organizations)",
+            },
+            "person_titles": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "Job titles to search for (e.g. ['SEO Specialist', 'SEO Manager'])",
+            },
+            "person_locations": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "Geographic locations for people (e.g. ['Italy', 'Milan, Italy'])",
+            },
+            "person_seniorities": {
+                "type": ["array", "null"],
+                "items": {"type": "string", "enum": ["senior", "manager", "director", "vp", "c_suite", "entry", "intern"]},
+                "description": "Seniority levels to filter by",
+            },
+            "organization_locations": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "Geographic locations for companies (e.g. ['Italy', 'Germany'])",
+            },
+            "organization_keywords": {
+                "type": ["array", "null"],
+                "items": {"type": "string"},
+                "description": "Keywords to filter organizations (e.g. ['digital agency', 'ecommerce'])",
+            },
+            "organization_sizes": {
+                "type": ["array", "null"],
+                "items": {"type": "string", "enum": ["1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001+"]},
+                "description": "Company size ranges",
+            },
+            "keywords": {
+                "type": ["string", "null"],
+                "description": "General keyword search",
+            },
+            "per_page": {
+                "type": "integer",
+                "description": "Number of results to return (default 25, max 100)",
+                "default": 25,
+            },
+        },
+        "required": ["search_type"],
+    },
+}
+
 
 class ICPParserService:
     def __init__(self) -> None:
@@ -94,7 +163,8 @@ class ICPParserService:
 
         Yields SSE-formatted strings with events:
         - {"type": "text", "content": "..."} -- text chunks
-        - {"type": "icp_extracted", "data": {...}} -- when tool is called
+        - {"type": "icp_extracted", "data": {...}} -- when save_icp tool is called
+        - {"type": "apollo_search_params", "data": {...}} -- when search_apollo tool is called
         - {"type": "done"} -- stream complete
         """
         api_messages = []
@@ -111,7 +181,7 @@ class ICPParserService:
                 max_tokens=1024,
                 system=ICP_SYSTEM_PROMPT,
                 messages=api_messages,
-                tools=[ICP_TOOL],
+                tools=[ICP_TOOL, APOLLO_SEARCH_TOOL],
             ) as stream:
                 async for event in stream:
                     if event.type == "content_block_delta":
@@ -123,6 +193,8 @@ class ICPParserService:
                 for block in final_message.content:
                     if block.type == "tool_use" and block.name == "save_icp":
                         yield f"data: {json.dumps({'type': 'icp_extracted', 'data': block.input})}\n\n"
+                    elif block.type == "tool_use" and block.name == "search_apollo":
+                        yield f"data: {json.dumps({'type': 'apollo_search_params', 'data': block.input})}\n\n"
 
         except anthropic.APIError as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"

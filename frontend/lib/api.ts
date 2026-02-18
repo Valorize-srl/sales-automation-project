@@ -69,7 +69,8 @@ class ApiClient {
     onText: (text: string) => void,
     onIcpExtracted: (data: Record<string, string>) => void,
     onDone: () => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onApolloSearchParams?: (data: Record<string, unknown>) => void
   ): Promise<void> {
     const url = `${this.baseUrl}/api/chat/stream`;
     try {
@@ -103,6 +104,7 @@ class ApiClient {
               const parsed = JSON.parse(line.slice(6));
               if (parsed.type === "text") onText(parsed.content);
               else if (parsed.type === "icp_extracted") onIcpExtracted(parsed.data);
+              else if (parsed.type === "apollo_search_params") onApolloSearchParams?.(parsed.data);
               else if (parsed.type === "done") onDone();
               else if (parsed.type === "error") onError(new Error(parsed.content));
             } catch {
@@ -114,6 +116,18 @@ class ApiClient {
     } catch (err) {
       onError(err instanceof Error ? err : new Error(String(err)));
     }
+  }
+
+  async apolloSearch(params: {
+    search_type: "people" | "companies";
+    filters: Record<string, unknown>;
+    per_page?: number;
+  }): Promise<import("@/types").ApolloSearchResponse> {
+    return this.post("/chat/apollo/search", params);
+  }
+
+  async apolloImport(results: Record<string, unknown>[], target: "people" | "companies"): Promise<import("@/types").ApolloImportResponse> {
+    return this.post("/chat/apollo/import", { results, target });
   }
 
   async uploadFile(file: File): Promise<{ filename: string; text: string; length: number }> {

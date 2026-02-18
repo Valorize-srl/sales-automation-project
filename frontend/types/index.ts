@@ -327,3 +327,40 @@ export interface DashboardStats {
   total_replied: number;
   chart_data: DashboardChartEntry[];
 }
+
+export interface ApolloPersonResult {
+  first_name: string;
+  last_name: string;
+  title: string | null;
+  company: string | null;
+  linkedin_url: string | null;
+  location: string | null;
+  email: string | null;
+  website: string | null;
+  industry: string | null;
+}
+
+export interface ApolloCompanyResult {
+  name: string;
+  industry: string | null;
+  size: string | null;
+  website: string | null;
+  linkedin_url: string | null;
+  location: string | null;
+  email: string | null;
+  phone: string | null;
+  signals: string | null;
+}
+
+export interface ApolloSearchResponse {
+  results: ApolloPersonResult[] | ApolloCompanyResult[];
+  total: number;
+  search_type: "people" | "companies";
+  returned: number;
+}
+
+export interface ApolloImportResponse {
+  imported: number;
+  duplicates_skipped: number;
+  errors: number;
+}

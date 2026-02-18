@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Instantly
     instantly_api_key: str = ""
 
+    # Apollo
+    apollo_api_key: str = ""
+
     # Webhooks
     webhook_base_url: str = ""
 
