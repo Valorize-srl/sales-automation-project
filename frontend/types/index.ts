@@ -311,3 +311,19 @@ export interface PushSequencesResponse {
   steps_pushed: number;
   message: string;
 }
+
+export interface DashboardChartEntry {
+  date: string;
+  sent: number;
+  replies: number;
+}
+
+export interface DashboardStats {
+  people_count: number;
+  companies_count: number;
+  active_campaigns: number;
+  total_sent: number;
+  total_opened: number;
+  total_replied: number;
+  chart_data: DashboardChartEntry[];
+}
