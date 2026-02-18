@@ -1,35 +1,21 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Upload, Search, Trash2 } from "lucide-react";
+import { Upload, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { LeadsTable } from "@/components/leads/leads-table";
 import { PeopleTable } from "@/components/leads/people-table";
 import { CompaniesTable } from "@/components/leads/companies-table";
-import { CSVUploadDialog } from "@/components/leads/csv-upload-dialog";
 import { PeopleCSVDialog } from "@/components/leads/people-csv-dialog";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
 import { api } from "@/lib/api";
 import {
-  Lead,
-  ICP,
   Person,
   Company,
-  LeadListResponse,
-  ICPListResponse,
   PersonListResponse,
   CompanyListResponse,
 } from "@/types";
 
-type Tab = "people" | "companies" | "leads";
-const ALL_ICPS = "__all__";
+type Tab = "people" | "companies";
 
 export default function LeadsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("people");
@@ -47,23 +33,11 @@ export default function LeadsPage() {
   const [companiesSearch, setCompaniesSearch] = useState("");
   const [companiesCSVOpen, setCompaniesCSVOpen] = useState(false);
 
-  // --- Legacy Leads state ---
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [icps, setIcps] = useState<ICP[]>([]);
-  const [leadsLoading, setLeadsLoading] = useState(false);
-  const [filterIcpId, setFilterIcpId] = useState<string>(ALL_ICPS);
-  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
-
   // Load data on mount
   useEffect(() => {
     loadPeople();
     loadCompanies();
-    loadIcps();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    loadLeads();
-  }, [filterIcpId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- People ---
   const loadPeople = useCallback(async (search?: string, companyId?: number | null) => {
@@ -97,14 +71,7 @@ export default function LeadsPage() {
     }
   };
 
-  const handleCompanyClick = (companyId: number) => {
-    setFilterCompanyId(companyId);
-    setActiveTab("people");
-    loadPeople(peopleSearch, companyId);
-  };
-
-  const handlePeopleCompanyClick = (companyId: number) => {
-    // Switch to companies tab and scroll to that company
+  const handlePeopleCompanyClick = (_companyId: number) => {
     setActiveTab("companies");
   };
 
@@ -132,7 +99,6 @@ export default function LeadsPage() {
     try {
       await api.delete(`/companies/${id}`);
       setCompanies((prev) => prev.filter((c) => c.id !== id));
-      // Reload people to reflect unlinked company_id
       loadPeople(peopleSearch, filterCompanyId);
     } catch (err) {
       console.error("Failed to delete company:", err);
@@ -145,45 +111,9 @@ export default function LeadsPage() {
     loadPeople(peopleSearch, companyId);
   };
 
-  // --- Legacy Leads ---
-  const loadIcps = async () => {
-    try {
-      const data = await api.get<ICPListResponse>("/icps");
-      setIcps(data.icps);
-    } catch (err) {
-      console.error("Failed to load ICPs:", err);
-    }
-  };
-
-  const loadLeads = async () => {
-    setLeadsLoading(true);
-    try {
-      const endpoint = filterIcpId !== ALL_ICPS ? `/leads?icp_id=${filterIcpId}` : "/leads";
-      const data = await api.get<LeadListResponse>(endpoint);
-      setLeads(data.leads);
-    } catch (err) {
-      console.error("Failed to load leads:", err);
-    } finally {
-      setLeadsLoading(false);
-    }
-  };
-
-  const handleDeleteLead = async (id: number) => {
-    if (!confirm("Delete this lead?")) return;
-    try {
-      await api.delete(`/leads/${id}`);
-      setLeads((prev) => prev.filter((l) => l.id !== id));
-    } catch (err) {
-      console.error("Failed to delete lead:", err);
-    }
-  };
-
-  const activeIcps = icps.filter((icp) => icp.status === "active" || icp.status === "draft");
-
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: "people", label: "People", count: people.length },
     { key: "companies", label: "Companies", count: companies.length },
-    { key: "leads", label: "Leads", count: leads.length },
   ];
 
   return (
@@ -195,7 +125,6 @@ export default function LeadsPage() {
           <p className="text-sm text-muted-foreground">
             {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}`}
             {activeTab === "companies" && `${companies.length} companies`}
-            {activeTab === "leads" && `${leads.length} leads${filterIcpId !== ALL_ICPS ? " (filtered)" : ""}`}
           </p>
         </div>
 
@@ -244,28 +173,6 @@ export default function LeadsPage() {
               </Button>
             </>
           )}
-          {activeTab === "leads" && (
-            <>
-              <Select value={filterIcpId} onValueChange={setFilterIcpId}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Filter by ICP" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_ICPS}>All ICPs</SelectItem>
-                  {icps.map((icp) => (
-                    <SelectItem key={icp.id} value={String(icp.id)}>{icp.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={() => setCsvDialogOpen(true)}
-                className="gap-1"
-                disabled={activeIcps.length === 0}
-              >
-                <Upload className="h-4 w-4" /> Import CSV
-              </Button>
-            </>
-          )}
         </div>
       </div>
 
@@ -310,19 +217,6 @@ export default function LeadsPage() {
         />
       )}
 
-      {activeTab === "leads" && (
-        <>
-          {activeIcps.length === 0 && !leadsLoading && (
-            <div className="text-center py-8 mb-4 rounded-md border border-dashed">
-              <p className="text-muted-foreground">
-                Create an ICP first in the AI Chat before importing leads.
-              </p>
-            </div>
-          )}
-          <LeadsTable leads={leads} onDelete={handleDeleteLead} loading={leadsLoading} />
-        </>
-      )}
-
       {/* Dialogs */}
       <PeopleCSVDialog
         open={peopleCSVOpen}
@@ -334,13 +228,6 @@ export default function LeadsPage() {
         open={companiesCSVOpen}
         onOpenChange={setCompaniesCSVOpen}
         onImportComplete={() => { loadCompanies(companiesSearch); loadPeople(peopleSearch, filterCompanyId); }}
-      />
-
-      <CSVUploadDialog
-        open={csvDialogOpen}
-        onOpenChange={setCsvDialogOpen}
-        icps={activeIcps}
-        onImportComplete={loadLeads}
       />
     </div>
   );
