@@ -127,7 +127,7 @@ APOLLO_SEARCH_TOOL = {
             "organization_keywords": {
                 "type": ["array", "null"],
                 "items": {"type": "string"},
-                "description": "Keywords to filter organizations (e.g. ['digital agency', 'ecommerce'])",
+                "description": "Keywords, industries, or sectors to filter organizations. Include industry when mentioned (e.g. ['hospitality', 'technology', 'healthcare', 'finance', 'digital agency'])",
             },
             "organization_sizes": {
                 "type": ["array", "null"],
