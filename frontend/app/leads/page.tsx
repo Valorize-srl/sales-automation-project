@@ -201,7 +201,7 @@ export default function LeadsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All Industries</SelectItem>
-                  {peopleIndustries.map((industry) => (
+                  {peopleIndustries?.filter(Boolean).map((industry) => (
                     <SelectItem key={industry} value={industry}>
                       {industry}
                     </SelectItem>
@@ -240,7 +240,7 @@ export default function LeadsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All Industries</SelectItem>
-                  {companiesIndustries.map((industry) => (
+                  {companiesIndustries?.filter(Boolean).map((industry) => (
                     <SelectItem key={industry} value={industry}>
                       {industry}
                     </SelectItem>
