@@ -95,20 +95,52 @@ class ApolloService:
 
     async def enrich_people(
         self,
-        person_ids: list[str],
+        people: list[dict],
     ) -> dict[str, Any]:
         """Enrich people with email, phone, LinkedIn via /people/bulk_match.
-        Max 10 person IDs per call. Costs 1 credit per person if reveal_personal_emails=True.
+        Max 10 people per call. Costs 1 credit per person if reveal_personal_emails=True.
+
+        Args:
+            people: List of person dicts with at least: id, first_name, last_name, organization_name
         """
         self._check_key()
 
-        payload = {
-            "reveal_personal_emails": True,
-            "reveal_phone_number": True,
-            "person_ids": person_ids[:10],  # API limit: max 10 IDs
-        }
+        # Build details array with required fields
+        details = []
+        for p in people[:10]:  # API limit: max 10
+            detail = {}
+            if p.get("id"):
+                detail["id"] = p["id"]
+            if p.get("first_name"):
+                detail["first_name"] = p["first_name"]
+            if p.get("last_name"):
+                detail["last_name"] = p["last_name"]
+            if p.get("organization_name"):
+                detail["organization_name"] = p["organization_name"]
+            if p.get("linkedin_url"):
+                detail["linkedin_url"] = p["linkedin_url"]
 
-        return await self._post("/people/bulk_match", payload)
+            if detail:  # Only add if we have some data
+                details.append(detail)
+
+        payload = {"details": details}
+
+        # Add query parameters for reveal options
+        # Note: reveal_phone_number requires a webhook_url, so we skip it for now
+        url = f"{self.base_url}/people/bulk_match?reveal_personal_emails=true"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=self._headers(), json=payload)
+
+        if response.status_code >= 400:
+            detail = response.text
+            try:
+                detail = response.json().get("error", response.text)
+            except Exception:
+                pass
+            raise ApolloAPIError(response.status_code, detail)
+
+        return response.json()
 
     # -------------------------------------------------------------------
     # People search
@@ -148,17 +180,17 @@ class ApolloService:
         # 1. Base search
         raw = await self._post("/mixed_people/api_search", payload)
 
-        # 2. Extract person IDs to enrich (only those with potential email/phone data)
+        # 2. Extract people to enrich (only those with potential email/phone data)
         people = raw.get("people", [])
-        ids_to_enrich = [
-            p["id"] for p in people
+        people_to_enrich = [
+            p for p in people
             if p.get("id") and (p.get("has_email") or p.get("linkedin_url"))
         ]
 
         # 3. Enrichment in batches of 10
         enriched_data = {}
-        for i in range(0, len(ids_to_enrich), 10):
-            batch = ids_to_enrich[i:i+10]
+        for i in range(0, len(people_to_enrich), 10):
+            batch = people_to_enrich[i:i+10]
             try:
                 result = await self.enrich_people(batch)
                 for match in result.get("matches", []):
