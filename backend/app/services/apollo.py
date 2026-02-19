@@ -215,6 +215,10 @@ class ApolloService:
             if person_id and person_id in enriched_data:
                 enriched = enriched_data[person_id]
                 # Merge enriched fields
+                if enriched.get("first_name"):
+                    person["first_name"] = enriched["first_name"]
+                if enriched.get("last_name"):
+                    person["last_name"] = enriched["last_name"]
                 if enriched.get("email"):
                     person["email"] = enriched["email"]
                 if enriched.get("phone"):
@@ -238,9 +242,20 @@ class ApolloService:
             location_parts = filter(None, [
                 p.get("city"), p.get("state"), p.get("country")
             ])
+
+            # Handle name parsing - Apollo might return "name" or separate first/last
+            first_name = p.get("first_name") or ""
+            last_name = p.get("last_name") or ""
+
+            # If we don't have first/last but have a "name" field, split it
+            if not first_name and not last_name and p.get("name"):
+                name_parts = p.get("name", "").strip().split(None, 1)  # Split on first space
+                first_name = name_parts[0] if len(name_parts) > 0 else ""
+                last_name = name_parts[1] if len(name_parts) > 1 else ""
+
             results.append({
-                "first_name": p.get("first_name") or "",
-                "last_name": p.get("last_name") or "",
+                "first_name": first_name,
+                "last_name": last_name,
                 "title": p.get("title"),
                 "company": org.get("name") or p.get("organization_name"),
                 "linkedin_url": p.get("linkedin_url"),
