@@ -120,6 +120,21 @@ async def apollo_search(request: ApolloSearchRequest):
         raise HTTPException(e.status_code, e.detail)
 
 
+@router.get("/apollo/credits")
+async def get_apollo_credits():
+    """Get Apollo API credits status."""
+    try:
+        result = await apollo_service.get_credits_status()
+        # Extract relevant credits info from the health endpoint response
+        # The actual structure depends on Apollo's API response
+        return {
+            "status": "ok",
+            "data": result,
+        }
+    except ApolloAPIError as e:
+        raise HTTPException(e.status_code, e.detail)
+
+
 @router.post("/apollo/import")
 async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends(get_db)):
     """Import Apollo search results into People or Companies table."""
@@ -149,6 +164,7 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
                     first_name=first_name,
                     last_name=last_name,
                     email=email or f"noemail_{imported}@apollo.import",
+                    phone=item.get("phone"),
                     company_name=item.get("company"),
                     linkedin_url=item.get("linkedin_url"),
                     industry=item.get("industry"),
@@ -188,6 +204,7 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
                 company = Company(
                     name=name,
                     email=item.get("email"),
+                    phone=item.get("phone"),
                     email_domain=_extract_domain(website),
                     linkedin_url=item.get("linkedin_url"),
                     industry=item.get("industry"),

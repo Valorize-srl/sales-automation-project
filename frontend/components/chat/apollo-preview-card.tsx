@@ -11,13 +11,13 @@ function downloadCSV(data: ApolloSearchResponse) {
   const rows = data.results as (ApolloPersonResult | ApolloCompanyResult)[];
 
   const headers = isPeople
-    ? ["First Name", "Last Name", "Title", "Company", "LinkedIn", "Location", "Email", "Website", "Industry"]
+    ? ["First Name", "Last Name", "Title", "Company", "Email", "Phone", "LinkedIn", "Location", "Website", "Industry"]
     : ["Name", "Industry", "Size", "Website", "LinkedIn", "Location", "Email", "Phone"];
 
   const lines = rows.map((r) => {
     if (isPeople) {
       const p = r as ApolloPersonResult;
-      return [p.first_name, p.last_name, p.title, p.company, p.linkedin_url, p.location, p.email, p.website, p.industry];
+      return [p.first_name, p.last_name, p.title, p.company, p.email, p.phone, p.linkedin_url, p.location, p.website, p.industry];
     } else {
       const c = r as ApolloCompanyResult;
       return [c.name, c.industry, c.size, c.website, c.linkedin_url, c.location, c.email, c.phone];
@@ -109,7 +109,8 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Title</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Company</th>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Location</th>
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Email</th>
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Phone</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">LinkedIn</th>
                 </>
               ) : (
@@ -133,7 +134,12 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).title ?? "—"}</td>
                     <td className="px-3 py-2">{(row as ApolloPersonResult).company ?? "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).location ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {(row as ApolloPersonResult).email ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {(row as ApolloPersonResult).phone ?? "—"}
+                    </td>
                     <td className="px-3 py-2">
                       {(row as ApolloPersonResult).linkedin_url ? (
                         <a

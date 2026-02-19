@@ -336,6 +336,7 @@ export interface ApolloPersonResult {
   linkedin_url: string | null;
   location: string | null;
   email: string | null;
+  phone: string | null;
   website: string | null;
   industry: string | null;
 }

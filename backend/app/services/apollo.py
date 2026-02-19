@@ -71,6 +71,46 @@ class ApolloService:
         return response.json()
 
     # -------------------------------------------------------------------
+    # Credits status
+    # -------------------------------------------------------------------
+
+    async def get_credits_status(self) -> dict[str, Any]:
+        """Get Apollo credits status (email credits remaining, etc.)."""
+        self._check_key()
+        url = f"{self.base_url}/auth/health"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=self._headers())
+        if response.status_code >= 400:
+            detail = response.text
+            try:
+                detail = response.json().get("error", response.text)
+            except Exception:
+                pass
+            raise ApolloAPIError(response.status_code, detail)
+        return response.json()
+
+    # -------------------------------------------------------------------
+    # People enrichment
+    # -------------------------------------------------------------------
+
+    async def enrich_people(
+        self,
+        person_ids: list[str],
+    ) -> dict[str, Any]:
+        """Enrich people with email, phone, LinkedIn via /people/bulk_match.
+        Max 10 person IDs per call. Costs 1 credit per person if reveal_personal_emails=True.
+        """
+        self._check_key()
+
+        payload = {
+            "reveal_personal_emails": True,
+            "reveal_phone_number": True,
+            "person_ids": person_ids[:10],  # API limit: max 10 IDs
+        }
+
+        return await self._post("/people/bulk_match", payload)
+
+    # -------------------------------------------------------------------
     # People search
     # -------------------------------------------------------------------
 
@@ -84,7 +124,7 @@ class ApolloService:
         keywords: str | None = None,
         per_page: int = 25,
     ) -> dict[str, Any]:
-        """Search Apollo people. Returns raw API response."""
+        """Search Apollo people with automatic enrichment. Returns raw API response with enriched data."""
         self._check_key()
 
         payload: dict[str, Any] = {"per_page": min(per_page, 100), "page": 1}
@@ -105,7 +145,51 @@ class ApolloService:
         if keywords:
             payload["q_keywords"] = keywords
 
-        return await self._post("/mixed_people/api_search", payload)
+        # 1. Base search
+        raw = await self._post("/mixed_people/api_search", payload)
+
+        # 2. Extract person IDs to enrich (only those with potential email/phone data)
+        people = raw.get("people", [])
+        ids_to_enrich = [
+            p["id"] for p in people
+            if p.get("id") and (p.get("has_email") or p.get("linkedin_url"))
+        ]
+
+        # 3. Enrichment in batches of 10
+        enriched_data = {}
+        for i in range(0, len(ids_to_enrich), 10):
+            batch = ids_to_enrich[i:i+10]
+            try:
+                result = await self.enrich_people(batch)
+                for match in result.get("matches", []):
+                    if match.get("id"):
+                        enriched_data[match["id"]] = match
+            except ApolloAPIError as e:
+                if e.status_code == 402:
+                    logger.warning("Apollo credits exhausted, returning results without enrichment")
+                    break  # Stop enrichment but return what we have
+                else:
+                    logger.error(f"Apollo enrichment error: {e}")
+                    # Continue with next batch
+
+        # 4. Merge enriched data back into search results
+        for person in people:
+            person_id = person.get("id")
+            if person_id and person_id in enriched_data:
+                enriched = enriched_data[person_id]
+                # Merge enriched fields
+                if enriched.get("email"):
+                    person["email"] = enriched["email"]
+                if enriched.get("phone"):
+                    person["phone"] = enriched["phone"]
+                if enriched.get("direct_phone"):
+                    person["direct_phone"] = enriched["direct_phone"]
+                if enriched.get("linkedin_url"):
+                    person["linkedin_url"] = enriched["linkedin_url"]
+
+        raw["people"] = people
+        raw["enriched_count"] = len(enriched_data)  # Track how many were enriched
+        return raw
 
     def format_people_results(self, raw: dict) -> list[dict]:
         """Normalize Apollo people response to our preview format."""
@@ -123,7 +207,8 @@ class ApolloService:
                 "company": org.get("name") or p.get("organization_name"),
                 "linkedin_url": p.get("linkedin_url"),
                 "location": ", ".join(location_parts) or None,
-                "email": p.get("email"),  # only present after enrichment
+                "email": p.get("email"),  # enriched
+                "phone": p.get("phone") or p.get("direct_phone"),  # enriched
                 "website": org.get("website_url"),
                 "industry": org.get("industry"),
             })
