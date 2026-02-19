@@ -50,7 +50,7 @@ export function CSVUploadDialog({
   const [uploadData, setUploadData] = useState<CSVUploadResponse | null>(null);
   const emptyMapping: CSVColumnMapping = {
     first_name: null, last_name: null, email: null, company: null,
-    job_title: null, linkedin_url: null, phone: null, address: null,
+    job_title: null, industry: null, linkedin_url: null, phone: null, address: null,
     city: null, state: null, zip_code: null, country: null, website: null,
   };
   const [mapping, setMapping] = useState<CSVColumnMapping>(emptyMapping);
