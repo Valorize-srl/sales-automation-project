@@ -189,10 +189,15 @@ class ApolloService:
 
         # 3. Enrichment in batches of 10
         enriched_data = {}
+        total_credits_consumed = 0
         for i in range(0, len(people_to_enrich), 10):
             batch = people_to_enrich[i:i+10]
             try:
                 result = await self.enrich_people(batch)
+                # Track credits consumed from this batch
+                credits_consumed = result.get("credits_consumed", 0)
+                total_credits_consumed += credits_consumed
+
                 for match in result.get("matches", []):
                     if match.get("id"):
                         enriched_data[match["id"]] = match
@@ -221,6 +226,7 @@ class ApolloService:
 
         raw["people"] = people
         raw["enriched_count"] = len(enriched_data)  # Track how many were enriched
+        raw["credits_consumed"] = total_credits_consumed  # Track credits used for enrichment
         return raw
 
     def format_people_results(self, raw: dict) -> list[dict]:

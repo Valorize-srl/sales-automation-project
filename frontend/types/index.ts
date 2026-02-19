@@ -358,6 +358,7 @@ export interface ApolloSearchResponse {
   total: number;
   search_type: "people" | "companies";
   returned: number;
+  credits_consumed?: number;
 }
 
 export interface ApolloImportResponse {

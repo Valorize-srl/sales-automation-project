@@ -114,6 +114,7 @@ async def apollo_search(request: ApolloSearchRequest):
             "total": total,
             "search_type": request.search_type,
             "returned": len(results),
+            "credits_consumed": raw.get("credits_consumed", 0),
         }
 
     except ApolloAPIError as e:

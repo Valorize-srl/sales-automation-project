@@ -10,6 +10,7 @@ import { ChatInput } from "@/components/chat/chat-input";
 import { ICPPreviewCard } from "@/components/chat/icp-preview-card";
 import { ApolloSearchForm, ApolloFormFilters } from "@/components/chat/apollo-search-form";
 import { ApolloPreviewCard } from "@/components/chat/apollo-preview-card";
+import { ApolloCreditsCard } from "@/components/chat/apollo-credits-card";
 import { api } from "@/lib/api";
 import { ChatMessage, ICPExtracted, ApolloSearchResponse } from "@/types";
 
@@ -24,6 +25,7 @@ export default function ChatPage() {
   const [showSearchForm, setShowSearchForm] = useState(false);
   const [apolloSearching, setApolloSearching] = useState(false);
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
+  const [apolloCreditsUsed, setApolloCreditsUsed] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -44,6 +46,10 @@ export default function ChatPage() {
     try {
       const result = await api.apolloSearch(params);
       setApolloResults(result);
+      // Track credits consumed from this search
+      if (result.credits_consumed !== undefined) {
+        setApolloCreditsUsed(result.credits_consumed);
+      }
     } catch (err) {
       // Show error as assistant message
       setMessages((prev) => [
@@ -182,6 +188,7 @@ export default function ChatPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ApolloCreditsCard creditsUsed={apolloCreditsUsed} />
           <Button
             variant="outline"
             size="sm"
