@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Upload, Search } from "lucide-react";
+import { Upload, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PeopleTable } from "@/components/leads/people-table";
 import { CompaniesTable } from "@/components/leads/companies-table";
 import { PeopleCSVDialog } from "@/components/leads/people-csv-dialog";
@@ -25,27 +32,43 @@ export default function LeadsPage() {
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState("");
   const [filterCompanyId, setFilterCompanyId] = useState<number | null>(null);
+  const [peopleIndustry, setPeopleIndustry] = useState<string>("");
+  const [peopleIndustries, setPeopleIndustries] = useState<string[]>([]);
   const [peopleCSVOpen, setPeopleCSVOpen] = useState(false);
 
   // --- Companies state ---
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companiesSearch, setCompaniesSearch] = useState("");
+  const [companiesIndustry, setCompaniesIndustry] = useState<string>("");
+  const [companiesIndustries, setCompaniesIndustries] = useState<string[]>([]);
   const [companiesCSVOpen, setCompaniesCSVOpen] = useState(false);
 
-  // Load data on mount
+  // Load data and industries on mount
   useEffect(() => {
     loadPeople();
     loadCompanies();
+    loadPeopleIndustries();
+    loadCompaniesIndustries();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- People ---
-  const loadPeople = useCallback(async (search?: string, companyId?: number | null) => {
+  const loadPeopleIndustries = useCallback(async () => {
+    try {
+      const data = await api.get<string[]>("/people/industries");
+      setPeopleIndustries(data);
+    } catch (err) {
+      console.error("Failed to load people industries:", err);
+    }
+  }, []);
+
+  const loadPeople = useCallback(async (search?: string, companyId?: number | null, industry?: string) => {
     setPeopleLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (companyId != null) params.set("company_id", String(companyId));
+      if (industry) params.set("industry", industry);
       const qs = params.toString();
       const data = await api.get<PersonListResponse>(`/people${qs ? `?${qs}` : ""}`);
       setPeople(data.people);
@@ -58,7 +81,12 @@ export default function LeadsPage() {
 
   const handlePeopleSearch = (value: string) => {
     setPeopleSearch(value);
-    loadPeople(value, filterCompanyId);
+    loadPeople(value, filterCompanyId, peopleIndustry);
+  };
+
+  const handlePeopleIndustryChange = (value: string) => {
+    setPeopleIndustry(value);
+    loadPeople(peopleSearch, filterCompanyId, value);
   };
 
   const handleDeletePerson = async (id: number) => {
@@ -76,11 +104,23 @@ export default function LeadsPage() {
   };
 
   // --- Companies ---
-  const loadCompanies = useCallback(async (search?: string) => {
+  const loadCompaniesIndustries = useCallback(async () => {
+    try {
+      const data = await api.get<string[]>("/companies/industries");
+      setCompaniesIndustries(data);
+    } catch (err) {
+      console.error("Failed to load companies industries:", err);
+    }
+  }, []);
+
+  const loadCompanies = useCallback(async (search?: string, industry?: string) => {
     setCompaniesLoading(true);
     try {
-      const qs = search ? `?search=${encodeURIComponent(search)}` : "";
-      const data = await api.get<CompanyListResponse>(`/companies${qs}`);
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (industry) params.set("industry", industry);
+      const qs = params.toString();
+      const data = await api.get<CompanyListResponse>(`/companies${qs ? `?${qs}` : ""}`);
       setCompanies(data.companies);
     } catch (err) {
       console.error("Failed to load companies:", err);
@@ -91,7 +131,12 @@ export default function LeadsPage() {
 
   const handleCompaniesSearch = (value: string) => {
     setCompaniesSearch(value);
-    loadCompanies(value);
+    loadCompanies(value, companiesIndustry);
+  };
+
+  const handleCompaniesIndustryChange = (value: string) => {
+    setCompaniesIndustry(value);
+    loadCompanies(companiesSearch, value);
   };
 
   const handleDeleteCompany = async (id: number) => {
@@ -99,7 +144,7 @@ export default function LeadsPage() {
     try {
       await api.delete(`/companies/${id}`);
       setCompanies((prev) => prev.filter((c) => c.id !== id));
-      loadPeople(peopleSearch, filterCompanyId);
+      loadPeople(peopleSearch, filterCompanyId, peopleIndustry);
     } catch (err) {
       console.error("Failed to delete company:", err);
     }
@@ -108,7 +153,7 @@ export default function LeadsPage() {
   const handlePeopleClick = (companyId: number) => {
     setFilterCompanyId(companyId);
     setActiveTab("people");
-    loadPeople(peopleSearch, companyId);
+    loadPeople(peopleSearch, companyId, peopleIndustry);
   };
 
   const tabs: { key: Tab; label: string; count: number }[] = [
@@ -123,8 +168,8 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
           <p className="text-sm text-muted-foreground">
-            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}`}
-            {activeTab === "companies" && `${companies.length} companies`}
+            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}`}
+            {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}`}
           </p>
         </div>
 
@@ -136,11 +181,33 @@ export default function LeadsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => { setFilterCompanyId(null); loadPeople(peopleSearch, null); }}
+                  onClick={() => { setFilterCompanyId(null); loadPeople(peopleSearch, null, peopleIndustry); }}
                 >
                   Clear company filter
                 </Button>
               )}
+              {peopleIndustry && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setPeopleIndustry(""); loadPeople(peopleSearch, filterCompanyId, ""); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Clear industry
+                </Button>
+              )}
+              <Select value={peopleIndustry} onValueChange={handlePeopleIndustryChange}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="All Industries" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Industries</SelectItem>
+                  {peopleIndustries.map((industry) => (
+                    <SelectItem key={industry} value={industry}>
+                      {industry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -158,6 +225,28 @@ export default function LeadsPage() {
           )}
           {activeTab === "companies" && (
             <>
+              {companiesIndustry && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setCompaniesIndustry(""); loadCompanies(companiesSearch, ""); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Clear industry
+                </Button>
+              )}
+              <Select value={companiesIndustry} onValueChange={handleCompaniesIndustryChange}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="All Industries" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Industries</SelectItem>
+                  {companiesIndustries.map((industry) => (
+                    <SelectItem key={industry} value={industry}>
+                      {industry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -221,13 +310,13 @@ export default function LeadsPage() {
       <PeopleCSVDialog
         open={peopleCSVOpen}
         onOpenChange={setPeopleCSVOpen}
-        onImportComplete={() => loadPeople(peopleSearch, filterCompanyId)}
+        onImportComplete={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry)}
       />
 
       <CompaniesCSVDialog
         open={companiesCSVOpen}
         onOpenChange={setCompaniesCSVOpen}
-        onImportComplete={() => { loadCompanies(companiesSearch); loadPeople(peopleSearch, filterCompanyId); }}
+        onImportComplete={() => { loadCompanies(companiesSearch, companiesIndustry); loadPeople(peopleSearch, filterCompanyId, peopleIndustry); }}
       />
     </div>
   );

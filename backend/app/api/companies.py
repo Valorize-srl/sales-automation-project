@@ -93,15 +93,31 @@ async def _find_matching_company(db: AsyncSession, company_name: str | None, ema
 
 # --- Endpoints ---
 
+@router.get("/industries", response_model=list[str])
+async def get_industries(db: AsyncSession = Depends(get_db)):
+    """Get unique list of industries from companies."""
+    result = await db.execute(
+        select(Company.industry)
+        .where(Company.industry.isnot(None))
+        .distinct()
+        .order_by(Company.industry)
+    )
+    industries = [row[0] for row in result.all()]
+    return industries
+
+
 @router.get("", response_model=CompanyListResponse)
 async def list_companies(
     search: str | None = Query(None),
+    industry: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List companies with optional search."""
+    """List companies with optional search and industry filter."""
     query = select(Company).order_by(Company.name.asc())
     if search:
         query = query.where(Company.name.ilike(f"%{search}%"))
+    if industry is not None:
+        query = query.where(Company.industry == industry)
     result = await db.execute(query)
     companies = result.scalars().all()
 
