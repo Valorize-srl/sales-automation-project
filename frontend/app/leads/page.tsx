@@ -195,12 +195,11 @@ export default function LeadsPage() {
                   <X className="h-3 w-3 mr-1" /> Clear industry
                 </Button>
               )}
-              <Select value={peopleIndustry} onValueChange={handlePeopleIndustryChange}>
+              <Select value={peopleIndustry || undefined} onValueChange={handlePeopleIndustryChange}>
                 <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="All Industries" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Industries</SelectItem>
                   {peopleIndustries?.filter(Boolean).map((industry) => (
                     <SelectItem key={industry} value={industry}>
                       {industry}
@@ -234,12 +233,11 @@ export default function LeadsPage() {
                   <X className="h-3 w-3 mr-1" /> Clear industry
                 </Button>
               )}
-              <Select value={companiesIndustry} onValueChange={handleCompaniesIndustryChange}>
+              <Select value={companiesIndustry || undefined} onValueChange={handleCompaniesIndustryChange}>
                 <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="All Industries" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Industries</SelectItem>
                   {companiesIndustries?.filter(Boolean).map((industry) => (
                     <SelectItem key={industry} value={industry}>
                       {industry}
