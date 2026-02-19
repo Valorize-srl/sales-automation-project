@@ -10,7 +10,7 @@ from app.models.lead import Lead, LeadSource
 # Fields that map directly to Lead model columns
 STANDARD_FIELDS = {
     "first_name", "last_name", "email", "company", "job_title",
-    "linkedin_url", "phone", "address", "city", "state",
+    "industry", "linkedin_url", "phone", "address", "city", "state",
     "zip_code", "country", "website",
 }
 
@@ -90,6 +90,7 @@ async def import_leads_from_csv(
                 email=email,
                 company=_clean(row, mapping.get("company")),
                 job_title=_clean(row, mapping.get("job_title")),
+                industry=_clean(row, mapping.get("industry")),
                 linkedin_url=_clean(row, mapping.get("linkedin_url")),
                 phone=_clean(row, mapping.get("phone")),
                 address=_clean(row, mapping.get("address")),

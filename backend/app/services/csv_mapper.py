@@ -13,7 +13,7 @@ from app.config import settings
 # All known lead fields that Claude can map to
 KNOWN_FIELDS = [
     "first_name", "last_name", "email", "company", "job_title",
-    "linkedin_url", "phone", "address", "city", "state",
+    "industry", "linkedin_url", "phone", "address", "city", "state",
     "zip_code", "country", "website",
 ]
 
@@ -26,6 +26,7 @@ Lead fields to map:
 - email: Email address
 - company: Company/organization name
 - job_title: Job title/role/position
+- industry: Industry sector or category (e.g., Technology, Healthcare, Finance)
 - linkedin_url: LinkedIn profile URL
 - phone: Phone/telephone number
 - address: Street address

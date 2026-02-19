@@ -11,6 +11,7 @@ class LeadCreate(BaseModel):
     email: str = Field(..., min_length=1, max_length=255)
     company: Optional[str] = None
     job_title: Optional[str] = None
+    industry: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -30,6 +31,7 @@ class LeadResponse(BaseModel):
     email: str
     company: Optional[str] = None
     job_title: Optional[str] = None
+    industry: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -58,6 +60,7 @@ class CSVColumnMapping(BaseModel):
     email: Optional[str] = None
     company: Optional[str] = None
     job_title: Optional[str] = None
+    industry: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None

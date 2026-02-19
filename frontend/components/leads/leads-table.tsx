@@ -49,6 +49,7 @@ export function LeadsTable({ leads, onDelete, loading }: LeadsTableProps) {
             <TableHead>Email</TableHead>
             <TableHead>Company</TableHead>
             <TableHead>Job Title</TableHead>
+            <TableHead>Industry</TableHead>
             <TableHead>Phone</TableHead>
             <TableHead>Address</TableHead>
             <TableHead>City</TableHead>
@@ -70,6 +71,7 @@ export function LeadsTable({ leads, onDelete, loading }: LeadsTableProps) {
               <TableCell>{lead.email}</TableCell>
               <TableCell>{lead.company || "—"}</TableCell>
               <TableCell>{lead.job_title || "—"}</TableCell>
+              <TableCell>{lead.industry || "—"}</TableCell>
               <TableCell>{lead.phone || "—"}</TableCell>
               <TableCell>{lead.address || "—"}</TableCell>
               <TableCell>{lead.city || "—"}</TableCell>

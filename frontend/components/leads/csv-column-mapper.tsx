@@ -23,6 +23,7 @@ const LEAD_FIELDS: { key: keyof CSVColumnMapping; label: string; required?: bool
   { key: "last_name", label: "Last Name" },
   { key: "company", label: "Company" },
   { key: "job_title", label: "Job Title" },
+  { key: "industry", label: "Industry" },
   { key: "phone", label: "Phone" },
   { key: "address", label: "Address" },
   { key: "city", label: "City" },

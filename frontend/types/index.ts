@@ -32,6 +32,7 @@ export interface Lead {
   email: string;
   company: string | null;
   job_title: string | null;
+  industry: string | null;
   linkedin_url: string | null;
   phone: string | null;
   address: string | null;
@@ -225,6 +226,7 @@ export interface CSVColumnMapping {
   email: string | null;
   company: string | null;
   job_title: string | null;
+  industry: string | null;
   linkedin_url: string | null;
   phone: string | null;
   address: string | null;
