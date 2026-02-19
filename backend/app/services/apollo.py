@@ -105,7 +105,7 @@ class ApolloService:
         if keywords:
             payload["q_keywords"] = keywords
 
-        return await self._post("/mixed_people/search", payload)
+        return await self._post("/mixed_people/api_search", payload)
 
     def format_people_results(self, raw: dict) -> list[dict]:
         """Normalize Apollo people response to our preview format."""
@@ -159,7 +159,7 @@ class ApolloService:
         if keywords:
             payload["q_keywords"] = keywords
 
-        return await self._post("/mixed_companies/search", payload)
+        return await self._post("/mixed_companies/api_search", payload)
 
     def format_org_results(self, raw: dict) -> list[dict]:
         """Normalize Apollo organizations response to our preview format."""
