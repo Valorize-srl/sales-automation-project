@@ -151,6 +151,10 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
         existing_result = await db.execute(select(Person.email))
         existing_emails = {r[0].lower() for r in existing_result.all() if r[0]}
 
+        # Pre-load all companies for auto-matching
+        companies_result = await db.execute(select(Company.id, Company.name))
+        companies_map = {name.lower().strip(): cid for cid, name in companies_result.all()}
+
         for item in request.results:
             try:
                 email = (item.get("email") or "").strip().lower() or None
@@ -161,12 +165,19 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
                     duplicates_skipped += 1
                     continue
 
+                # Auto-match company by name
+                company_name = (item.get("company") or "").strip() or None
+                company_id = None
+                if company_name:
+                    company_id = companies_map.get(company_name.lower())
+
                 person = Person(
                     first_name=first_name,
                     last_name=last_name,
                     email=email or f"noemail_{imported}@apollo.import",
                     phone=item.get("phone"),
-                    company_name=item.get("company"),
+                    company_id=company_id,
+                    company_name=company_name,
                     linkedin_url=item.get("linkedin_url"),
                     industry=item.get("industry"),
                     location=item.get("location"),
