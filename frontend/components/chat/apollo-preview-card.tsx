@@ -109,6 +109,7 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Title</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Company</th>
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Industry</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Email</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Phone</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">LinkedIn</th>
@@ -134,6 +135,7 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).title ?? "—"}</td>
                     <td className="px-3 py-2">{(row as ApolloPersonResult).company ?? "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).industry ?? "—"}</td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
                       {(row as ApolloPersonResult).email ?? "—"}
                     </td>
