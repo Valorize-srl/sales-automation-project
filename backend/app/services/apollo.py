@@ -248,6 +248,16 @@ class ApolloService:
                     person["direct_phone"] = enriched["direct_phone"]
                 if enriched.get("linkedin_url"):
                     person["linkedin_url"] = enriched["linkedin_url"]
+                # Merge location fields
+                if enriched.get("city"):
+                    person["city"] = enriched["city"]
+                if enriched.get("state"):
+                    person["state"] = enriched["state"]
+                if enriched.get("country"):
+                    person["country"] = enriched["country"]
+                # Merge organization data (for industry)
+                if enriched.get("organization"):
+                    person["organization"] = enriched["organization"]
 
         raw["people"] = people
         raw["enriched_count"] = len(enriched_data)  # Track how many were enriched
