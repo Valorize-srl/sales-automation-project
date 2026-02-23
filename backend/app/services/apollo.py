@@ -180,8 +180,19 @@ class ApolloService:
         # 1. Base search
         raw = await self._post("/mixed_people/api_search", payload)
 
-        # 2. Extract people to enrich - enrich ALL to get emails (costs 1 credit/person)
+        # LOG: See what raw search returns
         people = raw.get("people", [])
+        logger.info(f"🔍 APOLLO SEARCH: Found {len(people)} people")
+        if people:
+            sample = people[0]
+            logger.info(f"📄 SAMPLE PERSON (before enrichment): id={sample.get('id')}, "
+                       f"name={sample.get('first_name')} {sample.get('last_name')}, "
+                       f"email={sample.get('email')}, "
+                       f"city={sample.get('city')}, state={sample.get('state')}, "
+                       f"org_industry={sample.get('organization', {}).get('industry')}, "
+                       f"org_keywords={sample.get('organization', {}).get('keywords')}")
+
+        # 2. Extract people to enrich - enrich ALL to get emails (costs 1 credit/person)
         people_to_enrich = [
             p for p in people
             if p.get("id")  # Enrich everyone with ID to ensure we get email/phone
@@ -198,7 +209,17 @@ class ApolloService:
                 credits_consumed = result.get("credits_consumed", 0)
                 total_credits_consumed += credits_consumed
 
-                for match in result.get("matches", []):
+                # LOG: See what enrichment returns
+                matches = result.get("matches", [])
+                logger.info(f"💎 ENRICHMENT BATCH {i//10 + 1}: Got {len(matches)} matches, consumed {credits_consumed} credits")
+                if matches:
+                    sample_match = matches[0]
+                    logger.info(f"📧 ENRICHED SAMPLE: id={sample_match.get('id')}, "
+                               f"email={sample_match.get('email')}, "
+                               f"phone={sample_match.get('phone')}, "
+                               f"city={sample_match.get('city')}, state={sample_match.get('state')}")
+
+                for match in matches:
                     if match.get("id"):
                         enriched_data[match["id"]] = match
             except ApolloAPIError as e:
@@ -237,6 +258,9 @@ class ApolloService:
         """Normalize Apollo people response to our preview format."""
         people = raw.get("people", [])
         results = []
+
+        logger.info(f"📊 FORMATTING {len(people)} people results (enriched_count: {raw.get('enriched_count', 0)}, credits: {raw.get('credits_consumed', 0)})")
+
         for p in people:
             org = p.get("organization") or {}
             location_parts = filter(None, [
@@ -260,7 +284,7 @@ class ApolloService:
                 keywords = org.get("keywords", [])
                 industry = ", ".join(keywords[:3]) if isinstance(keywords, list) else None
 
-            results.append({
+            result = {
                 "first_name": first_name,
                 "last_name": last_name,
                 "title": p.get("title"),
@@ -271,7 +295,13 @@ class ApolloService:
                 "phone": p.get("phone") or p.get("direct_phone"),  # enriched
                 "website": org.get("website_url"),
                 "industry": industry,
-            })
+            }
+            results.append(result)
+
+        # LOG: Show first result to see what we extracted
+        if results:
+            logger.info(f"✅ FIRST FORMATTED RESULT: {results[0]}")
+
         return results
 
     # -------------------------------------------------------------------
