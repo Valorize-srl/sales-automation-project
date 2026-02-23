@@ -180,11 +180,11 @@ class ApolloService:
         # 1. Base search
         raw = await self._post("/mixed_people/api_search", payload)
 
-        # 2. Extract people to enrich (only those with potential email/phone data)
+        # 2. Extract people to enrich - enrich ALL to get emails (costs 1 credit/person)
         people = raw.get("people", [])
         people_to_enrich = [
             p for p in people
-            if p.get("id") and (p.get("has_email") or p.get("linkedin_url"))
+            if p.get("id")  # Enrich everyone with ID to ensure we get email/phone
         ]
 
         # 3. Enrichment in batches of 10
@@ -253,6 +253,13 @@ class ApolloService:
                 first_name = name_parts[0] if len(name_parts) > 0 else ""
                 last_name = name_parts[1] if len(name_parts) > 1 else ""
 
+            # Use industry if available, otherwise use keywords as fallback
+            industry = org.get("industry")
+            if not industry and org.get("keywords"):
+                # Join first 3 keywords as industry fallback
+                keywords = org.get("keywords", [])
+                industry = ", ".join(keywords[:3]) if isinstance(keywords, list) else None
+
             results.append({
                 "first_name": first_name,
                 "last_name": last_name,
@@ -263,7 +270,7 @@ class ApolloService:
                 "email": p.get("email"),  # enriched
                 "phone": p.get("phone") or p.get("direct_phone"),  # enriched
                 "website": org.get("website_url"),
-                "industry": org.get("industry"),
+                "industry": industry,
             })
         return results
 
