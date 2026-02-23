@@ -4,10 +4,10 @@ import { Mail, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface EmailListDisplayProps {
-  primaryEmail?: string;
+  primaryEmail?: string | null;
   genericEmails?: string[];
-  enrichmentSource?: string;
-  enrichmentDate?: string;
+  enrichmentSource?: string | null;
+  enrichmentDate?: string | null;
 }
 
 export function EmailListDisplay({
