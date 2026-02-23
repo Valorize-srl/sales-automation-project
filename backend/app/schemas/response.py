@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -8,26 +9,26 @@ class EmailResponseOut(BaseModel):
 
     id: int
     campaign_id: int
-    lead_id: int | None = None
-    instantly_email_id: str | None = None
-    from_email: str | None = None
-    sender_email: str | None = None
-    subject: str | None = None
-    thread_id: str | None = None
-    message_body: str | None = None
+    lead_id: Optional[int] = None
+    instantly_email_id: Optional[str] = None
+    from_email: Optional[str] = None
+    sender_email: Optional[str] = None
+    subject: Optional[str] = None
+    thread_id: Optional[str] = None
+    message_body: Optional[str] = None
     direction: str
-    sentiment: str | None = None
-    sentiment_score: float | None = None
-    ai_suggested_reply: str | None = None
-    human_approved_reply: str | None = None
+    sentiment: Optional[str] = None
+    sentiment_score: Optional[float] = None
+    ai_suggested_reply: Optional[str] = None
+    human_approved_reply: Optional[str] = None
     status: str
-    received_at: datetime | None = None
+    received_at: Optional[datetime] = None
     created_at: datetime
     # Joined fields
-    lead_name: str | None = None
-    lead_email: str | None = None
-    lead_company: str | None = None
-    campaign_name: str | None = None
+    lead_name: Optional[str] = None
+    lead_email: Optional[str] = None
+    lead_company: Optional[str] = None
+    campaign_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -38,7 +39,7 @@ class EmailResponseListResponse(BaseModel):
 
 
 class FetchRepliesRequest(BaseModel):
-    campaign_ids: list[int] = Field(..., min_length=1)
+    campaign_ids: list[int] = Field(..., min_items=1)
 
 
 class FetchRepliesResponse(BaseModel):
@@ -48,7 +49,7 @@ class FetchRepliesResponse(BaseModel):
 
 
 class ApproveReplyRequest(BaseModel):
-    edited_reply: str | None = None
+    edited_reply: Optional[str] = None
 
 
 class SendReplyResponse(BaseModel):

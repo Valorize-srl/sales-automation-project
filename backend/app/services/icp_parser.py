@@ -4,7 +4,7 @@ from natural language conversation via tool use and SSE streaming.
 Also handles Apollo lead search intent detection.
 """
 import json
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import anthropic
 
@@ -156,7 +156,7 @@ class ICPParserService:
     async def stream_chat(
         self,
         messages: list[ChatMessage],
-        file_content: str | None = None,
+        file_content: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """
         Stream a chat response from Claude via SSE.
@@ -190,11 +190,20 @@ class ICPParserService:
 
                 # After stream ends, check for tool use in final message
                 final_message = await stream.get_final_message()
+
+                # Extract Claude token usage
+                claude_tokens = {
+                    "input_tokens": final_message.usage.input_tokens,
+                    "output_tokens": final_message.usage.output_tokens,
+                    "total_tokens": final_message.usage.input_tokens + final_message.usage.output_tokens,
+                }
+
                 for block in final_message.content:
                     if block.type == "tool_use" and block.name == "save_icp":
                         yield f"data: {json.dumps({'type': 'icp_extracted', 'data': block.input})}\n\n"
                     elif block.type == "tool_use" and block.name == "search_apollo":
-                        yield f"data: {json.dumps({'type': 'apollo_search_params', 'data': block.input})}\n\n"
+                        # Include Claude tokens with Apollo search params
+                        yield f"data: {json.dumps({'type': 'apollo_search_params', 'data': block.input, 'claude_tokens': claude_tokens})}\n\n"
 
         except anthropic.APIError as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"

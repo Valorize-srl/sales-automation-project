@@ -1,3 +1,4 @@
+from typing import Optional
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, Query
@@ -15,7 +16,7 @@ router = APIRouter()
 
 @router.get("")
 async def get_analytics(
-    campaign_id: int | None = Query(None),
+    campaign_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Get analytics entries, optionally filtered by campaign."""

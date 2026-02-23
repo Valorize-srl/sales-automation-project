@@ -1,3 +1,4 @@
+from typing import Optional
 """Companies API - manage company records with CSV import and people matching."""
 import logging
 
@@ -61,7 +62,7 @@ COMPANY_MAPPING_TOOL = {
 }
 
 
-def _extract_domain(email: str | None) -> str | None:
+def _extract_domain(email: Optional[str]) -> Optional[str]:
     """Extract domain from email address."""
     if not email or "@" not in email:
         return None
@@ -74,7 +75,7 @@ def _company_to_response(company: Company, people_count: int = 0) -> CompanyResp
     return resp
 
 
-async def _find_matching_company(db: AsyncSession, company_name: str | None, email_domain: str | None) -> Company | None:
+async def _find_matching_company(db: AsyncSession, company_name: Optional[str], email_domain: Optional[str]) -> Optional[Company]:
     """Find a company by name or email domain match."""
     if company_name:
         result = await db.execute(
@@ -108,8 +109,8 @@ async def get_industries(db: AsyncSession = Depends(get_db)):
 
 @router.get("", response_model=CompanyListResponse)
 async def list_companies(
-    search: str | None = Query(None),
-    industry: str | None = Query(None),
+    search: Optional[str] = Query(None),
+    industry: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """List companies with optional search and industry filter."""
@@ -303,7 +304,7 @@ async def _link_people_to_company(db: AsyncSession, company: Company) -> None:
             person.company_id = company.id
 
 
-def _clean(row: dict, column_name: str | None) -> str | None:
+def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
     if not column_name:
         return None
     val = row.get(column_name)

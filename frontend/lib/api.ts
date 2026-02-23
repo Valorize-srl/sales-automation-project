@@ -70,7 +70,7 @@ class ApiClient {
     onIcpExtracted: (data: Record<string, string>) => void,
     onDone: () => void,
     onError: (error: Error) => void,
-    onApolloSearchParams?: (data: Record<string, unknown>) => void
+    onApolloSearchParams?: (event: { data: Record<string, unknown>; claude_tokens?: { input_tokens: number; output_tokens: number; total_tokens: number } }) => void
   ): Promise<void> {
     const url = `${this.baseUrl}/api/chat/stream`;
     try {
@@ -104,7 +104,7 @@ class ApiClient {
               const parsed = JSON.parse(line.slice(6));
               if (parsed.type === "text") onText(parsed.content);
               else if (parsed.type === "icp_extracted") onIcpExtracted(parsed.data);
-              else if (parsed.type === "apollo_search_params") onApolloSearchParams?.(parsed.data);
+              else if (parsed.type === "apollo_search_params") onApolloSearchParams?.(parsed);
               else if (parsed.type === "done") onDone();
               else if (parsed.type === "error") onError(new Error(parsed.content));
             } catch {

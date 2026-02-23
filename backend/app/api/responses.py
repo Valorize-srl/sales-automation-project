@@ -1,3 +1,4 @@
+from typing import Optional
 """Email responses API routes - fetch, generate AI reply, approve, send, delete."""
 import logging
 from datetime import datetime
@@ -45,7 +46,7 @@ def _response_to_out(resp: EmailResponse) -> EmailResponseOut:
     return out
 
 
-def _score_to_sentiment(score: float | None) -> Sentiment | None:
+def _score_to_sentiment(score: Optional[float]) -> Optional[Sentiment]:
     """Map Instantly ai_interest_value (0-1) to our Sentiment enum."""
     if score is None:
         return None
@@ -63,12 +64,12 @@ def _score_to_sentiment(score: float | None) -> Sentiment | None:
 
 @router.get("", response_model=EmailResponseListResponse)
 async def list_responses(
-    campaign_id: int | None = Query(None),
-    campaign_ids: str | None = Query(None, description="Comma-separated campaign IDs"),
-    status: str | None = Query(None),
-    sentiment: str | None = Query(None),
-    date_from: str | None = Query(None, description="Start date YYYY-MM-DD"),
-    date_to: str | None = Query(None, description="End date YYYY-MM-DD"),
+    campaign_id: Optional[int] = Query(None),
+    campaign_ids: Optional[str] = Query(None, description="Comma-separated campaign IDs"),
+    status: Optional[str] = Query(None),
+    sentiment: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
 ):
     """List email responses with optional filters."""

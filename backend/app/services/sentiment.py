@@ -1,3 +1,4 @@
+from typing import Optional
 """
 AI reply generation service.
 Uses Claude to generate a suggested reply for an inbound email.
@@ -51,11 +52,11 @@ class ReplyService:
     async def generate_reply(
         self,
         email_body: str,
-        lead_name: str | None = None,
-        lead_company: str | None = None,
-        campaign_name: str | None = None,
-        sentiment: str | None = None,
-    ) -> str | None:
+        lead_name: Optional[str] = None,
+        lead_company: Optional[str] = None,
+        campaign_name: Optional[str] = None,
+        sentiment: Optional[str] = None,
+    ) -> Optional[str]:
         """Generate a reply suggestion using Claude."""
         user_message = f"""Generate a reply for this inbound email:
 

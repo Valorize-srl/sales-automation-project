@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Lead import service - handles CSV data import with deduplication.
 Supports standard fields + custom_fields JSON for unmapped columns.
@@ -115,14 +116,14 @@ async def import_leads_from_csv(
     return {"imported": imported, "duplicates_skipped": duplicates_skipped, "errors": errors}
 
 
-def _get_mapped_value(row: dict, column_name: str | None) -> str | None:
+def _get_mapped_value(row: dict, column_name: Optional[str]) -> Optional[str]:
     """Get a value from a CSV row dict using the mapped column name."""
     if not column_name:
         return None
     return row.get(column_name)
 
 
-def _clean(row: dict, column_name: str | None) -> str | None:
+def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
     """Get and clean a mapped value, returning None for empty strings."""
     val = _get_mapped_value(row, column_name)
     if not val:

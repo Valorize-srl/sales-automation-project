@@ -11,13 +11,13 @@ function downloadCSV(data: ApolloSearchResponse) {
   const rows = data.results as (ApolloPersonResult | ApolloCompanyResult)[];
 
   const headers = isPeople
-    ? ["First Name", "Last Name", "Title", "Company", "Email", "Phone", "LinkedIn", "Location", "Website", "Industry"]
+    ? ["First Name", "Last Name", "Location", "Title", "Company", "Email", "Phone", "LinkedIn", "Website", "Industry"]
     : ["Name", "Industry", "Size", "Website", "LinkedIn", "Location", "Email", "Phone"];
 
   const lines = rows.map((r) => {
     if (isPeople) {
       const p = r as ApolloPersonResult;
-      return [p.first_name, p.last_name, p.title, p.company, p.email, p.phone, p.linkedin_url, p.location, p.website, p.industry];
+      return [p.first_name, p.last_name, p.location, p.title, p.company, p.email, p.phone, p.linkedin_url, p.website, p.industry];
     } else {
       const c = r as ApolloCompanyResult;
       return [c.name, c.industry, c.size, c.website, c.linkedin_url, c.location, c.email, c.phone];
@@ -50,6 +50,8 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
 
   const isPeople = data.search_type === "people";
   const results = data.results as (ApolloPersonResult | ApolloCompanyResult)[];
+
+  console.log("🔥 APOLLO PREVIEW CARD V2.0 LOADED 🔥", { data, hasUsage: !!data.usage, creditsConsumed: data.credits_consumed });
 
   const handleImport = async (target: "people" | "companies") => {
     setImporting(target);
@@ -86,6 +88,7 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
                 {" "}of {data.total.toLocaleString()} total
               </span>
             )}
+            <span className="ml-2 px-1.5 py-0.5 bg-green-500 text-white text-[9px] rounded font-mono">NEW</span>
           </span>
         </div>
         <Button
@@ -99,6 +102,42 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
         </Button>
       </div>
 
+      {/* Usage Stats */}
+      {(data.usage || data.credits_consumed !== undefined) && (
+        <div className="flex items-center gap-6 px-4 py-2 border-b bg-muted/5 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Apollo Credits:</span>
+            <span className="font-mono font-semibold text-blue-600">
+              {data.usage?.apollo_credits ?? data.credits_consumed ?? 0}
+            </span>
+          </div>
+
+          {data.usage?.claude_tokens && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">Claude Tokens:</span>
+              <span className="font-mono font-semibold text-violet-600">
+                {data.usage.claude_tokens.total_tokens.toLocaleString()}
+              </span>
+              <span className="text-muted-foreground text-[10px]">
+                ({data.usage.claude_tokens.input_tokens.toLocaleString()} in / {data.usage.claude_tokens.output_tokens.toLocaleString()} out)
+              </span>
+            </div>
+          )}
+
+          {data.usage?.estimated_cost_usd && (
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-muted-foreground">Est. Cost:</span>
+              <span className="font-mono font-semibold text-green-600">
+                ${data.usage.estimated_cost_usd.total_usd.toFixed(4)}
+              </span>
+              <span className="text-muted-foreground text-[10px]">
+                (A: ${data.usage.estimated_cost_usd.apollo_usd.toFixed(2)} + C: ${data.usage.estimated_cost_usd.claude_usd.toFixed(4)})
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -107,6 +146,7 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
               {isPeople ? (
                 <>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
+                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Location</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Title</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Company</th>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Industry</th>
@@ -133,6 +173,7 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
                     <td className="px-3 py-2 font-medium">
                       {(row as ApolloPersonResult).first_name} {(row as ApolloPersonResult).last_name}
                     </td>
+                    <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).location ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).title ?? "—"}</td>
                     <td className="px-3 py-2">{(row as ApolloPersonResult).company ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).industry ?? "—"}</td>
@@ -226,3 +267,4 @@ export function ApolloPreviewCard({ data, onImported }: Props) {
     </div>
   );
 }
+// trigger reload

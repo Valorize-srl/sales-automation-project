@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from datetime import datetime
 
+from typing import Optional
 from sqlalchemy import String, Text, DateTime, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -12,14 +15,14 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    email_domain: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    linkedin_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    signals: Mapped[str | None] = mapped_column(Text, nullable=True)
-    website: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email_domain: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    linkedin_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

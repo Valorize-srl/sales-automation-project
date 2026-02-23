@@ -1,28 +1,29 @@
+from typing import Optional
 from datetime import datetime
 
 from pydantic import BaseModel
 
 
 class PersonCSVMapping(BaseModel):
-    first_name: str | None = None
-    last_name: str | None = None
-    company_name: str | None = None
-    email: str | None = None
-    linkedin_url: str | None = None
-    phone: str | None = None
-    industry: str | None = None
-    location: str | None = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    company_name: Optional[str] = None
+    email: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    phone: Optional[str] = None
+    industry: Optional[str] = None
+    location: Optional[str] = None
 
 
 class PersonCreate(BaseModel):
     first_name: str
     last_name: str
     email: str
-    company_name: str | None = None
-    linkedin_url: str | None = None
-    phone: str | None = None
-    industry: str | None = None
-    location: str | None = None
+    company_name: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    phone: Optional[str] = None
+    industry: Optional[str] = None
+    location: Optional[str] = None
 
 
 class PersonResponse(BaseModel):
@@ -31,13 +32,13 @@ class PersonResponse(BaseModel):
     id: int
     first_name: str
     last_name: str
-    company_id: int | None
-    company_name: str | None
+    company_id: Optional[int]
+    company_name: Optional[str]
     email: str
-    linkedin_url: str | None
-    phone: str | None
-    industry: str | None
-    location: str | None
+    linkedin_url: Optional[str]
+    phone: Optional[str]
+    industry: Optional[str]
+    location: Optional[str]
     created_at: datetime
 
 

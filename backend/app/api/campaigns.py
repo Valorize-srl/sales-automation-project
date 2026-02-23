@@ -1,3 +1,4 @@
+from typing import Optional
 """Campaign management API routes."""
 import json
 import logging
@@ -47,7 +48,7 @@ def _campaign_to_response(campaign: Campaign) -> CampaignResponse:
 
 @router.get("", response_model=CampaignListResponse)
 async def list_campaigns(
-    icp_id: int | None = Query(None),
+    icp_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """List all non-deleted campaigns, optionally filtered by ICP."""

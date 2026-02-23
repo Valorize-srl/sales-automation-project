@@ -1,3 +1,4 @@
+from typing import Optional
 """People API - manage person records with CSV import and company matching."""
 import json
 import logging
@@ -64,7 +65,7 @@ PERSON_MAPPING_TOOL = {
 }
 
 
-async def _find_matching_company(db: AsyncSession, company_name: str | None, email: str | None) -> int | None:
+async def _find_matching_company(db: AsyncSession, company_name: Optional[str], email: Optional[str]) -> Optional[int]:
     """Find company_id by name or email domain match."""
     if company_name:
         result = await db.execute(
@@ -101,9 +102,9 @@ async def get_industries(db: AsyncSession = Depends(get_db)):
 
 @router.get("", response_model=PersonListResponse)
 async def list_people(
-    search: str | None = Query(None),
-    company_id: int | None = Query(None),
-    industry: str | None = Query(None),
+    search: Optional[str] = Query(None),
+    company_id: Optional[int] = Query(None),
+    industry: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """List people with optional search, company, and industry filters."""
@@ -261,7 +262,7 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
     return PersonCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
 
 
-def _clean(row: dict, column_name: str | None) -> str | None:
+def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
     if not column_name:
         return None
     val = row.get(column_name)

@@ -3,7 +3,7 @@ Apollo.io API service – search people and organizations for lead prospecting.
 Supports both natural-language (via Claude tool) and structured form searches.
 """
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -148,12 +148,12 @@ class ApolloService:
 
     async def search_people(
         self,
-        person_titles: list[str] | None = None,
-        person_locations: list[str] | None = None,
-        person_seniorities: list[str] | None = None,
-        organization_keywords: list[str] | None = None,
-        organization_sizes: list[str] | None = None,
-        keywords: str | None = None,
+        person_titles: Optional[list[str]] = None,
+        person_locations: Optional[list[str]] = None,
+        person_seniorities: Optional[list[str]] = None,
+        organization_keywords: Optional[list[str]] = None,
+        organization_sizes: Optional[list[str]] = None,
+        keywords: Optional[str] = None,
         per_page: int = 25,
     ) -> dict[str, Any]:
         """Search Apollo people with automatic enrichment. Returns raw API response with enriched data."""
@@ -273,11 +273,11 @@ class ApolloService:
 
     async def search_organizations(
         self,
-        organization_locations: list[str] | None = None,
-        organization_keywords: list[str] | None = None,
-        organization_sizes: list[str] | None = None,
-        technologies: list[str] | None = None,
-        keywords: str | None = None,
+        organization_locations: Optional[list[str]] = None,
+        organization_keywords: Optional[list[str]] = None,
+        organization_sizes: Optional[list[str]] = None,
+        technologies: Optional[list[str]] = None,
+        keywords: Optional[str] = None,
         per_page: int = 25,
     ) -> dict[str, Any]:
         """Search Apollo organizations. Returns raw API response."""

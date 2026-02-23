@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +23,7 @@ router = APIRouter()
 
 @router.get("", response_model=LeadListResponse)
 async def list_leads(
-    icp_id: int | None = Query(None),
+    icp_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """List all leads, optionally filtered by ICP."""

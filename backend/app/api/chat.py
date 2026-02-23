@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -58,14 +59,14 @@ async def upload_document(file: UploadFile = File(...)):
 # ---------------------------------------------------------------------------
 
 class ApolloFilters(BaseModel):
-    person_titles: list[str] | None = None
-    person_locations: list[str] | None = None
-    person_seniorities: list[str] | None = None
-    organization_locations: list[str] | None = None
-    organization_keywords: list[str] | None = None
-    organization_sizes: list[str] | None = None
-    technologies: list[str] | None = None
-    keywords: str | None = None
+    person_titles: Optional[list[str]] = None
+    person_locations: Optional[list[str]] = None
+    person_seniorities: Optional[list[str]] = None
+    organization_locations: Optional[list[str]] = None
+    organization_keywords: Optional[list[str]] = None
+    organization_sizes: Optional[list[str]] = None
+    technologies: Optional[list[str]] = None
+    keywords: Optional[str] = None
 
 
 class ApolloSearchRequest(BaseModel):
@@ -196,7 +197,7 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
         )
         existing_names = {r[0] for r in existing_result.all() if r[0]}
 
-        def _extract_domain(website: str | None) -> str | None:
+        def _extract_domain(website: Optional[str]) -> Optional[str]:
             if not website:
                 return None
             domain = website.lower().replace("https://", "").replace("http://", "").split("/")[0]

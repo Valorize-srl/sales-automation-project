@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import enum
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import String, Text, DateTime, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,14 +22,14 @@ class ICP(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    company_size: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    job_titles: Mapped[str | None] = mapped_column(Text, nullable=True)
-    geography: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    revenue_range: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
-    raw_input: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    company_size: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    job_titles: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    geography: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    revenue_range: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_input: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[ICPStatus] = mapped_column(
         SAEnum(ICPStatus, native_enum=False),
         default=ICPStatus.DRAFT,

@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Email template generator - uses Claude to create personalized email sequences
 for outreach campaigns based on ICP data.
@@ -63,7 +64,7 @@ class EmailGeneratorService:
         icp_data: dict,
         num_subject_lines: int = 3,
         num_steps: int = 3,
-        additional_context: str | None = None,
+        additional_context: Optional[str] = None,
     ) -> dict:
         """Generate email templates based on ICP data using Claude tool use."""
         user_message = f"""Generate email templates for this outreach campaign:

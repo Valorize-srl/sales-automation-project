@@ -2,7 +2,7 @@
 Instantly API v2 client - manages campaigns, leads, analytics, and webhooks.
 """
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -38,8 +38,8 @@ class InstantlyService:
         method: str,
         path: str,
         *,
-        json: dict | None = None,
-        params: dict | None = None,
+        json: Optional[dict] = None,
+        params: Optional[dict] = None,
     ) -> dict[str, Any]:
         """Generic request wrapper with error handling."""
         url = f"{self.base_url}{path}"
@@ -62,7 +62,7 @@ class InstantlyService:
     # --- Campaign Methods ---
 
     async def list_campaigns(
-        self, limit: int = 100, starting_after: str | None = None
+        self, limit: int = 100, starting_after: Optional[str] = None
     ) -> dict:
         """List all campaigns, paginated."""
         params: dict[str, Any] = {"limit": limit}
@@ -79,15 +79,15 @@ class InstantlyService:
         name: str,
         campaign_schedule: dict,
         *,
-        sequences: list[dict] | None = None,
-        email_list: list[str] | None = None,
-        daily_limit: int | None = None,
-        email_gap: int | None = None,
-        stop_on_reply: bool | None = None,
-        stop_on_auto_reply: bool | None = None,
-        link_tracking: bool | None = None,
-        open_tracking: bool | None = None,
-        text_only: bool | None = None,
+        sequences: Optional[list[dict]] = None,
+        email_list: Optional[list[str]] = None,
+        daily_limit: Optional[int] = None,
+        email_gap: Optional[int] = None,
+        stop_on_reply: Optional[bool] = None,
+        stop_on_auto_reply: Optional[bool] = None,
+        link_tracking: Optional[bool] = None,
+        open_tracking: Optional[bool] = None,
+        text_only: Optional[bool] = None,
     ) -> dict:
         """Create a new campaign on Instantly with full options."""
         payload: dict[str, Any] = {
@@ -133,7 +133,7 @@ class InstantlyService:
     # --- Account Methods ---
 
     async def list_accounts(
-        self, limit: int = 100, starting_after: str | None = None
+        self, limit: int = 100, starting_after: Optional[str] = None
     ) -> dict:
         """List email accounts in the workspace."""
         params: dict[str, Any] = {"limit": limit}
@@ -158,8 +158,8 @@ class InstantlyService:
     async def get_campaign_analytics(
         self,
         campaign_id: str,
-        start_date: str | None = None,
-        end_date: str | None = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
     ) -> dict:
         """Retrieve metrics for a campaign."""
         params: dict[str, Any] = {"id": campaign_id}
@@ -196,7 +196,7 @@ class InstantlyService:
         campaign_id: str,
         email_type: str = "received",
         limit: int = 50,
-        starting_after: str | None = None,
+        starting_after: Optional[str] = None,
     ) -> dict:
         """Fetch emails for a campaign, paginated with cursor."""
         params: dict[str, Any] = {

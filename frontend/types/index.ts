@@ -355,12 +355,27 @@ export interface ApolloCompanyResult {
   signals: string | null;
 }
 
+export interface ApolloUsage {
+  apollo_credits: number;
+  claude_tokens: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  };
+  estimated_cost_usd: {
+    apollo_usd: number;
+    claude_usd: number;
+    total_usd: number;
+  };
+}
+
 export interface ApolloSearchResponse {
   results: ApolloPersonResult[] | ApolloCompanyResult[];
   total: number;
   search_type: "people" | "companies";
   returned: number;
   credits_consumed?: number;
+  usage?: ApolloUsage;
 }
 
 export interface ApolloImportResponse {

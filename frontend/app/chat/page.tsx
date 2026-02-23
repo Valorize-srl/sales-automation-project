@@ -40,11 +40,39 @@ export default function ChatPage() {
     search_type: "people" | "companies";
     filters: Record<string, unknown>;
     per_page?: number;
+    claude_tokens?: {
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+    };
   }) => {
+    console.log("🚀 Running Apollo search with params:", params);
     setApolloSearching(true);
     setApolloResults(null);
     try {
       const result = await api.apolloSearch(params);
+      console.log("✅ Apollo search result:", result);
+
+      // Calculate usage with Claude tokens + Apollo credits
+      if (params.claude_tokens && result.credits_consumed !== undefined) {
+        console.log("💰 Calculating costs with tokens:", params.claude_tokens);
+        const apollo_credits = result.credits_consumed;
+        const apollo_cost = apollo_credits * 0.10;
+        const claude_input_cost = (params.claude_tokens.input_tokens / 1_000_000) * 3.0;
+        const claude_output_cost = (params.claude_tokens.output_tokens / 1_000_000) * 15.0;
+        const claude_total_cost = claude_input_cost + claude_output_cost;
+
+        result.usage = {
+          apollo_credits,
+          claude_tokens: params.claude_tokens,
+          estimated_cost_usd: {
+            apollo_usd: parseFloat(apollo_cost.toFixed(4)),
+            claude_usd: parseFloat(claude_total_cost.toFixed(4)),
+            total_usd: parseFloat((apollo_cost + claude_total_cost).toFixed(4)),
+          },
+        };
+      }
+
       setApolloResults(result);
       // Track credits consumed from this search
       if (result.credits_consumed !== undefined) {
@@ -65,8 +93,9 @@ export default function ChatPage() {
   }, []);
 
   const handleApolloSearchParams = useCallback(
-    (data: Record<string, unknown>) => {
-      const { search_type, per_page, ...rest } = data;
+    (event: { data: Record<string, unknown>; claude_tokens?: { input_tokens: number; output_tokens: number; total_tokens: number } }) => {
+      console.log("🔍 Apollo search params received:", event);
+      const { search_type, per_page, ...rest } = event.data;
       const filters: Record<string, unknown> = {};
       if (rest.person_titles) filters.person_titles = rest.person_titles;
       if (rest.person_locations) filters.person_locations = rest.person_locations;
@@ -80,6 +109,7 @@ export default function ChatPage() {
         search_type: search_type as "people" | "companies",
         filters,
         per_page: typeof per_page === "number" ? per_page : 25,
+        claude_tokens: event.claude_tokens,
       });
     },
     [runApolloSearch]

@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import enum
 from datetime import datetime
 
+from typing import Optional
 from sqlalchemy import String, Text, Float, ForeignKey, DateTime, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -33,30 +36,30 @@ class EmailResponse(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
-    lead_id: Mapped[int | None] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
-    instantly_email_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
-    from_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    sender_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    thread_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    message_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
+    instantly_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    from_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sender_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    thread_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    message_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     direction: Mapped[MessageDirection] = mapped_column(
         SAEnum(MessageDirection, native_enum=False),
         nullable=False,
     )
-    sentiment: Mapped[Sentiment | None] = mapped_column(
+    sentiment: Mapped[Optional[Sentiment]] = mapped_column(
         SAEnum(Sentiment, native_enum=False),
         nullable=True,
     )
-    sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    ai_suggested_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
-    human_approved_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sentiment_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ai_suggested_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    human_approved_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[ResponseStatus] = mapped_column(
         SAEnum(ResponseStatus, native_enum=False),
         default=ResponseStatus.PENDING,
         server_default="pending",
     )
-    received_at: Mapped[datetime | None] = mapped_column(
+    received_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
