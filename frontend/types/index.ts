@@ -45,6 +45,7 @@ export interface Lead {
   source: LeadSource;
   verified: boolean;
   score: number | null;
+  client_tag: string | null;
   created_at: string;
 }
 
@@ -101,6 +102,7 @@ export interface Person {
   phone: string | null;
   industry: string | null;
   location: string | null;
+  client_tag: string | null;
   created_at: string;
 }
 
@@ -115,6 +117,7 @@ export interface Company {
   location: string | null;
   signals: string | null;
   website: string | null;
+  client_tag: string | null;
   created_at: string;
   people_count: number;
 }
@@ -382,4 +385,88 @@ export interface ApolloImportResponse {
   imported: number;
   duplicates_skipped: number;
   errors: number;
+}
+
+// === Usage Tracking & Settings ===
+
+export interface SearchHistory {
+  id: number;
+  search_type: "people" | "companies";
+  search_query: string | null;
+  filters_applied: Record<string, unknown>;
+  results_count: number;
+  apollo_credits_consumed: number;
+  claude_input_tokens: number;
+  claude_output_tokens: number;
+  cost_apollo_usd: number;
+  cost_claude_usd: number;
+  cost_total_usd: number;
+  client_tag: string | null;
+  icp_id: number | null;
+  created_at: string;
+}
+
+export interface UsageStats {
+  total_searches: number;
+  total_results: number;
+  total_apollo_credits: number;
+  total_claude_input_tokens: number;
+  total_claude_output_tokens: number;
+  total_cost_usd: number;
+  cost_breakdown: {
+    apollo_usd: number;
+    claude_usd: number;
+  };
+  searches_by_day: Array<{
+    date: string;
+    count: number;
+    cost_usd: number;
+  }>;
+}
+
+export interface UsageStatsResponse {
+  stats: UsageStats;
+  date_range: {
+    start_date: string;
+    end_date: string;
+  };
+}
+
+export interface SearchHistoryListResponse {
+  history: SearchHistory[];
+  total: number;
+}
+
+export interface Setting {
+  key: string;
+  value: string;
+  description: string | null;
+  updated_at: string;
+}
+
+export interface ApolloSearchRequest {
+  search_type: "people" | "companies";
+  filters: {
+    person_titles?: string[];
+    person_locations?: string[];
+    person_seniorities?: string[];
+    organization_locations?: string[];
+    organization_keywords?: string[];
+    organization_sizes?: string[];
+    technologies?: string[];
+    keywords?: string;
+  };
+  per_page?: number;
+  client_tag?: string;
+  claude_tokens?: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  };
+}
+
+export interface ApolloImportRequest {
+  results: Array<Record<string, unknown>>;
+  target: "people" | "companies";
+  client_tag?: string;
 }

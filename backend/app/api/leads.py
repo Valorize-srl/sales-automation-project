@@ -24,12 +24,15 @@ router = APIRouter()
 @router.get("", response_model=LeadListResponse)
 async def list_leads(
     icp_id: Optional[int] = Query(None),
+    client_tag: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all leads, optionally filtered by ICP."""
+    """List all leads, optionally filtered by ICP and client tag."""
     query = select(Lead).order_by(Lead.created_at.desc())
     if icp_id is not None:
         query = query.where(Lead.icp_id == icp_id)
+    if client_tag is not None:
+        query = query.where(Lead.client_tag == client_tag)
     result = await db.execute(query)
     leads = result.scalars().all()
     return LeadListResponse(leads=leads, total=len(leads))

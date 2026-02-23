@@ -47,6 +47,7 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick }: 
             <TableHead>Industry</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Signals</TableHead>
+            <TableHead>Client/Project</TableHead>
             <TableHead className="text-center">People</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
@@ -84,6 +85,7 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick }: 
                   <span className="text-muted-foreground text-sm">—</span>
                 )}
               </TableCell>
+              <TableCell className="text-sm">{company.client_tag || "—"}</TableCell>
               <TableCell className="text-center">
                 {company.people_count > 0 ? (
                   <button onClick={() => onPeopleClick(company.id)}>

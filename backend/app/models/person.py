@@ -27,6 +27,7 @@ class Person(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

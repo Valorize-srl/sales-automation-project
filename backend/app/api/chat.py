@@ -12,6 +12,7 @@ from app.services.file_parser import extract_text_from_file
 from app.services.apollo import apollo_service, ApolloAPIError
 from app.models.person import Person
 from app.models.company import Company
+from app.models.apollo_search_history import ApolloSearchHistory
 
 router = APIRouter()
 
@@ -73,15 +74,18 @@ class ApolloSearchRequest(BaseModel):
     search_type: str  # "people" | "companies"
     filters: ApolloFilters
     per_page: int = 25
+    client_tag: Optional[str] = None
+    claude_tokens: Optional[dict] = None  # {input_tokens, output_tokens, total_tokens}
 
 
 class ApolloImportRequest(BaseModel):
     results: list[dict]
     target: str  # "people" | "companies"
+    client_tag: Optional[str] = None
 
 
 @router.post("/apollo/search")
-async def apollo_search(request: ApolloSearchRequest):
+async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends(get_db)):
     """Search Apollo and return a preview of results."""
     try:
         if request.search_type == "people":
@@ -110,12 +114,41 @@ async def apollo_search(request: ApolloSearchRequest):
         else:
             raise HTTPException(400, "search_type must be 'people' or 'companies'")
 
+        credits_consumed = raw.get("credits_consumed", 0)
+
+        # Calculate costs
+        apollo_cost_usd = credits_consumed * 0.10  # $0.10 per credit
+        claude_input_tokens = request.claude_tokens.get("input_tokens", 0) if request.claude_tokens else 0
+        claude_output_tokens = request.claude_tokens.get("output_tokens", 0) if request.claude_tokens else 0
+        claude_cost_usd = (claude_input_tokens / 1_000_000 * 3.0) + (claude_output_tokens / 1_000_000 * 15.0)
+        total_cost_usd = apollo_cost_usd + claude_cost_usd
+
+        # Save search history to database
+        search_history = ApolloSearchHistory(
+            search_type=request.search_type,
+            search_query=request.filters.keywords,
+            filters_applied=request.filters.model_dump(),
+            results_count=len(results),
+            apollo_credits_consumed=credits_consumed,
+            claude_input_tokens=claude_input_tokens,
+            claude_output_tokens=claude_output_tokens,
+            cost_apollo_usd=round(apollo_cost_usd, 4),
+            cost_claude_usd=round(claude_cost_usd, 4),
+            cost_total_usd=round(total_cost_usd, 4),
+            client_tag=request.client_tag,
+            icp_id=None,  # Could be extracted from context if needed
+        )
+        db.add(search_history)
+        await db.flush()
+        await db.refresh(search_history)
+
         return {
             "results": results,
             "total": total,
             "search_type": request.search_type,
             "returned": len(results),
-            "credits_consumed": raw.get("credits_consumed", 0),
+            "credits_consumed": credits_consumed,
+            "history_id": search_history.id,
         }
 
     except ApolloAPIError as e:
@@ -182,6 +215,7 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
                     linkedin_url=item.get("linkedin_url"),
                     industry=item.get("industry"),
                     location=item.get("location"),
+                    client_tag=request.client_tag,
                 )
                 db.add(person)
                 if email:
@@ -224,6 +258,7 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
                     location=item.get("location"),
                     signals=item.get("signals"),
                     website=website,
+                    client_tag=request.client_tag,
                 )
                 db.add(company)
                 existing_names.add(name.lower())

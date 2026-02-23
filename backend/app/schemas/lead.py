@@ -12,6 +12,7 @@ class LeadCreate(BaseModel):
     company: Optional[str] = None
     job_title: Optional[str] = None
     industry: Optional[str] = None
+    client_tag: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -32,6 +33,7 @@ class LeadResponse(BaseModel):
     company: Optional[str] = None
     job_title: Optional[str] = None
     industry: Optional[str] = None
+    client_tag: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -61,6 +63,7 @@ class CSVColumnMapping(BaseModel):
     company: Optional[str] = None
     job_title: Optional[str] = None
     industry: Optional[str] = None
+    client_tag: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None

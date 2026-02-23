@@ -122,12 +122,22 @@ class ApiClient {
     search_type: "people" | "companies";
     filters: Record<string, unknown>;
     per_page?: number;
+    client_tag?: string;
+    claude_tokens?: {
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+    };
   }): Promise<import("@/types").ApolloSearchResponse> {
     return this.post("/chat/apollo/search", params);
   }
 
-  async apolloImport(results: Record<string, unknown>[], target: "people" | "companies"): Promise<import("@/types").ApolloImportResponse> {
-    return this.post("/chat/apollo/import", { results, target });
+  async apolloImport(
+    results: Record<string, unknown>[],
+    target: "people" | "companies",
+    client_tag?: string
+  ): Promise<import("@/types").ApolloImportResponse> {
+    return this.post("/chat/apollo/import", { results, target, client_tag });
   }
 
   async uploadFile(file: File): Promise<{ filename: string; text: string; length: number }> {
@@ -179,6 +189,44 @@ class ApiClient {
       throw new Error(error.detail || `Upload error: ${response.status}`);
     }
     return response.json();
+  }
+
+  // === Usage Tracking & Settings ===
+
+  async getUsageStats(
+    startDate?: string,
+    endDate?: string,
+    clientTag?: string
+  ): Promise<import("@/types").UsageStatsResponse> {
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (clientTag) params.append("client_tag", clientTag);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/usage/stats${query}`);
+  }
+
+  async getSearchHistory(
+    startDate?: string,
+    endDate?: string,
+    clientTag?: string,
+    limit?: number
+  ): Promise<import("@/types").SearchHistoryListResponse> {
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (clientTag) params.append("client_tag", clientTag);
+    if (limit) params.append("limit", limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/usage/history${query}`);
+  }
+
+  async getSetting(key: string): Promise<import("@/types").Setting> {
+    return this.get(`/settings/${key}`);
+  }
+
+  async updateSetting(key: string, value: string): Promise<import("@/types").Setting> {
+    return this.put(`/settings/${key}`, { value });
   }
 }
 

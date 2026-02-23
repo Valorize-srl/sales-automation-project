@@ -68,6 +68,7 @@ export interface ApolloFormFilters {
   technologies?: string[];
   keywords?: string;
   per_page: number;
+  client_tag?: string;
 }
 
 interface Props {
@@ -103,6 +104,9 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
   const [keywordsCompanies, setKeywordsCompanies] = useState("");
   const [perPageCompanies, setPerPageCompanies] = useState("25");
 
+  // Shared fields
+  const [clientTag, setClientTag] = useState("");
+
   const handleSubmit = () => {
     if (tab === "people") {
       onSearch({
@@ -114,6 +118,7 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
         organization_sizes: orgSizesPeople.length ? orgSizesPeople : undefined,
         keywords: keywordsPeople.trim() || undefined,
         per_page: Math.min(100, Math.max(1, parseInt(perPagePeople) || 25)),
+        client_tag: clientTag.trim() || undefined,
       });
     } else {
       onSearch({
@@ -124,6 +129,7 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
         technologies: splitTags(technologies),
         keywords: keywordsCompanies.trim() || undefined,
         per_page: Math.min(100, Math.max(1, parseInt(perPageCompanies) || 25)),
+        client_tag: clientTag.trim() || undefined,
       });
     }
   };
@@ -223,6 +229,15 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
               ))}
             </select>
           </div>
+          <div>
+            <Label className="text-xs mb-1 block">Client/Project Tag (Optional)</Label>
+            <Input
+              placeholder="e.g. Cliente X - Dentisti Milano"
+              value={clientTag}
+              onChange={(e) => setClientTag(e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -283,6 +298,15 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label className="text-xs mb-1 block">Client/Project Tag (Optional)</Label>
+            <Input
+              placeholder="e.g. Cliente X - Dentisti Milano"
+              value={clientTag}
+              onChange={(e) => setClientTag(e.target.value)}
+              className="h-8 text-sm"
+            />
           </div>
         </div>
       )}

@@ -26,6 +26,7 @@ export default function ChatPage() {
   const [apolloSearching, setApolloSearching] = useState(false);
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
   const [apolloCreditsUsed, setApolloCreditsUsed] = useState<number | null>(null);
+  const [currentClientTag, setCurrentClientTag] = useState<string | undefined>(undefined);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -40,6 +41,7 @@ export default function ChatPage() {
     search_type: "people" | "companies";
     filters: Record<string, unknown>;
     per_page?: number;
+    client_tag?: string;
     claude_tokens?: {
       input_tokens: number;
       output_tokens: number;
@@ -49,6 +51,7 @@ export default function ChatPage() {
     console.log("🚀 Running Apollo search with params:", params);
     setApolloSearching(true);
     setApolloResults(null);
+    setCurrentClientTag(params.client_tag);
     try {
       const result = await api.apolloSearch(params);
       console.log("✅ Apollo search result:", result);
@@ -118,8 +121,13 @@ export default function ChatPage() {
   const handleFormSearch = useCallback(
     (formFilters: ApolloFormFilters) => {
       setShowSearchForm(false);
-      const { search_type, per_page, ...filters } = formFilters;
-      runApolloSearch({ search_type, filters: filters as Record<string, unknown>, per_page });
+      const { search_type, per_page, client_tag, ...filters } = formFilters;
+      runApolloSearch({
+        search_type,
+        filters: filters as Record<string, unknown>,
+        per_page,
+        client_tag
+      });
     },
     [runApolloSearch]
   );
@@ -283,6 +291,7 @@ export default function ChatPage() {
         {apolloResults && (
           <ApolloPreviewCard
             data={apolloResults}
+            clientTag={currentClientTag}
             onImported={(target, count) => {
               setMessages((prev) => [
                 ...prev,

@@ -46,6 +46,7 @@ export function PeopleTable({ people, loading, onDelete, onCompanyClick }: Peopl
             <TableHead>Phone</TableHead>
             <TableHead>Industry</TableHead>
             <TableHead>Location</TableHead>
+            <TableHead>Client/Project</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
@@ -89,6 +90,7 @@ export function PeopleTable({ people, loading, onDelete, onCompanyClick }: Peopl
               <TableCell className="text-sm">{person.phone || "—"}</TableCell>
               <TableCell className="text-sm">{person.industry || "—"}</TableCell>
               <TableCell className="text-sm">{person.location || "—"}</TableCell>
+              <TableCell className="text-sm">{person.client_tag || "—"}</TableCell>
               <TableCell>
                 <Button
                   variant="ghost"

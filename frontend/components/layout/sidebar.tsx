@@ -8,6 +8,8 @@ import {
   Users,
   Mail,
   MessageSquareReply,
+  BarChart3,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,8 +17,10 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "AI Chat", icon: MessageSquare },
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
   { href: "/responses", label: "Replies", icon: MessageSquareReply },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {

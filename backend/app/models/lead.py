@@ -28,6 +28,7 @@ class Lead(Base):
     company: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     job_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     linkedin_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

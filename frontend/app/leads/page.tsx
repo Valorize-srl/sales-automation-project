@@ -34,6 +34,7 @@ export default function LeadsPage() {
   const [filterCompanyId, setFilterCompanyId] = useState<number | null>(null);
   const [peopleIndustry, setPeopleIndustry] = useState<string>("");
   const [peopleIndustries, setPeopleIndustries] = useState<string[]>([]);
+  const [peopleClientTag, setPeopleClientTag] = useState<string>("");
   const [peopleCSVOpen, setPeopleCSVOpen] = useState(false);
 
   // --- Companies state ---
@@ -42,6 +43,7 @@ export default function LeadsPage() {
   const [companiesSearch, setCompaniesSearch] = useState("");
   const [companiesIndustry, setCompaniesIndustry] = useState<string>("");
   const [companiesIndustries, setCompaniesIndustries] = useState<string[]>([]);
+  const [companiesClientTag, setCompaniesClientTag] = useState<string>("");
   const [companiesCSVOpen, setCompaniesCSVOpen] = useState(false);
 
   // Load data and industries on mount
@@ -62,13 +64,14 @@ export default function LeadsPage() {
     }
   }, []);
 
-  const loadPeople = useCallback(async (search?: string, companyId?: number | null, industry?: string) => {
+  const loadPeople = useCallback(async (search?: string, companyId?: number | null, industry?: string, clientTag?: string) => {
     setPeopleLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (companyId != null) params.set("company_id", String(companyId));
       if (industry) params.set("industry", industry);
+      if (clientTag) params.set("client_tag", clientTag);
       const qs = params.toString();
       const data = await api.get<PersonListResponse>(`/people${qs ? `?${qs}` : ""}`);
       setPeople(data.people);
@@ -81,12 +84,17 @@ export default function LeadsPage() {
 
   const handlePeopleSearch = (value: string) => {
     setPeopleSearch(value);
-    loadPeople(value, filterCompanyId, peopleIndustry);
+    loadPeople(value, filterCompanyId, peopleIndustry, peopleClientTag);
   };
 
   const handlePeopleIndustryChange = (value: string) => {
     setPeopleIndustry(value);
-    loadPeople(peopleSearch, filterCompanyId, value);
+    loadPeople(peopleSearch, filterCompanyId, value, peopleClientTag);
+  };
+
+  const handlePeopleClientTagChange = (value: string) => {
+    setPeopleClientTag(value);
+    loadPeople(peopleSearch, filterCompanyId, peopleIndustry, value);
   };
 
   const handleDeletePerson = async (id: number) => {
@@ -113,12 +121,13 @@ export default function LeadsPage() {
     }
   }, []);
 
-  const loadCompanies = useCallback(async (search?: string, industry?: string) => {
+  const loadCompanies = useCallback(async (search?: string, industry?: string, clientTag?: string) => {
     setCompaniesLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (industry) params.set("industry", industry);
+      if (clientTag) params.set("client_tag", clientTag);
       const qs = params.toString();
       const data = await api.get<CompanyListResponse>(`/companies${qs ? `?${qs}` : ""}`);
       setCompanies(data.companies);
@@ -131,12 +140,17 @@ export default function LeadsPage() {
 
   const handleCompaniesSearch = (value: string) => {
     setCompaniesSearch(value);
-    loadCompanies(value, companiesIndustry);
+    loadCompanies(value, companiesIndustry, companiesClientTag);
   };
 
   const handleCompaniesIndustryChange = (value: string) => {
     setCompaniesIndustry(value);
-    loadCompanies(companiesSearch, value);
+    loadCompanies(companiesSearch, value, companiesClientTag);
+  };
+
+  const handleCompaniesClientTagChange = (value: string) => {
+    setCompaniesClientTag(value);
+    loadCompanies(companiesSearch, companiesIndustry, value);
   };
 
   const handleDeleteCompany = async (id: number) => {
@@ -144,7 +158,7 @@ export default function LeadsPage() {
     try {
       await api.delete(`/companies/${id}`);
       setCompanies((prev) => prev.filter((c) => c.id !== id));
-      loadPeople(peopleSearch, filterCompanyId, peopleIndustry);
+      loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag);
     } catch (err) {
       console.error("Failed to delete company:", err);
     }
@@ -153,7 +167,7 @@ export default function LeadsPage() {
   const handlePeopleClick = (companyId: number) => {
     setFilterCompanyId(companyId);
     setActiveTab("people");
-    loadPeople(peopleSearch, companyId, peopleIndustry);
+    loadPeople(peopleSearch, companyId, peopleIndustry, peopleClientTag);
   };
 
   const tabs: { key: Tab; label: string; count: number }[] = [
@@ -168,8 +182,8 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
           <p className="text-sm text-muted-foreground">
-            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}`}
-            {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}`}
+            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}${peopleClientTag ? ` · tag: ${peopleClientTag}` : ""}`}
+            {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}${companiesClientTag ? ` · tag: ${companiesClientTag}` : ""}`}
           </p>
         </div>
 
@@ -181,7 +195,7 @@ export default function LeadsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => { setFilterCompanyId(null); loadPeople(peopleSearch, null, peopleIndustry); }}
+                  onClick={() => { setFilterCompanyId(null); loadPeople(peopleSearch, null, peopleIndustry, peopleClientTag); }}
                 >
                   Clear company filter
                 </Button>
@@ -190,9 +204,18 @@ export default function LeadsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => { setPeopleIndustry(""); loadPeople(peopleSearch, filterCompanyId, ""); }}
+                  onClick={() => { setPeopleIndustry(""); loadPeople(peopleSearch, filterCompanyId, "", peopleClientTag); }}
                 >
                   <X className="h-3 w-3 mr-1" /> Clear industry
+                </Button>
+              )}
+              {peopleClientTag && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setPeopleClientTag(""); loadPeople(peopleSearch, filterCompanyId, peopleIndustry, ""); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Clear client tag
                 </Button>
               )}
               <Select value={peopleIndustry || undefined} onValueChange={handlePeopleIndustryChange}>
@@ -207,6 +230,15 @@ export default function LeadsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Client tag..."
+                  value={peopleClientTag}
+                  onChange={(e) => handlePeopleClientTagChange(e.target.value)}
+                  className="px-3 py-1.5 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring w-[140px]"
+                />
+              </div>
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -228,9 +260,18 @@ export default function LeadsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => { setCompaniesIndustry(""); loadCompanies(companiesSearch, ""); }}
+                  onClick={() => { setCompaniesIndustry(""); loadCompanies(companiesSearch, "", companiesClientTag); }}
                 >
                   <X className="h-3 w-3 mr-1" /> Clear industry
+                </Button>
+              )}
+              {companiesClientTag && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setCompaniesClientTag(""); loadCompanies(companiesSearch, companiesIndustry, ""); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Clear client tag
                 </Button>
               )}
               <Select value={companiesIndustry || undefined} onValueChange={handleCompaniesIndustryChange}>
@@ -245,6 +286,15 @@ export default function LeadsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Client tag..."
+                  value={companiesClientTag}
+                  onChange={(e) => handleCompaniesClientTagChange(e.target.value)}
+                  className="px-3 py-1.5 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring w-[140px]"
+                />
+              </div>
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -308,13 +358,13 @@ export default function LeadsPage() {
       <PeopleCSVDialog
         open={peopleCSVOpen}
         onOpenChange={setPeopleCSVOpen}
-        onImportComplete={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry)}
+        onImportComplete={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag)}
       />
 
       <CompaniesCSVDialog
         open={companiesCSVOpen}
         onOpenChange={setCompaniesCSVOpen}
-        onImportComplete={() => { loadCompanies(companiesSearch, companiesIndustry); loadPeople(peopleSearch, filterCompanyId, peopleIndustry); }}
+        onImportComplete={() => { loadCompanies(companiesSearch, companiesIndustry, companiesClientTag); loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag); }}
       />
     </div>
   );

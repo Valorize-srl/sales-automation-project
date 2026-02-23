@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api import chat, icps, leads, campaigns, analytics, responses, admin, people, companies
+from app.api import chat, icps, leads, campaigns, analytics, responses, admin, people, companies, usage, settings
 
 api_router = APIRouter()
 
@@ -13,3 +13,5 @@ api_router.include_router(campaigns.router, prefix="/campaigns", tags=["campaign
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(responses.router, prefix="/responses", tags=["responses"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
+api_router.include_router(settings.router, prefix="/settings", tags=["settings"])

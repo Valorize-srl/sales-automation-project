@@ -23,6 +23,7 @@ class Company(Base):
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
