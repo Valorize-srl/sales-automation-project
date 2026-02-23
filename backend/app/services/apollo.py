@@ -178,7 +178,7 @@ class ApolloService:
             payload["q_keywords"] = keywords
 
         # 1. Base search
-        raw = await self._post("/mixed_people/api_search", payload)
+        raw = await self._post("/mixed_people/search", payload)
 
         # LOG: See what raw search returns
         people = raw.get("people", [])
@@ -344,7 +344,7 @@ class ApolloService:
         if keywords:
             payload["q_keywords"] = keywords
 
-        return await self._post("/mixed_companies/api_search", payload)
+        return await self._post("/mixed_companies/search", payload)
 
     def format_org_results(self, raw: dict) -> list[dict]:
         """Normalize Apollo organizations response to our preview format."""
