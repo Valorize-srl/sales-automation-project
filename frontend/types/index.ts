@@ -118,6 +118,11 @@ export interface Company {
   signals: string | null;
   website: string | null;
   client_tag: string | null;
+  // Enrichment fields
+  generic_emails?: string[];
+  enrichment_source?: "apollo" | "web_scrape" | "both";
+  enrichment_date?: string;
+  enrichment_status?: "pending" | "completed" | "failed" | "not_needed";
   created_at: string;
   people_count: number;
 }
@@ -469,4 +474,22 @@ export interface ApolloImportRequest {
   results: Array<Record<string, unknown>>;
   target: "people" | "companies";
   client_tag?: string;
+  auto_enrich?: boolean; // Auto-enrich companies with website scraping
+}
+
+// === Enrichment ===
+
+export interface EnrichmentResult {
+  company_id: number;
+  company_name: string;
+  status: "completed" | "failed" | "skipped";
+  emails_found: string[];
+  error?: string;
+}
+
+export interface CompanyEnrichmentResponse {
+  enriched: number;
+  failed: number;
+  skipped: number;
+  results: EnrichmentResult[];
 }

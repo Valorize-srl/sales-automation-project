@@ -24,6 +24,11 @@ class Company(Base):
     signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Enrichment tracking fields
+    generic_emails: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    enrichment_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    enrichment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    enrichment_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

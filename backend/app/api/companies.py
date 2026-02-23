@@ -19,6 +19,12 @@ from app.schemas.company import (
     CompanyCSVImportRequest,
     CompanyCSVImportResponse,
 )
+from app.schemas.enrichment import (
+    EnrichmentResult,
+    CompanyEnrichmentResponse,
+    EnrichBatchRequest,
+)
+from app.services.enrichment import CompanyEnrichmentService
 from app.services.csv_mapper import csv_mapper_service
 
 logger = logging.getLogger(__name__)
@@ -278,6 +284,74 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
         await _link_people_to_company(db, company)
 
     return CompanyCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
+
+
+@router.post("/{company_id}/enrich", response_model=EnrichmentResult)
+async def enrich_company(
+    company_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manually enrich single company with email data from website.
+
+    Scrapes the company's website to find generic contact emails
+    like info@, contact@, sales@, etc.
+    """
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    enrichment_service = CompanyEnrichmentService(db)
+    try:
+        result = await enrichment_service.enrich_company(company, force=True)
+        await db.commit()
+        return result
+    finally:
+        await enrichment_service.close()
+
+
+@router.post("/enrich-batch", response_model=CompanyEnrichmentResponse)
+async def enrich_companies_batch(
+    request: EnrichBatchRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Enrich multiple companies in batch.
+
+    Scrapes company websites to find generic contact emails.
+    Rate-limited to avoid overwhelming servers.
+    """
+    # Fetch companies
+    result = await db.execute(
+        select(Company).where(Company.id.in_(request.company_ids))
+    )
+    companies = result.scalars().all()
+
+    if not companies:
+        raise HTTPException(status_code=404, detail="No companies found")
+
+    enrichment_service = CompanyEnrichmentService(db)
+    try:
+        results = await enrichment_service.enrich_companies_batch(
+            companies,
+            max_concurrent=3,
+            force=request.force
+        )
+        await db.commit()
+
+        # Calculate summary
+        enriched = sum(1 for r in results if r.status == "completed")
+        failed = sum(1 for r in results if r.status == "failed")
+        skipped = sum(1 for r in results if r.status == "skipped")
+
+        return CompanyEnrichmentResponse(
+            enriched=enriched,
+            failed=failed,
+            skipped=skipped,
+            results=results
+        )
+    finally:
+        await enrichment_service.close()
 
 
 async def _link_people_to_company(db: AsyncSession, company: Company) -> None:

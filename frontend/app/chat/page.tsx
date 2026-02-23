@@ -27,6 +27,7 @@ export default function ChatPage() {
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
   const [apolloCreditsUsed, setApolloCreditsUsed] = useState<number | null>(null);
   const [currentClientTag, setCurrentClientTag] = useState<string | undefined>(undefined);
+  const [currentAutoEnrich, setCurrentAutoEnrich] = useState<boolean>(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -42,6 +43,7 @@ export default function ChatPage() {
     filters: Record<string, unknown>;
     per_page?: number;
     client_tag?: string;
+    auto_enrich?: boolean;
     claude_tokens?: {
       input_tokens: number;
       output_tokens: number;
@@ -52,6 +54,7 @@ export default function ChatPage() {
     setApolloSearching(true);
     setApolloResults(null);
     setCurrentClientTag(params.client_tag);
+    setCurrentAutoEnrich(params.auto_enrich || false);
     try {
       const result = await api.apolloSearch(params);
       console.log("✅ Apollo search result:", result);
@@ -292,6 +295,7 @@ export default function ChatPage() {
           <ApolloPreviewCard
             data={apolloResults}
             clientTag={currentClientTag}
+            autoEnrich={currentAutoEnrich}
             onImported={(target, count) => {
               setMessages((prev) => [
                 ...prev,

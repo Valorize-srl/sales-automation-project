@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const SENIORITY_OPTIONS = [
   { value: "entry", label: "Entry" },
@@ -69,6 +70,7 @@ export interface ApolloFormFilters {
   keywords?: string;
   per_page: number;
   client_tag?: string;
+  auto_enrich?: boolean;  // Auto-enrich companies with website scraping
 }
 
 interface Props {
@@ -106,6 +108,7 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
 
   // Shared fields
   const [clientTag, setClientTag] = useState("");
+  const [autoEnrich, setAutoEnrich] = useState(false);
 
   const handleSubmit = () => {
     if (tab === "people") {
@@ -130,6 +133,7 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
         keywords: keywordsCompanies.trim() || undefined,
         per_page: Math.min(100, Math.max(1, parseInt(perPageCompanies) || 25)),
         client_tag: clientTag.trim() || undefined,
+        auto_enrich: autoEnrich,
       });
     }
   };
@@ -307,6 +311,19 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
               onChange={(e) => setClientTag(e.target.value)}
               className="h-8 text-sm"
             />
+          </div>
+          <div className="flex items-center space-x-2 pt-2">
+            <Checkbox
+              id="auto-enrich"
+              checked={autoEnrich}
+              onCheckedChange={(checked) => setAutoEnrich(checked as boolean)}
+            />
+            <Label
+              htmlFor="auto-enrich"
+              className="text-xs cursor-pointer"
+            >
+              Auto-enrich companies with website emails
+            </Label>
           </div>
         </div>
       )}

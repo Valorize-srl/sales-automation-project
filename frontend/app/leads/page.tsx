@@ -351,6 +351,7 @@ export default function LeadsPage() {
           loading={companiesLoading}
           onDelete={handleDeleteCompany}
           onPeopleClick={handlePeopleClick}
+          onRefresh={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
         />
       )}
 

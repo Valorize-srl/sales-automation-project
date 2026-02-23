@@ -135,9 +135,10 @@ class ApiClient {
   async apolloImport(
     results: Record<string, unknown>[],
     target: "people" | "companies",
-    client_tag?: string
+    client_tag?: string,
+    auto_enrich?: boolean
   ): Promise<import("@/types").ApolloImportResponse> {
-    return this.post("/chat/apollo/import", { results, target, client_tag });
+    return this.post("/chat/apollo/import", { results, target, client_tag, auto_enrich });
   }
 
   async uploadFile(file: File): Promise<{ filename: string; text: string; length: number }> {
@@ -227,6 +228,19 @@ class ApiClient {
 
   async updateSetting(key: string, value: string): Promise<import("@/types").Setting> {
     return this.put(`/settings/${key}`, { value });
+  }
+
+  // === Company Enrichment ===
+
+  async enrichCompany(companyId: number): Promise<import("@/types").EnrichmentResult> {
+    return this.post(`/companies/${companyId}/enrich`);
+  }
+
+  async enrichCompaniesBatch(
+    companyIds: number[],
+    force = false
+  ): Promise<import("@/types").CompanyEnrichmentResponse> {
+    return this.post(`/companies/enrich-batch`, { company_ids: companyIds, force });
   }
 }
 

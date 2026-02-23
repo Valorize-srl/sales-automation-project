@@ -42,10 +42,11 @@ function downloadCSV(data: ApolloSearchResponse) {
 interface Props {
   data: ApolloSearchResponse;
   clientTag?: string;
+  autoEnrich?: boolean;
   onImported?: (target: "people" | "companies", count: number) => void;
 }
 
-export function ApolloPreviewCard({ data, clientTag, onImported }: Props) {
+export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: Props) {
   const [importing, setImporting] = useState<"people" | "companies" | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
 
@@ -61,7 +62,8 @@ export function ApolloPreviewCard({ data, clientTag, onImported }: Props) {
       const res = await api.apolloImport(
         results as unknown as Record<string, unknown>[],
         target,
-        clientTag
+        clientTag,
+        target === "companies" ? autoEnrich : undefined
       );
       const msg = `Imported ${res.imported}${res.duplicates_skipped ? `, ${res.duplicates_skipped} duplicates skipped` : ""}${res.errors ? `, ${res.errors} errors` : ""}`;
       setImportResult(msg);

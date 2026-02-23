@@ -1,7 +1,8 @@
 from typing import Optional
 from datetime import datetime
+import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class CompanyCSVMapping(BaseModel):
@@ -39,8 +40,25 @@ class CompanyResponse(BaseModel):
     location: Optional[str]
     signals: Optional[str]
     website: Optional[str]
+    client_tag: Optional[str] = None
+    # Enrichment fields
+    generic_emails: Optional[list[str]] = None
+    enrichment_source: Optional[str] = None
+    enrichment_date: Optional[datetime] = None
+    enrichment_status: Optional[str] = None
     created_at: datetime
     people_count: int = 0
+
+    @field_validator('generic_emails', mode='before')
+    @classmethod
+    def parse_generic_emails(cls, v):
+        """Parse generic_emails from JSON string to list."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v) if v else []
+            except json.JSONDecodeError:
+                return []
+        return v or []
 
 
 class CompanyListResponse(BaseModel):

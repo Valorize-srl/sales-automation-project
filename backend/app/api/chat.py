@@ -10,6 +10,7 @@ from app.schemas.chat import ChatRequest
 from app.services.icp_parser import icp_parser_service
 from app.services.file_parser import extract_text_from_file
 from app.services.apollo import apollo_service, ApolloAPIError
+from app.services.enrichment import CompanyEnrichmentService
 from app.models.person import Person
 from app.models.company import Company
 from app.models.apollo_search_history import ApolloSearchHistory
@@ -82,6 +83,7 @@ class ApolloImportRequest(BaseModel):
     results: list[dict]
     target: str  # "people" | "companies"
     client_tag: Optional[str] = None
+    auto_enrich: bool = False  # Auto-enrich companies with website scraping
 
 
 @router.post("/apollo/search")
@@ -237,6 +239,7 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
             domain = website.lower().replace("https://", "").replace("http://", "").split("/")[0]
             return domain or None
 
+        companies_to_enrich = []
         for item in request.results:
             try:
                 name = (item.get("name") or "").strip()
@@ -262,9 +265,24 @@ async def apollo_import(request: ApolloImportRequest, db: AsyncSession = Depends
                 )
                 db.add(company)
                 existing_names.add(name.lower())
+                companies_to_enrich.append(company)
                 imported += 1
             except Exception:
                 errors += 1
+
+        # Flush to get IDs
+        await db.flush()
+
+        # Auto-enrich companies if requested
+        if request.auto_enrich and companies_to_enrich:
+            enrichment_service = CompanyEnrichmentService(db)
+            try:
+                await enrichment_service.enrich_companies_batch(
+                    companies_to_enrich,
+                    max_concurrent=3
+                )
+            finally:
+                await enrichment_service.close()
 
     await db.flush()
     return {"imported": imported, "duplicates_skipped": duplicates_skipped, "errors": errors}

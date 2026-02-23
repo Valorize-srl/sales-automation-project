@@ -12,15 +12,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Company } from "@/types";
+import { EmailListDisplay } from "@/components/companies/email-list-display";
+import { EnrichButton } from "@/components/companies/enrich-button";
 
 interface CompaniesTableProps {
   companies: Company[];
   loading: boolean;
   onDelete: (id: number) => void;
   onPeopleClick: (companyId: number) => void;
+  onRefresh?: () => void;
 }
 
-export function CompaniesTable({ companies, loading, onDelete, onPeopleClick }: CompaniesTableProps) {
+export function CompaniesTable({ companies, loading, onDelete, onPeopleClick, onRefresh }: CompaniesTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
   }
@@ -49,6 +52,7 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick }: 
             <TableHead>Signals</TableHead>
             <TableHead>Client/Project</TableHead>
             <TableHead className="text-center">People</TableHead>
+            <TableHead>Actions</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
@@ -56,7 +60,14 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick }: 
           {companies.map((company) => (
             <TableRow key={company.id}>
               <TableCell className="font-medium">{company.name}</TableCell>
-              <TableCell className="text-sm">{company.email || "—"}</TableCell>
+              <TableCell className="text-sm">
+                <EmailListDisplay
+                  primaryEmail={company.email}
+                  genericEmails={company.generic_emails}
+                  enrichmentSource={company.enrichment_source}
+                  enrichmentDate={company.enrichment_date}
+                />
+              </TableCell>
               <TableCell className="text-sm">{company.phone || "—"}</TableCell>
               <TableCell>
                 {company.linkedin_url ? (
@@ -99,6 +110,14 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick }: 
                   </button>
                 ) : (
                   <span className="text-muted-foreground text-sm">—</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {company.website && (
+                  <EnrichButton
+                    companyId={company.id}
+                    onEnrichComplete={onRefresh}
+                  />
                 )}
               </TableCell>
               <TableCell>
