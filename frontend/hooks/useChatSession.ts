@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import apiClient from "@/lib/api";
+import { api } from "@/lib/api";
 import type {
   ChatSession,
   ChatMessageModel,
@@ -33,7 +33,7 @@ interface UseChatSessionReturn {
   context: ChatSessionContext | null;
   sendMessage: (message: string, fileContent?: string) => Promise<void>;
   refreshSession: () => Promise<void>;
-  createNewSession: (request?: CreateSessionRequest) => Promise<void>;
+  createNewSession: (request?: CreateSessionRequest) => Promise<string>;
   error: Error | null;
 }
 
@@ -47,7 +47,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
       setError(null);
       setContext((prev) => prev ? { ...prev, isLoading: true } : null);
 
-      const data = await apiClient.getChatSession(sessionUuid);
+      const data = await api.getChatSession(sessionUuid);
 
       const session = data.session as ChatSession;
       const messages = data.messages as ChatMessageModel[];
@@ -85,7 +85,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
   const createNewSession = useCallback(async (request?: CreateSessionRequest) => {
     try {
       setError(null);
-      const sessionResponse = await apiClient.createChatSession(request || {});
+      const sessionResponse = await api.createChatSession(request || {});
 
       setContext({
         sessionUuid: sessionResponse.session_uuid,
@@ -152,7 +152,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
         // Accumulate assistant response
         let assistantContent = "";
 
-        await apiClient.streamChatSession(
+        await api.streamChatSession(
           context.sessionUuid,
           message,
           fileContent || null,
