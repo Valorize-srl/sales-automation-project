@@ -49,9 +49,11 @@ def _campaign_to_response(campaign: Campaign) -> CampaignResponse:
 @router.get("", response_model=CampaignListResponse)
 async def list_campaigns(
     icp_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None, description="Search campaigns by name"),
+    status: Optional[CampaignStatus] = Query(None, description="Filter by campaign status"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all non-deleted campaigns, optionally filtered by ICP."""
+    """List all non-deleted campaigns with optional filters."""
     query = (
         select(Campaign)
         .options(selectinload(Campaign.icp))
@@ -60,6 +62,10 @@ async def list_campaigns(
     )
     if icp_id is not None:
         query = query.where(Campaign.icp_id == icp_id)
+    if search:
+        query = query.where(Campaign.name.ilike(f"%{search}%"))
+    if status is not None:
+        query = query.where(Campaign.status == status)
     result = await db.execute(query)
     campaigns = result.scalars().all()
     items = [_campaign_to_response(c) for c in campaigns]
@@ -360,6 +366,64 @@ async def sync_campaign_metrics(
     except InstantlyAPIError as e:
         raise HTTPException(
             502, f"Failed to get analytics from Instantly: {e.detail}"
+        )
+
+    return _campaign_to_response(campaign)
+
+
+@router.post("/{campaign_id}/activate", response_model=CampaignResponse)
+async def activate_campaign(
+    campaign_id: int, db: AsyncSession = Depends(get_db)
+):
+    """Activate campaign on Instantly."""
+    result = await db.execute(
+        select(Campaign)
+        .options(selectinload(Campaign.icp))
+        .where(Campaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not linked to Instantly")
+
+    try:
+        await instantly_service.activate_campaign(campaign.instantly_campaign_id)
+        campaign.status = CampaignStatus.ACTIVE
+        await db.flush()
+        await db.refresh(campaign, attribute_names=["icp"])
+    except InstantlyAPIError as e:
+        raise HTTPException(
+            502, f"Failed to activate campaign on Instantly: {e.detail}"
+        )
+
+    return _campaign_to_response(campaign)
+
+
+@router.post("/{campaign_id}/pause", response_model=CampaignResponse)
+async def pause_campaign(
+    campaign_id: int, db: AsyncSession = Depends(get_db)
+):
+    """Pause campaign on Instantly."""
+    result = await db.execute(
+        select(Campaign)
+        .options(selectinload(Campaign.icp))
+        .where(Campaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not linked to Instantly")
+
+    try:
+        await instantly_service.pause_campaign(campaign.instantly_campaign_id)
+        campaign.status = CampaignStatus.PAUSED
+        await db.flush()
+        await db.refresh(campaign, attribute_names=["icp"])
+    except InstantlyAPIError as e:
+        raise HTTPException(
+            502, f"Failed to pause campaign on Instantly: {e.detail}"
         )
 
     return _campaign_to_response(campaign)
