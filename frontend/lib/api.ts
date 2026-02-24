@@ -386,6 +386,18 @@ class ApiClient {
     return this.get(`/ai-agents/${id}/stats`);
   }
 
+  async getAssociatedCampaigns(agentId: number): Promise<{ campaigns: any[]; total: number }> {
+    return this.get(`/ai-agents/${agentId}/campaigns`);
+  }
+
+  async associateCampaigns(agentId: number, campaignIds: number[]): Promise<{ campaigns_associated: number; message: string }> {
+    return this.post(`/ai-agents/${agentId}/campaigns`, { campaign_ids: campaignIds });
+  }
+
+  async disassociateCampaign(agentId: number, campaignId: number): Promise<void> {
+    await this.delete(`/ai-agents/${agentId}/campaigns/${campaignId}`);
+  }
+
   // ============================================================================
   // Lead Lists
   // ============================================================================

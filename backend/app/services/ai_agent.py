@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.ai_agent import AIAgent
+from app.models.ai_agent_campaign import AIAgentCampaign
+from app.models.campaign import Campaign
 from app.models.lead_list import LeadList
 from app.models.person import Person
 from app.models.company import Company
@@ -563,8 +565,13 @@ class AIAgentService:
         )
         lists_created = lists_result.scalar() or 0
 
-        # Count campaigns (TODO: when AIAgentCampaign is populated)
-        campaigns_connected = 0
+        # Count campaigns
+        campaigns_result = await self.db.execute(
+            select(sa_func.count(AIAgentCampaign.id)).where(
+                AIAgentCampaign.ai_agent_id == agent_id
+            )
+        )
+        campaigns_connected = campaigns_result.scalar() or 0
 
         # Count signals (TODO: when SignalTracking is populated)
         signals_detected = 0
@@ -584,6 +591,140 @@ class AIAgentService:
             "campaigns_connected": campaigns_connected,
             "signals_detected": signals_detected,
         }
+
+    # ==============================================================================
+    # Campaign Association for Auto-Reply
+    # ==============================================================================
+
+    async def associate_campaigns(
+        self,
+        agent_id: int,
+        campaign_ids: list[int]
+    ) -> dict:
+        """
+        Associate AI Agent with campaigns for auto-reply functionality.
+
+        Creates AIAgentCampaign records to link the agent with specified campaigns.
+        When email responses arrive for these campaigns, the agent's knowledge base
+        will be used to generate suggested replies.
+
+        Args:
+            agent_id: AI Agent ID
+            campaign_ids: List of campaign IDs to associate
+
+        Returns:
+            dict with: campaigns_associated, message, details
+
+        Raises:
+            ValueError: If agent not found or campaigns not found
+        """
+        # Validate agent exists
+        agent = await self.get_agent(agent_id)
+        if not agent:
+            raise ValueError(f"AI Agent {agent_id} not found")
+
+        # Validate all campaigns exist
+        campaigns_result = await self.db.execute(
+            select(Campaign).where(
+                Campaign.id.in_(campaign_ids),
+                Campaign.deleted_at.is_(None)
+            )
+        )
+        existing_campaigns = list(campaigns_result.scalars().all())
+
+        if len(existing_campaigns) != len(campaign_ids):
+            existing_ids = {c.id for c in existing_campaigns}
+            missing_ids = set(campaign_ids) - existing_ids
+            raise ValueError(f"Campaigns not found: {missing_ids}")
+
+        # Check which campaigns are already associated
+        existing_assoc_result = await self.db.execute(
+            select(AIAgentCampaign).where(
+                AIAgentCampaign.ai_agent_id == agent_id,
+                AIAgentCampaign.campaign_id.in_(campaign_ids)
+            )
+        )
+        existing_associations = {assoc.campaign_id for assoc in existing_assoc_result.scalars().all()}
+
+        # Create new associations
+        new_associations = []
+        for campaign_id in campaign_ids:
+            if campaign_id not in existing_associations:
+                association = AIAgentCampaign(
+                    ai_agent_id=agent_id,
+                    campaign_id=campaign_id,
+                    auto_reply_enabled=True
+                )
+                self.db.add(association)
+                new_associations.append(campaign_id)
+
+        await self.db.commit()
+
+        logger.info(
+            f"🔗 Associated AI Agent {agent_id} ({agent.name}) with {len(new_associations)} new campaigns"
+        )
+
+        return {
+            "campaigns_associated": len(new_associations),
+            "already_associated": len(existing_associations),
+            "total_campaigns": len(campaign_ids),
+            "message": f"Successfully associated {len(new_associations)} campaigns with AI Agent {agent.name}",
+        }
+
+    async def disassociate_campaign(
+        self,
+        agent_id: int,
+        campaign_id: int
+    ) -> bool:
+        """
+        Remove campaign association from AI Agent.
+
+        Deletes the AIAgentCampaign record, disabling auto-reply for this campaign.
+
+        Args:
+            agent_id: AI Agent ID
+            campaign_id: Campaign ID to disassociate
+
+        Returns:
+            True if association was removed, False if it didn't exist
+        """
+        result = await self.db.execute(
+            delete(AIAgentCampaign).where(
+                AIAgentCampaign.ai_agent_id == agent_id,
+                AIAgentCampaign.campaign_id == campaign_id
+            )
+        )
+        await self.db.commit()
+
+        deleted = result.rowcount > 0
+        if deleted:
+            logger.info(f"🔓 Disassociated campaign {campaign_id} from AI Agent {agent_id}")
+
+        return deleted
+
+    async def get_associated_campaigns(
+        self,
+        agent_id: int
+    ) -> list[Campaign]:
+        """
+        Get all campaigns linked to this AI Agent.
+
+        Args:
+            agent_id: AI Agent ID
+
+        Returns:
+            List of Campaign objects associated with the agent
+        """
+        result = await self.db.execute(
+            select(Campaign)
+            .join(AIAgentCampaign, Campaign.id == AIAgentCampaign.campaign_id)
+            .where(
+                AIAgentCampaign.ai_agent_id == agent_id,
+                Campaign.deleted_at.is_(None)
+            )
+            .order_by(Campaign.created_at.desc())
+        )
+        return list(result.scalars().all())
 
 
 # Singleton instance helper

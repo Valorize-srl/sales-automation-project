@@ -268,8 +268,36 @@ async def get_agent_stats(
 
 
 # ==============================================================================
-# Campaign Association (Placeholder for future)
+# Campaign Association for Auto-Reply
 # ==============================================================================
+
+@router.get("/{agent_id}/campaigns")
+async def get_associated_campaigns(
+    agent_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all campaigns associated with this AI Agent."""
+    service = AIAgentService(db)
+
+    campaigns = await service.get_associated_campaigns(agent_id)
+
+    return {
+        "campaigns": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "status": c.status.value,
+                "instantly_campaign_id": c.instantly_campaign_id,
+                "total_sent": c.total_sent,
+                "total_opened": c.total_opened,
+                "total_replied": c.total_replied,
+                "created_at": c.created_at.isoformat(),
+            }
+            for c in campaigns
+        ],
+        "total": len(campaigns),
+    }
+
 
 @router.post("/{agent_id}/campaigns", status_code=201)
 async def associate_campaigns(
@@ -278,9 +306,16 @@ async def associate_campaigns(
     db: AsyncSession = Depends(get_db),
 ):
     """Associate AI Agent with campaigns for auto-reply."""
-    # TODO: Implement campaign association
-    # This will create AIAgentCampaign records
-    raise HTTPException(status_code=501, detail="Campaign association not yet implemented")
+    service = AIAgentService(db)
+
+    try:
+        result = await service.associate_campaigns(
+            agent_id=agent_id,
+            campaign_ids=association.campaign_ids
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/{agent_id}/campaigns/{campaign_id}", status_code=204)
@@ -290,5 +325,15 @@ async def disassociate_campaign(
     db: AsyncSession = Depends(get_db),
 ):
     """Disconnect campaign from AI Agent."""
-    # TODO: Implement campaign disassociation
-    raise HTTPException(status_code=501, detail="Campaign disassociation not yet implemented")
+    service = AIAgentService(db)
+
+    deleted = await service.disassociate_campaign(
+        agent_id=agent_id,
+        campaign_id=campaign_id
+    )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No association found between AI Agent {agent_id} and Campaign {campaign_id}"
+        )
