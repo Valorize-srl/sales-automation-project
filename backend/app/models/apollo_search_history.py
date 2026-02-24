@@ -30,6 +30,9 @@ class ApolloSearchHistory(Base):
     icp_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("icps.id", ondelete="SET NULL"), nullable=True
     )  # Associated ICP if any
+    session_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True
+    )  # Associated chat session if any
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -38,3 +41,4 @@ class ApolloSearchHistory(Base):
 
     # Relationships
     icp: Mapped[Optional["ICP"]] = relationship(back_populates="apollo_searches")
+    chat_session: Mapped[Optional["ChatSession"]] = relationship(back_populates="apollo_searches")

@@ -493,3 +493,148 @@ export interface CompanyEnrichmentResponse {
   skipped: number;
   results: EnrichmentResult[];
 }
+
+// === Session-based Chat ===
+
+export type SessionStatus = "active" | "archived" | "completed";
+
+export interface ChatSession {
+  id: number;
+  session_uuid: string;
+  title: string | null;
+  icp_id: number | null;
+  current_icp_draft: Record<string, unknown> | null;
+  session_metadata: Record<string, unknown> | null;
+  total_claude_input_tokens: number;
+  total_claude_output_tokens: number;
+  total_apollo_credits: number;
+  total_cost_usd: number;
+  client_tag: string | null;
+  status: SessionStatus;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+}
+
+export interface ChatMessageModel {
+  id: number;
+  session_id: number;
+  role: "user" | "assistant" | "tool_result";
+  content: string;
+  tool_calls: unknown[] | null;
+  tool_results: unknown[] | null;
+  input_tokens: number;
+  output_tokens: number;
+  message_metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ToolExecution {
+  id: number;
+  session_id: number;
+  message_id: number | null;
+  tool_name: string;
+  tool_call_id: string;
+  tool_input: Record<string, unknown>;
+  tool_output: Record<string, unknown>;
+  status: "success" | "error" | "partial";
+  error_message: string | null;
+  execution_time_ms: number | null;
+  credits_consumed: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+export interface SessionSummary {
+  session_id: number;
+  session_uuid: string;
+  message_count: number;
+  tool_stats: Record<string, number>;
+  total_claude_input_tokens: number;
+  total_claude_output_tokens: number;
+  total_apollo_credits: number;
+  total_cost_usd: number;
+  status: SessionStatus;
+  created_at: string;
+  last_message_at: string | null;
+}
+
+export interface SessionWithMessages {
+  session: ChatSession;
+  messages: ChatMessageModel[];
+  summary: SessionSummary;
+}
+
+export interface SessionListItem {
+  session_uuid: string;
+  title: string | null;
+  status: SessionStatus;
+  client_tag: string | null;
+  created_at: string;
+  last_message_at: string | null;
+  total_cost_usd: number;
+  message_count: number;
+}
+
+export interface SessionListResponse {
+  sessions: SessionListItem[];
+  limit: number;
+  offset: number;
+}
+
+export interface CreateSessionRequest {
+  client_tag?: string;
+  title?: string;
+}
+
+export interface ChatStreamRequest {
+  message: string;
+  file_content?: string;
+}
+
+export interface SessionResponse {
+  session_uuid: string;
+  title: string | null;
+  status: SessionStatus;
+  client_tag: string | null;
+  created_at: string;
+  last_message_at: string | null;
+  total_cost_usd: number;
+  total_claude_input_tokens: number;
+  total_claude_output_tokens: number;
+  total_apollo_credits: number;
+}
+
+export interface SSETextEvent {
+  type: "text";
+  content: string;
+}
+
+export interface SSEToolStartEvent {
+  type: "tool_start";
+  tool: string;
+  input: Record<string, unknown>;
+}
+
+export interface SSEToolCompleteEvent {
+  type: "tool_complete";
+  tool: string;
+  summary: Record<string, unknown>;
+}
+
+export interface SSEDoneEvent {
+  type: "done";
+}
+
+export interface SSEErrorEvent {
+  type: "error";
+  error: string;
+  message: string;
+}
+
+export type SSEEvent =
+  | SSETextEvent
+  | SSEToolStartEvent
+  | SSEToolCompleteEvent
+  | SSEDoneEvent
+  | SSEErrorEvent;

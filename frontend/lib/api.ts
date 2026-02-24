@@ -242,6 +242,100 @@ class ApiClient {
   ): Promise<import("@/types").CompanyEnrichmentResponse> {
     return this.post(`/companies/enrich-batch`, { company_ids: companyIds, force });
   }
+
+  // === Session-based Conversational Chat ===
+
+  async createChatSession(
+    request: import("@/types").CreateSessionRequest
+  ): Promise<import("@/types").SessionResponse> {
+    return this.post(`/chat/sessions`, request);
+  }
+
+  async getChatSession(sessionUuid: string): Promise<import("@/types").SessionWithMessages> {
+    return this.get(`/chat/sessions/${sessionUuid}`);
+  }
+
+  async listChatSessions(
+    clientTag?: string,
+    status?: string,
+    limit = 50,
+    offset = 0
+  ): Promise<import("@/types").SessionListResponse> {
+    const params = new URLSearchParams();
+    if (clientTag) params.append("client_tag", clientTag);
+    if (status) params.append("status", status);
+    params.append("limit", limit.toString());
+    params.append("offset", offset.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/chat/sessions${query}`);
+  }
+
+  async archiveChatSession(sessionUuid: string): Promise<{ status: string; session_uuid: string }> {
+    return this.delete(`/chat/sessions/${sessionUuid}`);
+  }
+
+  async streamChatSession(
+    sessionUuid: string,
+    message: string,
+    fileContent: string | null,
+    onText: (text: string) => void,
+    onToolStart: (tool: string, input: Record<string, unknown>) => void,
+    onToolComplete: (tool: string, summary: Record<string, unknown>) => void,
+    onDone: () => void,
+    onError: (error: Error) => void
+  ): Promise<void> {
+    const url = `${this.baseUrl}/api/chat/sessions/${sessionUuid}/stream`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, file_content: fileContent }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Chat error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith("data: ")) continue;
+
+          try {
+            const data = JSON.parse(line.substring(6));
+
+            if (data.type === "text") {
+              onText(data.content);
+            } else if (data.type === "tool_start") {
+              onToolStart(data.tool, data.input);
+            } else if (data.type === "tool_complete") {
+              onToolComplete(data.tool, data.summary);
+            } else if (data.type === "done") {
+              onDone();
+            } else if (data.type === "error") {
+              onError(new Error(data.message || data.error));
+            }
+          } catch (err) {
+            console.error("Failed to parse SSE event:", line, err);
+          }
+        }
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

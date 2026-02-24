@@ -44,3 +44,7 @@ class ICP(Base):
     leads: Mapped[list["Lead"]] = relationship(back_populates="icp", cascade="all, delete-orphan")
     campaigns: Mapped[list["Campaign"]] = relationship(back_populates="icp")
     apollo_searches: Mapped[list["ApolloSearchHistory"]] = relationship(back_populates="icp")
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="icp",
+        foreign_keys="[ChatSession.icp_id]"
+    )

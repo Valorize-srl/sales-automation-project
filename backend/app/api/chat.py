@@ -6,11 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
 from app.db.database import get_db
-from app.schemas.chat import ChatRequest
+from app.schemas.chat import ChatRequest, CreateSessionRequest, ChatStreamRequest, SessionResponse
 from app.services.icp_parser import icp_parser_service
 from app.services.file_parser import extract_text_from_file
 from app.services.apollo import apollo_service, ApolloAPIError
 from app.services.enrichment import CompanyEnrichmentService
+from app.services.conversational_chat import ConversationalChatService
 from app.models.person import Person
 from app.models.company import Company
 from app.models.apollo_search_history import ApolloSearchHistory
@@ -20,7 +21,7 @@ router = APIRouter()
 
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
-    """SSE streaming endpoint for chat with Claude."""
+    """SSE streaming endpoint for chat with Claude (legacy - stateless)."""
     return StreamingResponse(
         icp_parser_service.stream_chat(request.messages, request.file_content),
         media_type="text/event-stream",
@@ -30,6 +31,153 @@ async def chat_stream(request: ChatRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Session-based conversational chat endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/sessions", response_model=SessionResponse)
+async def create_chat_session(
+    request: CreateSessionRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new chat session."""
+    service = ConversationalChatService(db)
+    session = await service.create_session(
+        client_tag=request.client_tag,
+        title=request.title
+    )
+    await db.commit()
+    return session
+
+
+@router.get("/sessions/{session_uuid}")
+async def get_chat_session(
+    session_uuid: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get session details with messages and summary."""
+    service = ConversationalChatService(db)
+    session = await service.get_session(session_uuid)
+
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    summary = await service.get_session_summary(session_uuid)
+
+    return {
+        "session": {
+            "session_uuid": session.session_uuid,
+            "title": session.title,
+            "status": session.status,
+            "client_tag": session.client_tag,
+            "created_at": session.created_at,
+            "last_message_at": session.last_message_at,
+            "total_cost_usd": session.total_cost_usd,
+            "total_claude_input_tokens": session.total_claude_input_tokens,
+            "total_claude_output_tokens": session.total_claude_output_tokens,
+            "total_apollo_credits": session.total_apollo_credits,
+            "current_icp_draft": session.current_icp_draft,
+            "session_metadata": session.session_metadata,
+        },
+        "messages": [
+            {
+                "id": msg.id,
+                "role": msg.role,
+                "content": msg.content,
+                "tool_calls": msg.tool_calls,
+                "tool_results": msg.tool_results,
+                "created_at": msg.created_at,
+            }
+            for msg in session.messages
+        ],
+        "summary": summary,
+    }
+
+
+@router.post("/sessions/{session_uuid}/stream")
+async def stream_conversational_chat(
+    session_uuid: str,
+    request: ChatStreamRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Main streaming endpoint with multi-turn tool orchestration.
+
+    Handles conversational chat with RAG capabilities:
+    - Remembers session context (ICP draft, last search, enrichment)
+    - Multi-turn tool execution (Claude -> tool -> Claude -> tool)
+    - Streams SSE events: text, tool_start, tool_complete, done
+    """
+    service = ConversationalChatService(db)
+
+    # Check if session exists
+    session = await service.get_session(session_uuid)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    return StreamingResponse(
+        service.stream_chat(
+            session_uuid=session_uuid,
+            user_message=request.message,
+            file_content=request.file_content
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/sessions")
+async def list_chat_sessions(
+    client_tag: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db)
+):
+    """List chat sessions with pagination."""
+    service = ConversationalChatService(db)
+    sessions = await service.list_sessions(
+        client_tag=client_tag,
+        status=status,
+        limit=limit,
+        offset=offset
+    )
+
+    return {
+        "sessions": [
+            {
+                "session_uuid": s.session_uuid,
+                "title": s.title,
+                "status": s.status,
+                "client_tag": s.client_tag,
+                "created_at": s.created_at,
+                "last_message_at": s.last_message_at,
+                "total_cost_usd": s.total_cost_usd,
+                "message_count": len(s.messages) if s.messages else 0,
+            }
+            for s in sessions
+        ],
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.delete("/sessions/{session_uuid}")
+async def archive_chat_session(
+    session_uuid: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Archive a chat session (soft delete)."""
+    service = ConversationalChatService(db)
+    await service.archive_session(session_uuid)
+    await db.commit()
+    return {"status": "archived", "session_uuid": session_uuid}
 
 
 @router.post("/upload")
