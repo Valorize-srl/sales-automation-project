@@ -416,7 +416,7 @@ class ApiClient {
   }
 
   async exportLeadList(id: number): Promise<Blob> {
-    const response = await fetch(`${this.baseURL}/lead-lists/${id}/export`);
+    const response = await fetch(`${this.baseUrl}/api/lead-lists/${id}/export`);
     if (!response.ok) throw new Error("Export failed");
     return response.blob();
   }
