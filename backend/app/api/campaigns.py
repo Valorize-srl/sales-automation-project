@@ -167,13 +167,26 @@ async def list_instantly_accounts():
             data = await instantly_service.list_accounts(
                 limit=100, starting_after=starting_after
             )
-            items = data.get("data", data.get("items", []))
+
+            # Try different response structures
+            items = (
+                data.get("accounts") or
+                data.get("data") or
+                data.get("items") or
+                (data if isinstance(data, list) else [])
+            )
+
             if not items:
                 break
+
             all_accounts.extend(items)
-            if len(items) < 100:
+
+            # Check pagination using the pagination object
+            pagination = data.get("pagination", {})
+            starting_after = pagination.get("next_starting_after")
+
+            if not starting_after:
                 break
-            starting_after = items[-1].get("id")
 
         accounts = [
             EmailAccountOut(
@@ -268,13 +281,32 @@ async def sync_campaigns(db: AsyncSession = Depends(get_db)):
             data = await instantly_service.list_campaigns(
                 limit=100, starting_after=starting_after
             )
-            items = data.get("data", data.get("items", []))
+
+            # Log the response structure for debugging
+            logger.info(f"Instantly API response keys: {list(data.keys())}")
+
+            # Try different response structures
+            items = (
+                data.get("campaigns") or
+                data.get("data") or
+                data.get("items") or
+                (data if isinstance(data, list) else [])
+            )
+
             if not items:
+                logger.warning(f"No campaigns found in response. Keys: {list(data.keys())}")
                 break
+
+            logger.info(f"Found {len(items)} campaigns in this batch")
             all_instantly.extend(items)
-            if len(items) < 100:
+
+            # Check pagination using the pagination object (as per Instantly docs)
+            pagination = data.get("pagination", {})
+            starting_after = pagination.get("next_starting_after")
+
+            if not starting_after:
+                logger.info("No more pages (pagination.next_starting_after is null)")
                 break
-            starting_after = items[-1].get("id")
 
         existing_result = await db.execute(
             select(Campaign.instantly_campaign_id).where(
