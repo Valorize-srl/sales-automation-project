@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ResponsesTable } from "@/components/responses/responses-table";
 import { ResponseDetailDialog } from "@/components/responses/response-detail-dialog";
 import { CampaignMultiSelect } from "@/components/responses/campaign-multi-select";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import {
   Campaign,
@@ -21,6 +22,7 @@ export default function ResponsesPage() {
   const [responses, setResponses] = useState<EmailResponseWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState<string>("");
   const [fetchResult, setFetchResult] = useState<FetchRepliesResponse | null>(
     null
   );
@@ -30,6 +32,7 @@ export default function ResponsesPage() {
   const [filterSentiment, setFilterSentiment] = useState<string>("");
   const [filterDateFrom, setFilterDateFrom] = useState<string>("");
   const [filterDateTo, setFilterDateTo] = useState<string>("");
+  const { toast } = useToast();
 
   useEffect(() => {
     loadCampaigns();
@@ -94,15 +97,36 @@ export default function ResponsesPage() {
   const handleFetchReplies = async () => {
     setFetching(true);
     setFetchResult(null);
+    setFetchProgress("Fetching replies from Instantly...");
+
+    const campaignCount = selectedCampaignIds.length;
+    const campaignNames = campaigns
+      .filter(c => selectedCampaignIds.includes(c.id))
+      .map(c => c.name)
+      .join(", ");
+
     try {
       const result = await api.post<FetchRepliesResponse>("/responses/fetch", {
         campaign_ids: selectedCampaignIds,
       });
+
       setFetchResult(result);
+      setFetchProgress("");
+
+      toast({
+        title: "Replies Fetched Successfully",
+        description: `Fetched ${result.fetched} new ${result.fetched === 1 ? 'reply' : 'replies'} from ${campaignCount} ${campaignCount === 1 ? 'campaign' : 'campaigns'}. ${result.skipped > 0 ? `Skipped ${result.skipped} duplicates.` : ''}`,
+      });
+
       await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch failed:", err);
-      alert("Failed to fetch replies. Check console.");
+      setFetchProgress("");
+      toast({
+        title: "Fetch Failed",
+        description: err.response?.data?.detail || "Failed to fetch replies from Instantly",
+        variant: "destructive",
+      });
     } finally {
       setFetching(false);
     }
@@ -118,22 +142,36 @@ export default function ResponsesPage() {
       if (selectedResponse?.id === id) {
         setSelectedResponse(updated);
       }
-    } catch (err) {
+      toast({
+        title: "Reply Approved",
+        description: "AI-generated reply has been approved and is ready to send",
+      });
+    } catch (err: any) {
       console.error("Failed to approve:", err);
-      alert("Failed to approve reply.");
+      toast({
+        title: "Approval Failed",
+        description: err.response?.data?.detail || "Failed to approve reply",
+        variant: "destructive",
+      });
     }
   };
 
   const handleSend = async (id: number) => {
     try {
       await api.post(`/responses/${id}/send`, {});
+      toast({
+        title: "Reply Sent",
+        description: "Your reply has been sent successfully via Instantly",
+      });
       loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
       setDetailOpen(false);
-      alert("Reply sent successfully!");
     } catch (err: any) {
       console.error("Failed to send:", err);
-      const errorMessage = err.response?.data?.detail || err.message || "Unknown error occurred";
-      alert(`Failed to send reply: ${errorMessage}`);
+      toast({
+        title: "Send Failed",
+        description: err.response?.data?.detail || err.message || "Failed to send reply",
+        variant: "destructive",
+      });
     }
   };
 
@@ -204,11 +242,22 @@ export default function ResponsesPage() {
         </div>
       </div>
 
-      {fetchResult && (
-        <div className="mb-4 p-3 rounded-lg bg-muted text-sm">
-          Fetched {fetchResult.fetched} new replies, skipped{" "}
-          {fetchResult.skipped} duplicates
-          {fetchResult.errors > 0 && `, ${fetchResult.errors} errors`}.
+      {fetching && fetchProgress && (
+        <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+          <span className="text-blue-900">{fetchProgress}</span>
+        </div>
+      )}
+
+      {fetchResult && !fetching && (
+        <div className={`mb-4 p-3 rounded-lg text-sm ${
+          fetchResult.errors > 0
+            ? "bg-yellow-50 border border-yellow-200 text-yellow-900"
+            : "bg-green-50 border border-green-200 text-green-900"
+        }`}>
+          <strong>Fetch Complete:</strong> {fetchResult.fetched} new {fetchResult.fetched === 1 ? 'reply' : 'replies'} imported
+          {fetchResult.skipped > 0 && `, ${fetchResult.skipped} ${fetchResult.skipped === 1 ? 'duplicate' : 'duplicates'} skipped`}
+          {fetchResult.errors > 0 && ` ⚠️ ${fetchResult.errors} ${fetchResult.errors === 1 ? 'error' : 'errors'} occurred`}.
         </div>
       )}
 
