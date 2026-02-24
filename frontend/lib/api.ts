@@ -382,7 +382,7 @@ class ApiClient {
     });
   }
 
-  async executeApolloSearch(id: number, params: import("@/types").ApolloSearchRequest): Promise<import("@/types").ApolloSearchResult> {
+  async executeApolloSearch(id: number, params: import("@/types").AIAgentApolloSearchRequest): Promise<import("@/types").ApolloSearchResult> {
     return this.fetch(`/ai-agents/${id}/search-apollo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

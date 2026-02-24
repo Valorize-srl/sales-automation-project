@@ -717,7 +717,7 @@ export interface LeadListCreate {
   filters_snapshot?: Record<string, any>;
 }
 
-export interface ApolloSearchRequest {
+export interface AIAgentApolloSearchRequest {
   per_page?: number;
   auto_create_list?: boolean;
   list_name?: string;
