@@ -626,20 +626,25 @@ async def instantly_webhook(request: Request, db: AsyncSession = Depends(get_db)
 
     elif event_type == "reply_received":
         campaign.total_replied = (campaign.total_replied or 0) + 1
-        lead_email = event_data.get("lead_email", event_data.get("email"))
-        if lead_email:
-            lead_result = await db.execute(
-                select(Lead).where(Lead.email == lead_email.lower())
-            )
-            lead = lead_result.scalar_one_or_none()
-            if lead:
-                db.add(EmailResponse(
-                    campaign_id=campaign.id,
-                    lead_id=lead.id,
-                    message_body=event_data.get("text", event_data.get("body", "")),
-                    direction=MessageDirection.INBOUND,
-                    status=ResponseStatus.PENDING,
-                ))
+        # NOTE: Webhook handler for reply_received is disabled because Instantly webhooks
+        # don't provide critical fields (instantly_email_id, sender_email, thread_id) needed
+        # to reply to emails. Use POST /responses/fetch instead which has complete data.
+        # Keeping total_replied counter update for metrics.
+        #
+        # lead_email = event_data.get("lead_email", event_data.get("email"))
+        # if lead_email:
+        #     lead_result = await db.execute(
+        #         select(Lead).where(Lead.email == lead_email.lower())
+        #     )
+        #     lead = lead_result.scalar_one_or_none()
+        #     if lead:
+        #         db.add(EmailResponse(
+        #             campaign_id=campaign.id,
+        #             lead_id=lead.id,
+        #             message_body=event_data.get("text", event_data.get("body", "")),
+        #             direction=MessageDirection.INBOUND,
+        #             status=ResponseStatus.PENDING,
+        #         ))
 
     await db.flush()
     return {"status": "ok"}

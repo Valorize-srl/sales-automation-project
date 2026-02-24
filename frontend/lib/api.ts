@@ -466,6 +466,27 @@ class ApiClient {
   }
 
   // ============================================================================
+  // Campaigns
+  // ============================================================================
+
+  async getCampaigns(params?: { icp_id?: number; search?: string; status?: string }): Promise<{ campaigns: any[]; total: number }> {
+    const query = new URLSearchParams();
+    if (params?.icp_id) query.set("icp_id", String(params.icp_id));
+    if (params?.search) query.set("search", params.search);
+    if (params?.status) query.set("status", params.status);
+    const queryString = query.toString();
+    return this.get(`/campaigns${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async activateCampaign(campaignId: number): Promise<any> {
+    return this.post(`/campaigns/${campaignId}/activate`, undefined);
+  }
+
+  async pauseCampaign(campaignId: number): Promise<any> {
+    return this.post(`/campaigns/${campaignId}/pause`, undefined);
+  }
+
+  // ============================================================================
   // AI Replies
   // ============================================================================
 
