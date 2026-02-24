@@ -3,14 +3,21 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search, TrendingUp, Users, CreditCard, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, Search, TrendingUp, Users, CreditCard, FileText, Trash2, Link2, Unlink, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import type { AIAgent, AIAgentStats } from "@/types";
+import type { AIAgent, AIAgentStats, Campaign } from "@/types";
 
 export default function AIAgentDashboardPage() {
   const params = useParams();
@@ -22,10 +29,15 @@ export default function AIAgentDashboardPage() {
   const [stats, setStats] = useState<AIAgentStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
+  const [associatedCampaigns, setAssociatedCampaigns] = useState<any[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
 
   useEffect(() => {
     loadAgent();
     loadStats();
+    loadCampaigns();
+    loadAssociatedCampaigns();
   }, [agentId]);
 
   const loadAgent = async () => {
@@ -45,6 +57,24 @@ export default function AIAgentDashboardPage() {
       setStats(data);
     } catch (error) {
       console.error("Failed to load stats:", error);
+    }
+  };
+
+  const loadCampaigns = async () => {
+    try {
+      const data = await api.getCampaigns();
+      setAllCampaigns(data.campaigns);
+    } catch (error) {
+      console.error("Failed to load campaigns:", error);
+    }
+  };
+
+  const loadAssociatedCampaigns = async () => {
+    try {
+      const data = await api.getAssociatedCampaigns(agentId);
+      setAssociatedCampaigns(data.campaigns);
+    } catch (error) {
+      console.error("Failed to load associated campaigns:", error);
     }
   };
 
@@ -91,6 +121,49 @@ export default function AIAgentDashboardPage() {
       toast({
         title: "Error",
         description: "Failed to delete agent",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAssociateCampaign = async () => {
+    if (!selectedCampaignId) return;
+
+    try {
+      const result = await api.associateCampaigns(agentId, [parseInt(selectedCampaignId)]);
+      toast({
+        title: "Campaign Connected",
+        description: result.message || "Campaign successfully connected for auto-reply",
+      });
+      setSelectedCampaignId("");
+      await loadAssociatedCampaigns();
+      await loadStats();
+    } catch (error: any) {
+      console.error("Association error:", error);
+      toast({
+        title: "Connection Failed",
+        description: error.response?.data?.detail || "Failed to connect campaign",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDisassociateCampaign = async (campaignId: number, campaignName: string) => {
+    if (!confirm(`Disconnect "${campaignName}" from this AI Agent?`)) return;
+
+    try {
+      await api.disassociateCampaign(agentId, campaignId);
+      toast({
+        title: "Campaign Disconnected",
+        description: `"${campaignName}" is no longer using this AI Agent for auto-reply`,
+      });
+      await loadAssociatedCampaigns();
+      await loadStats();
+    } catch (error: any) {
+      console.error("Disassociation error:", error);
+      toast({
+        title: "Disconnection Failed",
+        description: error.response?.data?.detail || "Failed to disconnect campaign",
         variant: "destructive",
       });
     }
@@ -249,6 +322,80 @@ export default function AIAgentDashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Connected Campaigns */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Connected Campaigns</CardTitle>
+          <CardDescription>
+            Campaigns using this AI Agent for auto-reply functionality
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Add Campaign */}
+          <div className="flex gap-2 mb-4">
+            <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Select campaign to connect..." />
+              </SelectTrigger>
+              <SelectContent>
+                {allCampaigns
+                  .filter((c) => !associatedCampaigns.some((ac) => ac.id === c.id))
+                  .map((campaign) => (
+                    <SelectItem key={campaign.id} value={String(campaign.id)}>
+                      {campaign.name} ({campaign.status})
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={handleAssociateCampaign}
+              disabled={!selectedCampaignId}
+              className="gap-1"
+            >
+              <Link2 className="h-4 w-4" />
+              Connect
+            </Button>
+          </div>
+
+          {/* Associated Campaigns List */}
+          {associatedCampaigns.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No campaigns connected yet. Connect a campaign to enable AI auto-reply.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {associatedCampaigns.map((campaign) => (
+                <div
+                  key={campaign.id}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{campaign.name}</p>
+                      <Badge variant="outline" className="text-xs">
+                        {campaign.status}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Sent: {campaign.total_sent} · Opened: {campaign.total_opened} · Replied: {campaign.total_replied}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDisassociateCampaign(campaign.id, campaign.name)}
+                    className="gap-1"
+                  >
+                    <Unlink className="h-3 w-3" />
+                    Disconnect
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
