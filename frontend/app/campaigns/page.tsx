@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Loader2, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -17,6 +18,7 @@ import { GenerateTemplatesDialog } from "@/components/campaigns/generate-templat
 import { UploadLeadsDialog } from "@/components/campaigns/upload-leads-dialog";
 import { DeleteConfirmDialog } from "@/components/campaigns/delete-confirm-dialog";
 import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import {
   Campaign,
   ICP,
@@ -33,7 +35,9 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [filterIcpId, setFilterIcpId] = useState<string>(ALL_ICPS);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<number[]>([]);
+  const { toast } = useToast();
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
@@ -51,7 +55,7 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     loadCampaigns();
-  }, [filterIcpId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filterIcpId, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadIcps = async () => {
     try {
@@ -65,11 +69,14 @@ export default function CampaignsPage() {
   const loadCampaigns = async () => {
     setLoading(true);
     try {
-      const endpoint =
-        filterIcpId !== ALL_ICPS
-          ? `/campaigns?icp_id=${filterIcpId}`
-          : "/campaigns";
-      const data = await api.get<CampaignListResponse>(endpoint);
+      const params: any = {};
+      if (filterIcpId !== ALL_ICPS) {
+        params.icp_id = parseInt(filterIcpId);
+      }
+      if (searchQuery) {
+        params.search = searchQuery;
+      }
+      const data = await api.getCampaigns(params);
       setCampaigns(data.campaigns);
     } catch (err) {
       console.error("Failed to load campaigns:", err);
@@ -156,6 +163,48 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleActivate = async (id: number) => {
+    try {
+      const updated = await api.activateCampaign(id);
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      if (selectedCampaign?.id === id) {
+        setSelectedCampaign(updated);
+      }
+      toast({
+        title: "Campaign Activated",
+        description: `Campaign "${updated.name}" is now active on Instantly`,
+      });
+    } catch (err: any) {
+      console.error("Failed to activate campaign:", err);
+      toast({
+        title: "Activation Failed",
+        description: err.response?.data?.detail || "Failed to activate campaign",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handlePause = async (id: number) => {
+    try {
+      const updated = await api.pauseCampaign(id);
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      if (selectedCampaign?.id === id) {
+        setSelectedCampaign(updated);
+      }
+      toast({
+        title: "Campaign Paused",
+        description: `Campaign "${updated.name}" has been paused`,
+      });
+    } catch (err: any) {
+      console.error("Failed to pause campaign:", err);
+      toast({
+        title: "Pause Failed",
+        description: err.response?.data?.detail || "Failed to pause campaign",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleToggleSelect = (id: number) => {
     setSelectedCampaignIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -195,9 +244,19 @@ export default function CampaignsPage() {
           <p className="text-sm text-muted-foreground">
             {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
             {filterIcpId !== ALL_ICPS && " (filtered)"}
+            {searchQuery && " (search results)"}
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="relative w-[200px]">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search campaigns..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8"
+            />
+          </div>
           <Select value={filterIcpId} onValueChange={setFilterIcpId}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by ICP" />
@@ -251,6 +310,8 @@ export default function CampaignsPage() {
         onToggleSelectAll={handleToggleSelectAll}
         onSyncMetrics={handleSyncMetrics}
         onViewDetails={handleViewDetails}
+        onActivate={handleActivate}
+        onPause={handlePause}
         loading={loading}
       />
 

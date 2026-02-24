@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Eye } from "lucide-react";
+import { RefreshCw, Eye, Play, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,6 +21,8 @@ interface CampaignTableProps {
   onToggleSelectAll: () => void;
   onSyncMetrics: (id: number) => void;
   onViewDetails: (campaign: Campaign) => void;
+  onActivate: (id: number) => void;
+  onPause: (id: number) => void;
   loading: boolean;
 }
 
@@ -43,6 +45,8 @@ export function CampaignTable({
   onToggleSelectAll,
   onSyncMetrics,
   onViewDetails,
+  onActivate,
+  onPause,
   loading,
 }: CampaignTableProps) {
   const allSelected =
@@ -136,18 +140,47 @@ export function CampaignTable({
               <TableCell>
                 <div className="flex gap-1">
                   {campaign.instantly_campaign_id && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      title="Sync metrics"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSyncMetrics(campaign.id);
-                      }}
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                    </Button>
+                    <>
+                      {campaign.status === "active" ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Pause campaign"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPause(campaign.id);
+                          }}
+                        >
+                          <Pause className="h-3 w-3" />
+                        </Button>
+                      ) : (campaign.status === "draft" || campaign.status === "paused") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Activate campaign"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onActivate(campaign.id);
+                          }}
+                        >
+                          <Play className="h-3 w-3" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Sync metrics"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSyncMetrics(campaign.id);
+                        }}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                      </Button>
+                    </>
                   )}
                   <Button
                     variant="ghost"
