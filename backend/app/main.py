@@ -29,6 +29,7 @@ app.add_middleware(
         "http://localhost:3000",
         "https://www.miriade.ai",
         "https://miriade.ai",
+        "https://sales-automation-project.up.railway.app",
         "https://sales-automation-project-production.up.railway.app",
     ],
     allow_credentials=True,
