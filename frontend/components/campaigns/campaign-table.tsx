@@ -83,6 +83,7 @@ export function CampaignTable({
             </TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Auto-Reply</TableHead>
             <TableHead>ICP</TableHead>
             <TableHead className="text-right">Sent</TableHead>
             <TableHead className="text-right">Opened</TableHead>
@@ -114,6 +115,24 @@ export function CampaignTable({
                 >
                   {campaign.status}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                {campaign.ai_agent_name ? (
+                  <Badge
+                    variant="outline"
+                    className="bg-blue-50 text-blue-700 border-blue-300"
+                    title={`AI Agent: ${campaign.ai_agent_name}`}
+                  >
+                    AI Enabled
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="bg-gray-50 text-gray-600 border-gray-300"
+                  >
+                    Manual
+                  </Badge>
+                )}
               </TableCell>
               <TableCell>
                 {campaign.icp_name || (

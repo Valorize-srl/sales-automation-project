@@ -62,6 +62,8 @@ export interface Campaign {
   total_opened: number;
   total_replied: number;
   created_at: string;
+  ai_agent_id: number | null;
+  ai_agent_name: string | null;
 }
 
 export interface EmailResponse {

@@ -15,6 +15,8 @@ from app.models.analytics import Analytics
 from app.models.email_response import EmailResponse, MessageDirection, ResponseStatus
 from app.models.icp import ICP
 from app.models.lead import Lead
+from app.models.ai_agent_campaign import AIAgentCampaign
+from app.models.ai_agent import AIAgent
 from app.services.instantly import instantly_service, InstantlyAPIError
 from app.schemas.campaign import (
     CampaignCreate,
@@ -37,9 +39,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _campaign_to_response(campaign: Campaign) -> CampaignResponse:
+async def _campaign_to_response(campaign: Campaign, db: AsyncSession) -> CampaignResponse:
     resp = CampaignResponse.model_validate(campaign)
     resp.icp_name = campaign.icp.name if campaign.icp else None
+
+    # Load AI agent info if campaign has one associated
+    agent_assoc_result = await db.execute(
+        select(AIAgentCampaign, AIAgent)
+        .join(AIAgent, AIAgentCampaign.ai_agent_id == AIAgent.id)
+        .where(AIAgentCampaign.campaign_id == campaign.id)
+        .limit(1)
+    )
+    agent_assoc = agent_assoc_result.first()
+    if agent_assoc:
+        _, agent = agent_assoc
+        resp.ai_agent_id = agent.id
+        resp.ai_agent_name = agent.name
+
     return resp
 
 
@@ -68,7 +84,9 @@ async def list_campaigns(
         query = query.where(Campaign.status == status)
     result = await db.execute(query)
     campaigns = result.scalars().all()
-    items = [_campaign_to_response(c) for c in campaigns]
+    items = []
+    for c in campaigns:
+        items.append(await _campaign_to_response(c, db))
     return CampaignListResponse(campaigns=items, total=len(items))
 
 
@@ -135,7 +153,7 @@ async def create_campaign(
     db.add(campaign)
     await db.flush()
     await db.refresh(campaign, attribute_names=["icp"])
-    return _campaign_to_response(campaign)
+    return await _campaign_to_response(campaign, db)
 
 
 # NOTE: /instantly/accounts MUST be registered before /{campaign_id}
@@ -182,7 +200,7 @@ async def get_campaign(campaign_id: int, db: AsyncSession = Depends(get_db)):
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(404, "Campaign not found")
-    return _campaign_to_response(campaign)
+    return await _campaign_to_response(campaign, db)
 
 
 @router.put("/{campaign_id}", response_model=CampaignResponse)
@@ -210,7 +228,7 @@ async def update_campaign(
 
     await db.flush()
     await db.refresh(campaign, attribute_names=["icp"])
-    return _campaign_to_response(campaign)
+    return await _campaign_to_response(campaign, db)
 
 
 @router.delete("/{campaign_id}", status_code=204)
@@ -368,7 +386,7 @@ async def sync_campaign_metrics(
             502, f"Failed to get analytics from Instantly: {e.detail}"
         )
 
-    return _campaign_to_response(campaign)
+    return await _campaign_to_response(campaign, db)
 
 
 @router.post("/{campaign_id}/activate", response_model=CampaignResponse)
@@ -397,7 +415,7 @@ async def activate_campaign(
             502, f"Failed to activate campaign on Instantly: {e.detail}"
         )
 
-    return _campaign_to_response(campaign)
+    return await _campaign_to_response(campaign, db)
 
 
 @router.post("/{campaign_id}/pause", response_model=CampaignResponse)
@@ -426,7 +444,7 @@ async def pause_campaign(
             502, f"Failed to pause campaign on Instantly: {e.detail}"
         )
 
-    return _campaign_to_response(campaign)
+    return await _campaign_to_response(campaign, db)
 
 
 # --- Lead Upload ---

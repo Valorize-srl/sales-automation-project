@@ -59,6 +59,8 @@ class CampaignResponse(BaseModel):
     total_opened: int
     total_replied: int
     created_at: datetime
+    ai_agent_id: Optional[int] = None
+    ai_agent_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
