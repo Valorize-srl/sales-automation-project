@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileText, SlidersHorizontal, Loader2 } from "lucide-react";
@@ -16,7 +16,7 @@ import { useChatSession } from "@/hooks/useChatSession";
 import { api } from "@/lib/api";
 import { ApolloSearchResponse } from "@/types";
 
-export default function SessionChatPage() {
+function SessionChatPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionUuid = searchParams.get("session_uuid");
@@ -315,5 +315,22 @@ export default function SessionChatPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function SessionChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-[calc(100vh-48px)]">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-muted-foreground">Loading session...</p>
+          </div>
+        </div>
+      }
+    >
+      <SessionChatPageContent />
+    </Suspense>
   );
 }
