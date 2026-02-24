@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+
+// Force dynamic rendering for this page (uses useSearchParams)
+export const dynamic = 'force-dynamic';
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { FileText, SlidersHorizontal, Loader2 } from "lucide-react";
