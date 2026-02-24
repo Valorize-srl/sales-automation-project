@@ -21,7 +21,6 @@ from app.schemas.ai_agent import (
     CampaignAssociation,
 )
 from app.services.ai_agent import AIAgentService
-from app.services.file_parser import PDFParser
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
