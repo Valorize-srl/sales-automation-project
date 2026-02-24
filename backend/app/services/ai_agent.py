@@ -21,7 +21,6 @@ from app.models.person import Person
 from app.models.company import Company
 from app.models.apollo_search_history import ApolloSearchHistory
 from app.services.apollo import ApolloService
-from app.services.file_parser import PDFParser
 
 logger = logging.getLogger(__name__)
 
@@ -184,31 +183,6 @@ class AIAgentService:
 
         logger.info(f"📚 Updated knowledge base for Agent {agent_id} ({source_type})")
         return agent
-
-    async def extract_pdf_knowledge_base(
-        self,
-        agent_id: int,
-        pdf_content: bytes,
-        filename: str,
-    ) -> AIAgent:
-        """Extract text from PDF and update agent knowledge base."""
-        parser = PDFParser()
-        extracted_text = parser.extract_text(pdf_content)
-
-        files_metadata = [
-            {
-                "filename": filename,
-                "upload_date": datetime.utcnow().isoformat(),
-                "size": len(pdf_content),
-            }
-        ]
-
-        return await self.upload_knowledge_base(
-            agent_id=agent_id,
-            source_type="upload",
-            content=extracted_text,
-            files_metadata=files_metadata,
-        )
 
     # ==============================================================================
     # Apollo Search Integration
