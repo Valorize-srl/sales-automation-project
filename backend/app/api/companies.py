@@ -386,3 +386,107 @@ def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
         return None
     val = str(val).strip()
     return val or None
+
+
+# ==============================================================================
+# Bulk Operations
+# ==============================================================================
+
+@router.post("/bulk-tag")
+async def bulk_tag_companies(
+    company_ids: list[int],
+    tags_to_add: Optional[list[str]] = None,
+    tags_to_remove: Optional[list[str]] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk add/remove tags to companies."""
+    result = await db.execute(select(Company).where(Company.id.in_(company_ids)))
+    companies = list(result.scalars().all())
+
+    for company in companies:
+        if not company.tags:
+            company.tags = []
+
+        if tags_to_add:
+            for tag in tags_to_add:
+                if tag not in company.tags:
+                    company.tags.append(tag)
+
+        if tags_to_remove:
+            company.tags = [t for t in company.tags if t not in tags_to_remove]
+
+    await db.commit()
+
+    return {
+        "companies_tagged": len(companies),
+        "message": f"Tagged {len(companies)} companies"
+    }
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_companies(
+    company_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk delete companies."""
+    from sqlalchemy import delete as sql_delete
+
+    result = await db.execute(
+        sql_delete(Company).where(Company.id.in_(company_ids))
+    )
+    await db.commit()
+
+    deleted_count = result.rowcount
+
+    return {
+        "deleted_count": deleted_count,
+        "message": f"Deleted {deleted_count} companies"
+    }
+
+
+@router.post("/bulk-export")
+async def bulk_export_companies(
+    company_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+):
+    """Export selected companies to CSV."""
+    import csv
+    import io
+
+    result = await db.execute(select(Company).where(Company.id.in_(company_ids)))
+    companies = list(result.scalars().all())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow([
+        "Name", "Website", "Email", "Phone", "LinkedIn",
+        "Location", "Industry", "Description", "Tags"
+    ])
+
+    # Write companies
+    for company in companies:
+        writer.writerow([
+            company.name or "",
+            company.website or "",
+            company.email or "",
+            company.phone or "",
+            company.linkedin_url or "",
+            company.location or "",
+            company.industry or "",
+            company.description or "",
+            ",".join(company.tags) if company.tags else "",
+        ])
+
+    csv_content = output.getvalue()
+    output.close()
+
+    from fastapi import Response
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=companies_export_{len(companies)}.csv"
+        },
+    )

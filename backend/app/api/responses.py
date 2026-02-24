@@ -452,3 +452,105 @@ async def bulk_delete_responses(
         await db.delete(resp)
     await db.flush()
     return {"deleted": len(responses)}
+
+
+# ==============================================================================
+# AI Reply Operations
+# ==============================================================================
+
+@router.post("/{response_id}/generate-ai-reply")
+async def generate_ai_reply(
+    response_id: int,
+    ai_agent_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate AI-suggested reply using agent's knowledge base."""
+    from app.services.ai_replier import AIReplierService
+
+    service = AIReplierService(db)
+
+    try:
+        reply_data = await service.generate_reply(
+            email_response_id=response_id,
+            ai_agent_id=ai_agent_id,
+        )
+        return reply_data
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"AI reply generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate reply: {str(e)}")
+
+
+@router.post("/{response_id}/approve-and-send")
+async def approve_and_send_reply(
+    response_id: int,
+    approved_body: str,
+    approved_subject: Optional[str] = None,
+    sender_email: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve AI-generated reply and send via Instantly."""
+    from app.services.ai_replier import AIReplierService
+
+    service = AIReplierService(db)
+
+    try:
+        result = await service.approve_and_send_reply(
+            email_response_id=response_id,
+            approved_body=approved_body,
+            approved_subject=approved_subject,
+            sender_email=sender_email,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Reply send error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to send reply: {str(e)}")
+
+
+@router.post("/{response_id}/approve")
+async def approve_reply_without_sending(
+    response_id: int,
+    approved_body: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve reply without sending (for manual sending later)."""
+    from app.services.ai_replier import AIReplierService
+
+    service = AIReplierService(db)
+
+    try:
+        email_response = await service.approve_reply_without_sending(
+            email_response_id=response_id,
+            approved_body=approved_body,
+        )
+        return {
+            "status": "approved",
+            "message": "Reply approved (not sent)",
+            "response_id": email_response.id,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/{response_id}/ignore")
+async def ignore_response(
+    response_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark email response as ignored (no reply needed)."""
+    from app.services.ai_replier import AIReplierService
+
+    service = AIReplierService(db)
+
+    try:
+        email_response = await service.ignore_response(response_id)
+        return {
+            "status": "ignored",
+            "message": "Email response marked as ignored",
+            "response_id": email_response.id,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

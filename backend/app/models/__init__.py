@@ -8,6 +8,12 @@ from app.models.settings import Setting
 from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
 from app.models.tool_execution import ToolExecution
+from app.models.person import Person
+from app.models.company import Company
+from app.models.ai_agent import AIAgent
+from app.models.lead_list import LeadList
+from app.models.signal_tracking import SignalTracking
+from app.models.ai_agent_campaign import AIAgentCampaign
 
 __all__ = [
     "ICP",
@@ -20,4 +26,10 @@ __all__ = [
     "ChatSession",
     "ChatMessage",
     "ToolExecution",
+    "Person",
+    "Company",
+    "AIAgent",
+    "LeadList",
+    "SignalTracking",
+    "AIAgentCampaign",
 ]

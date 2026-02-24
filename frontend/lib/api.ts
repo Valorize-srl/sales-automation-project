@@ -336,6 +336,212 @@ class ApiClient {
       onError(err instanceof Error ? err : new Error(String(err)));
     }
   }
+
+  // ============================================================================
+  // AI Agents
+  // ============================================================================
+
+  async createAIAgent(data: import("@/types").AIAgentCreate): Promise<import("@/types").AIAgent> {
+    return this.fetch("/ai-agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getAIAgents(params?: { is_active?: boolean; skip?: number; limit?: number }): Promise<{ agents: import("@/types").AIAgent[]; total: number }> {
+    const query = new URLSearchParams();
+    if (params?.is_active !== undefined) query.set("is_active", String(params.is_active));
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.limit) query.set("limit", String(params.limit));
+
+    return this.fetch(`/ai-agents?${query}`);
+  }
+
+  async getAIAgent(id: number): Promise<import("@/types").AIAgent> {
+    return this.fetch(`/ai-agents/${id}`);
+  }
+
+  async updateAIAgent(id: number, data: import("@/types").AIAgentUpdate): Promise<import("@/types").AIAgent> {
+    return this.fetch(`/ai-agents/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAIAgent(id: number): Promise<void> {
+    await this.fetch(`/ai-agents/${id}`, { method: "DELETE" });
+  }
+
+  async uploadKnowledgeBase(id: number, data: { source_type: string; content: string; files_metadata?: any[] }): Promise<import("@/types").AIAgent> {
+    return this.fetch(`/ai-agents/${id}/knowledge-base`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async executeApolloSearch(id: number, params: import("@/types").ApolloSearchRequest): Promise<import("@/types").ApolloSearchResult> {
+    return this.fetch(`/ai-agents/${id}/search-apollo`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+  }
+
+  async estimateEnrichCost(id: number, person_ids?: number[], company_ids?: number[]): Promise<import("@/types").EnrichEstimate> {
+    return this.fetch(`/ai-agents/${id}/estimate-enrich`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_ids, company_ids }),
+    });
+  }
+
+  async enrichLeads(id: number, person_ids?: number[], company_ids?: number[]): Promise<{ enriched_count: number; credits_consumed: number; credits_remaining: number }> {
+    return this.fetch(`/ai-agents/${id}/enrich-leads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_ids, company_ids }),
+    });
+  }
+
+  async getAIAgentStats(id: number): Promise<import("@/types").AIAgentStats> {
+    return this.fetch(`/ai-agents/${id}/stats`);
+  }
+
+  // ============================================================================
+  // Lead Lists
+  // ============================================================================
+
+  async createLeadList(data: import("@/types").LeadListCreate): Promise<import("@/types").LeadList> {
+    return this.fetch("/lead-lists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getLeadLists(params?: { ai_agent_id?: number; skip?: number; limit?: number }): Promise<{ lists: import("@/types").LeadList[]; total: number }> {
+    const query = new URLSearchParams();
+    if (params?.ai_agent_id) query.set("ai_agent_id", String(params.ai_agent_id));
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.limit) query.set("limit", String(params.limit));
+
+    return this.fetch(`/lead-lists?${query}`);
+  }
+
+  async getLeadList(id: number): Promise<import("@/types").LeadList> {
+    return this.fetch(`/lead-lists/${id}`);
+  }
+
+  async updateLeadList(id: number, data: { name?: string; description?: string }): Promise<import("@/types").LeadList> {
+    return this.fetch(`/lead-lists/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteLeadList(id: number): Promise<void> {
+    await this.fetch(`/lead-lists/${id}`, { method: "DELETE" });
+  }
+
+  async exportLeadList(id: number): Promise<Blob> {
+    const response = await fetch(`${this.baseURL}/lead-lists/${id}/export`);
+    if (!response.ok) throw new Error("Export failed");
+    return response.blob();
+  }
+
+  // ============================================================================
+  // Bulk Operations
+  // ============================================================================
+
+  async bulkEnrichPeople(person_ids: number[]): Promise<{ enriched_count: number; credits_consumed: number; message: string }> {
+    return this.fetch("/people/bulk-enrich", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(person_ids),
+    });
+  }
+
+  async bulkTagPeople(person_ids: number[], tags_to_add?: string[], tags_to_remove?: string[]): Promise<{ people_tagged: number; message: string }> {
+    return this.fetch("/people/bulk-tag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_ids, tags_to_add, tags_to_remove }),
+    });
+  }
+
+  async bulkDeletePeople(person_ids: number[]): Promise<{ deleted_count: number; message: string }> {
+    return this.fetch("/people/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(person_ids),
+    });
+  }
+
+  async bulkExportPeople(person_ids: number[]): Promise<Blob> {
+    const response = await fetch(`${this.baseURL}/people/bulk-export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(person_ids),
+    });
+    if (!response.ok) throw new Error("Export failed");
+    return response.blob();
+  }
+
+  async bulkTagCompanies(company_ids: number[], tags_to_add?: string[], tags_to_remove?: string[]): Promise<{ companies_tagged: number; message: string }> {
+    return this.fetch("/companies/bulk-tag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_ids, tags_to_add, tags_to_remove }),
+    });
+  }
+
+  async bulkDeleteCompanies(company_ids: number[]): Promise<{ deleted_count: number; message: string }> {
+    return this.fetch("/companies/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(company_ids),
+    });
+  }
+
+  async bulkExportCompanies(company_ids: number[]): Promise<Blob> {
+    const response = await fetch(`${this.baseURL}/companies/bulk-export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(company_ids),
+    });
+    if (!response.ok) throw new Error("Export failed");
+    return response.blob();
+  }
+
+  // ============================================================================
+  // AI Replies
+  // ============================================================================
+
+  async generateAIReply(responseId: number, aiAgentId?: number): Promise<{ subject: string; body: string; tone: string; call_to_action: string }> {
+    return this.fetch(`/responses/${responseId}/generate-ai-reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ai_agent_id: aiAgentId }),
+    });
+  }
+
+  async approveAndSendReply(responseId: number, approved_body: string, approved_subject?: string, sender_email?: string): Promise<{ status: string; message: string }> {
+    return this.fetch(`/responses/${responseId}/approve-and-send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved_body, approved_subject, sender_email }),
+    });
+  }
+
+  async ignoreResponse(responseId: number): Promise<{ status: string; message: string }> {
+    return this.fetch(`/responses/${responseId}/ignore`, {
+      method: "POST",
+    });
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

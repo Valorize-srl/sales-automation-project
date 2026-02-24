@@ -270,3 +270,172 @@ def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
         return None
     val = str(val).strip()
     return val or None
+
+
+# ==============================================================================
+# Bulk Operations
+# ==============================================================================
+
+@router.post("/bulk-enrich")
+async def bulk_enrich_people(
+    person_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk enrich selected people via Apollo API."""
+    from app.services.apollo import ApolloService
+
+    # Fetch people
+    result = await db.execute(select(Person).where(Person.id.in_(person_ids)))
+    people = list(result.scalars().all())
+
+    if not people:
+        raise HTTPException(404, "No people found with provided IDs")
+
+    apollo = ApolloService()
+    enriched_count = 0
+    credits_consumed = 0
+
+    # Batch enrich in groups of 10 (Apollo API limit)
+    for i in range(0, len(people), 10):
+        batch = people[i:i+10]
+
+        apollo_people = [
+            {
+                "id": p.id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "organization_name": p.company_name,
+                "linkedin_url": p.linkedin_url,
+            }
+            for p in batch
+        ]
+
+        try:
+            enrich_result = await apollo.enrich_people(apollo_people)
+            matches = enrich_result.get("matches", [])
+
+            for match in matches:
+                person_id = match.get("id")
+                if person_id:
+                    person = next((p for p in batch if p.id == person_id), None)
+                    if person:
+                        if match.get("email"):
+                            person.email = match["email"]
+                        if match.get("phone_numbers"):
+                            person.phone = match["phone_numbers"][0].get("sanitized_number")
+                        from datetime import datetime
+                        person.enriched_at = datetime.utcnow()
+                        enriched_count += 1
+
+            credits_consumed += len(batch)
+        except Exception as e:
+            logger.error(f"Apollo enrich error: {e}")
+
+    await db.commit()
+
+    return {
+        "enriched_count": enriched_count,
+        "credits_consumed": credits_consumed,
+        "message": f"Enriched {enriched_count} people using {credits_consumed} Apollo credits"
+    }
+
+
+@router.post("/bulk-tag")
+async def bulk_tag_people(
+    person_ids: list[int],
+    tags_to_add: Optional[list[str]] = None,
+    tags_to_remove: Optional[list[str]] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk add/remove tags to people."""
+    result = await db.execute(select(Person).where(Person.id.in_(person_ids)))
+    people = list(result.scalars().all())
+
+    for person in people:
+        if not person.tags:
+            person.tags = []
+
+        if tags_to_add:
+            for tag in tags_to_add:
+                if tag not in person.tags:
+                    person.tags.append(tag)
+
+        if tags_to_remove:
+            person.tags = [t for t in person.tags if t not in tags_to_remove]
+
+    await db.commit()
+
+    return {
+        "people_tagged": len(people),
+        "message": f"Tagged {len(people)} people"
+    }
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_people(
+    person_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk delete people."""
+    from sqlalchemy import delete as sql_delete
+
+    result = await db.execute(
+        sql_delete(Person).where(Person.id.in_(person_ids))
+    )
+    await db.commit()
+
+    deleted_count = result.rowcount
+
+    return {
+        "deleted_count": deleted_count,
+        "message": f"Deleted {deleted_count} people"
+    }
+
+
+@router.post("/bulk-export")
+async def bulk_export_people(
+    person_ids: list[int],
+    db: AsyncSession = Depends(get_db),
+):
+    """Export selected people to CSV."""
+    import csv
+    import io
+
+    result = await db.execute(select(Person).where(Person.id.in_(person_ids)))
+    people = list(result.scalars().all())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow([
+        "First Name", "Last Name", "Email", "Phone", "Company",
+        "Title", "LinkedIn", "Location", "Industry", "Tags"
+    ])
+
+    # Write people
+    for person in people:
+        writer.writerow([
+            person.first_name or "",
+            person.last_name or "",
+            person.email or "",
+            person.phone or "",
+            person.company_name or "",
+            person.title or "",
+            person.linkedin_url or "",
+            person.location or "",
+            person.industry or "",
+            ",".join(person.tags) if person.tags else "",
+        ])
+
+    csv_content = output.getvalue()
+    output.close()
+
+    from fastapi import Response
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=people_export_{len(people)}.csv"
+        },
+    )

@@ -10,12 +10,14 @@ import {
   MessageSquareReply,
   BarChart3,
   Settings,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "AI Chat", icon: MessageSquare },
+  { href: "/ai-agents", label: "AI Agents", icon: Bot },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/campaigns", label: "Campaigns", icon: Mail },

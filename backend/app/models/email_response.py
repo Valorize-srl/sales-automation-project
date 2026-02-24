@@ -37,6 +37,11 @@ class EmailResponse(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
     lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
+    ai_agent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ai_agents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )  # AI Agent that generated the reply
     instantly_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     from_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sender_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -71,3 +76,4 @@ class EmailResponse(Base):
     # Relationships
     campaign: Mapped["Campaign"] = relationship(back_populates="email_responses")
     lead: Mapped["Lead | None"] = relationship(back_populates="email_responses")
+    ai_agent: Mapped[Optional["AIAgent"]] = relationship("AIAgent")

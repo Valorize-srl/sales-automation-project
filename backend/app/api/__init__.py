@@ -1,11 +1,27 @@
 from fastapi import APIRouter
 
-from app.api import chat, icps, leads, campaigns, analytics, responses, admin, people, companies, usage, settings
+from app.api import (
+    chat,
+    icps,
+    leads,
+    campaigns,
+    analytics,
+    responses,
+    admin,
+    people,
+    companies,
+    usage,
+    settings,
+    ai_agents,
+    lead_lists,
+)
 
 api_router = APIRouter()
 
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(icps.router, prefix="/icps", tags=["icps"])
+api_router.include_router(ai_agents.router, prefix="/ai-agents", tags=["ai-agents"])
+api_router.include_router(lead_lists.router, prefix="/lead-lists", tags=["lead-lists"])
 api_router.include_router(leads.router, prefix="/leads", tags=["leads"])
 api_router.include_router(people.router, prefix="/people", tags=["people"])
 api_router.include_router(companies.router, prefix="/companies", tags=["companies"])

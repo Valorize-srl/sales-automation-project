@@ -638,3 +638,109 @@ export type SSEEvent =
   | SSEToolCompleteEvent
   | SSEDoneEvent
   | SSEErrorEvent;
+
+// === AI Agents System ===
+
+export interface AIAgent {
+  id: number;
+  name: string;
+  client_tag: string;
+  description: string | null;
+  icp_config: Record<string, any>;
+  signals_config: Record<string, any> | null;
+  knowledge_base_text: string | null;
+  knowledge_base_source: string | null;
+  knowledge_base_files: Array<{filename: string; upload_date: string; size: number}> | null;
+  apollo_credits_allocated: number;
+  apollo_credits_consumed: number;
+  last_credits_reset: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: number | null;
+  credits_remaining: number;
+  credits_percentage_used: number;
+}
+
+export interface AIAgentCreate {
+  name: string;
+  client_tag: string;
+  description?: string;
+  icp_config: Record<string, any>;
+  signals_config?: Record<string, any>;
+  apollo_credits_allocated?: number;
+}
+
+export interface AIAgentUpdate {
+  name?: string;
+  client_tag?: string;
+  description?: string;
+  icp_config?: Record<string, any>;
+  signals_config?: Record<string, any>;
+  apollo_credits_allocated?: number;
+  is_active?: boolean;
+}
+
+export interface AIAgentStats {
+  agent_id: number;
+  agent_name: string;
+  client_tag: string;
+  total_leads: number;
+  total_people: number;
+  total_companies: number;
+  apollo_credits_allocated: number;
+  apollo_credits_consumed: number;
+  apollo_credits_remaining: number;
+  apollo_credits_percentage_used: number;
+  lists_created: number;
+  campaigns_connected: number;
+  signals_detected: number;
+}
+
+export interface LeadList {
+  id: number;
+  ai_agent_id: number;
+  name: string;
+  description: string | null;
+  filters_snapshot: Record<string, any> | null;
+  people_count: number;
+  companies_count: number;
+  created_at: string;
+  updated_at: string;
+  total_leads: number;
+}
+
+export interface LeadListCreate {
+  ai_agent_id: number;
+  name: string;
+  description?: string;
+  filters_snapshot?: Record<string, any>;
+}
+
+export interface ApolloSearchRequest {
+  per_page?: number;
+  auto_create_list?: boolean;
+  list_name?: string;
+}
+
+export interface ApolloSearchResult {
+  list_id: number | null;
+  list_name: string | null;
+  results_count: number;
+  people_count: number;
+  companies_count: number;
+  credits_consumed: number;
+  credits_remaining: number;
+}
+
+export interface EnrichEstimate {
+  total_leads: number;
+  apollo_credits_needed: number;
+  estimated_cost_usd: number;
+}
+
+export interface BulkOperationResult {
+  people_affected: number;
+  companies_affected: number;
+  message: string;
+}
