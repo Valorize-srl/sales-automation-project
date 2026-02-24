@@ -247,13 +247,15 @@ export default function SessionChatPage() {
               </div>
             </div>
           )}
-          {context?.messages.map((msg, i) => (
-            <MessageBubble
-              key={msg.id}
-              message={{ role: msg.role, content: msg.content }}
-              isStreaming={context.isStreaming && i === context.messages.length - 1}
-            />
-          ))}
+          {context?.messages
+            .filter((msg) => msg.role !== "tool_result")
+            .map((msg, i) => (
+              <MessageBubble
+                key={msg.id}
+                message={{ role: msg.role as "user" | "assistant", content: msg.content }}
+                isStreaming={context.isStreaming && i === context.messages.length - 1}
+              />
+            ))}
           {context?.currentToolExecution && (
             <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground bg-muted/50 rounded-lg my-2">
               <Loader2 className="h-4 w-4 animate-spin" />
