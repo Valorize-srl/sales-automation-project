@@ -251,6 +251,7 @@ async def delete_campaign(campaign_id: int, db: AsyncSession = Depends(get_db)):
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     await db.delete(campaign)
+    await db.commit()
 
 
 # --- Instantly Sync ---
@@ -924,7 +925,7 @@ async def get_account_warmup_analytics(
         raise HTTPException(502, f"Failed to get warmup analytics: {e.detail}")
 
 
-@router.delete("/bulk-delete")
+@router.post("/bulk-delete")
 async def bulk_delete_campaigns(
     campaign_ids: list[int],
     db: AsyncSession = Depends(get_db)
