@@ -59,14 +59,8 @@ async def list_agents(
     service = AIAgentService(db)
     agents = await service.list_agents(is_active=is_active, skip=skip, limit=limit)
 
-    # Add calculated properties
-    for agent in agents:
-        agent.credits_remaining = agent.apollo_credits_allocated - agent.apollo_credits_consumed
-        if agent.apollo_credits_allocated > 0:
-            agent.credits_percentage_used = (agent.apollo_credits_consumed / agent.apollo_credits_allocated) * 100
-        else:
-            agent.credits_percentage_used = 0.0
-
+    # credits_remaining and credits_percentage_used are @property on the model,
+    # Pydantic reads them automatically via from_attributes=True
     return AIAgentListResponse(agents=agents, total=len(agents))
 
 
@@ -80,13 +74,6 @@ async def get_agent(
     agent = await service.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AI Agent {agent_id} not found")
-
-    # Add calculated properties
-    agent.credits_remaining = agent.apollo_credits_allocated - agent.apollo_credits_consumed
-    if agent.apollo_credits_allocated > 0:
-        agent.credits_percentage_used = (agent.apollo_credits_consumed / agent.apollo_credits_allocated) * 100
-    else:
-        agent.credits_percentage_used = 0.0
 
     return agent
 
@@ -106,13 +93,6 @@ async def update_agent(
     agent = await service.update_agent(agent_id, **updates)
     if not agent:
         raise HTTPException(status_code=404, detail=f"AI Agent {agent_id} not found")
-
-    # Add calculated properties
-    agent.credits_remaining = agent.apollo_credits_allocated - agent.apollo_credits_consumed
-    if agent.apollo_credits_allocated > 0:
-        agent.credits_percentage_used = (agent.apollo_credits_consumed / agent.apollo_credits_allocated) * 100
-    else:
-        agent.credits_percentage_used = 0.0
 
     return agent
 

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.analytics import Analytics
-from app.models.campaign import Campaign
+from app.models.campaign import Campaign, CampaignStatus
 from app.models.person import Person
 from app.models.company import Company
 
@@ -43,7 +43,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     # Campaigns: active count + totals across all campaigns
     campaigns_result = await db.execute(select(Campaign))
     campaigns = campaigns_result.scalars().all()
-    active_campaigns = sum(1 for c in campaigns if c.status == "active")
+    active_campaigns = sum(1 for c in campaigns if c.status == CampaignStatus.ACTIVE)
     total_sent = sum(c.total_sent for c in campaigns)
     total_opened = sum(c.total_opened for c in campaigns)
     total_replied = sum(c.total_replied for c in campaigns)

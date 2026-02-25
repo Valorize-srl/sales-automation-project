@@ -1,10 +1,22 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import api_router
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://www.miriade.ai",
+    "https://miriade.ai",
+    "https://sales-automation-project.up.railway.app",
+    "https://sales-automation-project-production.up.railway.app",
+]
 
 
 @asynccontextmanager
@@ -25,17 +37,28 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://www.miriade.ai",
-        "https://miriade.ai",
-        "https://sales-automation-project.up.railway.app",
-        "https://sales-automation-project-production.up.railway.app",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler ensures CORS headers are present even on unhandled 500 errors."""
+    logger.error(f"Unhandled error on {request.method} {request.url.path}: {exc}", exc_info=True)
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in ALLOWED_ORIGINS:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers=headers,
+    )
+
 
 app.include_router(api_router, prefix="/api")
 
