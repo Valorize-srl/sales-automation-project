@@ -43,10 +43,13 @@ class InstantlyService:
     ) -> dict[str, Any]:
         """Generic request wrapper with error handling."""
         url = f"{self.base_url}{path}"
+        headers: dict[str, str] = {"Authorization": f"Bearer {self.api_key}"}
+        if json is not None:
+            headers["Content-Type"] = "application/json"
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.request(
                 method, url,
-                headers=self._headers(),
+                headers=headers,
                 json=json,
                 params=params,
             )
@@ -57,6 +60,8 @@ class InstantlyService:
             except Exception:
                 pass
             raise InstantlyAPIError(response.status_code, detail)
+        if not response.text.strip():
+            return {}
         return response.json()
 
     # --- Campaign Methods ---
