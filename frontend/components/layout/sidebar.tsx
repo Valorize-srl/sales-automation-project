@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -11,6 +11,7 @@ import {
   BarChart3,
   Settings,
   Bot,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,13 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="w-64 border-r bg-card h-screen flex flex-col">
@@ -56,7 +64,14 @@ export function Sidebar() {
         })}
       </nav>
       <div className="p-4 border-t">
-        <p className="text-xs text-muted-foreground">v0.1.0</p>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full px-3 py-2 rounded-lg hover:bg-accent"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign out
+        </button>
+        <p className="text-xs text-muted-foreground mt-2 px-3">v0.1.0</p>
       </div>
     </aside>
   );
