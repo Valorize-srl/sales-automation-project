@@ -4,9 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Integer, Float, DateTime, JSON, func
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import expression
 
 from app.db.database import Base
 
@@ -33,7 +32,7 @@ class ChatSession(Base):
 
     # Context tracking
     icp_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
+        ForeignKey("icps.id", ondelete="SET NULL"),
         nullable=True
     )
     current_icp_draft: Mapped[Optional[dict]] = mapped_column(

@@ -55,7 +55,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}"},
+        content={"detail": "Internal server error"},
         headers=headers,
     )
 
@@ -71,33 +71,3 @@ async def health_check():
         "version": "0.1.0",
         "environment": settings.app_env,
     }
-
-
-@app.get("/debug/db-test")
-async def debug_db_test():
-    """Temporary debug endpoint to test database connectivity."""
-    from app.db.database import async_session_factory
-    from sqlalchemy import text
-    try:
-        async with async_session_factory() as session:
-            result = await session.execute(text("SELECT 1"))
-            val = result.scalar()
-            # Check what tables exist
-            tables_result = await session.execute(
-                text("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")
-            )
-            tables = [row[0] for row in tables_result.all()]
-            # Check alembic version
-            try:
-                version_result = await session.execute(text("SELECT version_num FROM alembic_version"))
-                version = version_result.scalar()
-            except Exception:
-                version = "alembic_version table not found"
-            return {
-                "db_connected": True,
-                "test_query": val,
-                "tables": tables,
-                "alembic_version": version,
-            }
-    except Exception as e:
-        return {"db_connected": False, "error": f"{type(e).__name__}: {e}"}
