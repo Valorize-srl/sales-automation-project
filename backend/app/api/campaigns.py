@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -927,7 +927,7 @@ async def get_account_warmup_analytics(
 
 @router.post("/bulk-delete")
 async def bulk_delete_campaigns(
-    campaign_ids: list[int],
+    campaign_ids: list[int] = Body(..., embed=True),
     db: AsyncSession = Depends(get_db)
 ):
     """
