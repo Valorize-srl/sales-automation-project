@@ -178,8 +178,8 @@ class ApolloService:
         if keywords:
             payload["q_keywords"] = keywords
 
-        # 1. Base search
-        raw = await self._post("/mixed_people/search", payload)
+        # 1. Base search (api_search: no credits, no emails — use enrich for contact data)
+        raw = await self._post("/mixed_people/api_search", payload)
 
         # LOG: See what raw search returns
         people = raw.get("people", [])
