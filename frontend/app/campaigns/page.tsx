@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Loader2, Trash2, Search } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { Plus, RefreshCw, Loader2, Trash2, Search, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,9 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Campaign,
   ICP,
-  CampaignListResponse,
   ICPListResponse,
-  InstantlySyncResponse,
 } from "@/types";
 
 const ALL_ICPS = "__all__";
@@ -35,9 +33,14 @@ export default function CampaignsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [filterIcpId, setFilterIcpId] = useState<string>(ALL_ICPS);
+  const [filterStatus, setFilterStatus] = useState<string>("__all__");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<number[]>([]);
   const { toast } = useToast();
+
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
@@ -48,57 +51,77 @@ export default function CampaignsPage() {
   const [uploadLeadsOpen, setUploadLeadsOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    loadIcps();
-    loadCampaigns();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    loadCampaigns();
-  }, [filterIcpId, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadIcps = async () => {
+  const loadIcps = useCallback(async () => {
     try {
       const data = await api.get<ICPListResponse>("/icps");
       setIcps(data.icps);
     } catch (err) {
       console.error("Failed to load ICPs:", err);
     }
-  };
+  }, []);
 
-  const loadCampaigns = async () => {
-    setLoading(true);
+  const loadCampaigns = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      const params: any = {};
+      const params: Record<string, string | number> = {};
       if (filterIcpId !== ALL_ICPS) {
         params.icp_id = parseInt(filterIcpId);
+      }
+      if (filterStatus !== "__all__") {
+        params.status = filterStatus;
       }
       if (searchQuery) {
         params.search = searchQuery;
       }
       const data = await api.getCampaigns(params);
       setCampaigns(data.campaigns);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Failed to load campaigns:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [filterIcpId, filterStatus, searchQuery]);
+
+  // Initial load
+  useEffect(() => {
+    loadIcps();
+    loadCampaigns();
+  }, [loadIcps, loadCampaigns]);
+
+  // Auto-polling every 5 minutes: sync metrics from Instantly + reload campaigns
+  useEffect(() => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        // First sync metrics from Instantly for all active campaigns
+        await api.syncAllCampaignMetrics();
+      } catch (err) {
+        console.error("Auto-sync metrics failed:", err);
+      }
+      // Then reload campaign list with fresh data
+      loadCampaigns(true);
+    }, POLL_INTERVAL);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [loadCampaigns]);
 
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const result = await api.post<InstantlySyncResponse>(
-        "/campaigns/sync",
-        {}
-      );
-      alert(
-        `Sync complete: ${result.imported} imported, ${result.updated} updated, ${result.errors} errors`
-      );
+      const result = await api.syncCampaigns();
+      toast({
+        title: "Sync Complete",
+        description: `${result.imported} imported, ${result.updated} updated, ${result.errors} errors`,
+      });
       loadCampaigns();
     } catch (err) {
-      console.error("Sync failed:", err);
-      alert("Sync failed. Check console for details.");
+      toast({
+        title: "Sync Failed",
+        description: err instanceof Error ? err.message : "Failed to sync with Instantly",
+        variant: "destructive",
+      });
     } finally {
       setSyncing(false);
     }
@@ -106,30 +129,42 @@ export default function CampaignsPage() {
 
   const handleSyncMetrics = async (id: number) => {
     try {
-      const updated = await api.post<Campaign>(
-        `/campaigns/${id}/sync-metrics`,
-        {}
-      );
+      const updated = await api.syncCampaignMetrics(id);
       setCampaigns((prev) =>
         prev.map((c) => (c.id === id ? updated : c))
       );
       if (selectedCampaign?.id === id) {
         setSelectedCampaign(updated);
       }
+      toast({
+        title: "Metrics Updated",
+        description: "Campaign metrics synced from Instantly",
+      });
     } catch (err) {
-      console.error("Failed to sync metrics:", err);
-      alert("Failed to sync metrics. Check console.");
+      toast({
+        title: "Sync Failed",
+        description: err instanceof Error ? err.message : "Failed to sync metrics",
+        variant: "destructive",
+      });
     }
   };
 
   const handleDelete = async (id: number) => {
     try {
-      await api.delete(`/campaigns/${id}`);
+      await api.deleteCampaign(id);
       setCampaigns((prev) => prev.filter((c) => c.id !== id));
       setDetailOpen(false);
       setSelectedCampaign(null);
+      toast({
+        title: "Campaign Deleted",
+        description: "Campaign has been removed",
+      });
     } catch (err) {
-      console.error("Failed to delete campaign:", err);
+      toast({
+        title: "Delete Failed",
+        description: err instanceof Error ? err.message : "Failed to delete campaign",
+        variant: "destructive",
+      });
     }
   };
 
@@ -137,29 +172,20 @@ export default function CampaignsPage() {
     if (selectedCampaignIds.length === 0) return;
 
     try {
-      const result = await api.post<{
-        deleted: number;
-        instantly_deleted: number;
-        errors: string[];
-        message: string;
-      }>("/campaigns/bulk-delete", { campaign_ids: selectedCampaignIds });
-
-      alert(result.message);
-      if (result.errors.length > 0) {
-        console.error("Delete errors:", result.errors);
-      }
-
-      // Reload campaigns and clear selection
+      const result = await api.bulkDeleteCampaigns(selectedCampaignIds);
+      toast({
+        title: "Campaigns Deleted",
+        description: result.message,
+      });
       setSelectedCampaignIds([]);
       setDeleteConfirmOpen(false);
       loadCampaigns();
-    } catch (err: any) {
-      console.error("Failed to bulk delete:", err);
-      const errorMessage =
-        err.response?.data?.detail ||
-        err.message ||
-        "Failed to delete campaigns";
-      alert(`Error: ${errorMessage}`);
+    } catch (err) {
+      toast({
+        title: "Delete Failed",
+        description: err instanceof Error ? err.message : "Failed to delete campaigns",
+        variant: "destructive",
+      });
     }
   };
 
@@ -174,11 +200,10 @@ export default function CampaignsPage() {
         title: "Campaign Activated",
         description: `Campaign "${updated.name}" is now active on Instantly`,
       });
-    } catch (err: any) {
-      console.error("Failed to activate campaign:", err);
+    } catch (err) {
       toast({
         title: "Activation Failed",
-        description: err.response?.data?.detail || "Failed to activate campaign",
+        description: err instanceof Error ? err.message : "Failed to activate campaign",
         variant: "destructive",
       });
     }
@@ -195,11 +220,10 @@ export default function CampaignsPage() {
         title: "Campaign Paused",
         description: `Campaign "${updated.name}" has been paused`,
       });
-    } catch (err: any) {
-      console.error("Failed to pause campaign:", err);
+    } catch (err) {
       toast({
         title: "Pause Failed",
-        description: err.response?.data?.detail || "Failed to pause campaign",
+        description: err instanceof Error ? err.message : "Failed to pause campaign",
         variant: "destructive",
       });
     }
@@ -243,8 +267,14 @@ export default function CampaignsPage() {
           <h1 className="text-2xl font-bold">Campaigns</h1>
           <p className="text-sm text-muted-foreground">
             {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
-            {filterIcpId !== ALL_ICPS && " (filtered)"}
+            {(filterIcpId !== ALL_ICPS || filterStatus !== "__all__") && " (filtered)"}
             {searchQuery && " (search results)"}
+            {lastRefresh && (
+              <span className="ml-2 inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Updated {lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -257,6 +287,20 @@ export default function CampaignsPage() {
               className="pl-8"
             />
           </div>
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All Statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="paused">Paused</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="scheduled">Scheduled</SelectItem>
+              <SelectItem value="error">Error</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={filterIcpId} onValueChange={setFilterIcpId}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by ICP" />

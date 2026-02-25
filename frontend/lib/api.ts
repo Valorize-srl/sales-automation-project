@@ -481,7 +481,7 @@ class ApiClient {
   // Campaigns
   // ============================================================================
 
-  async getCampaigns(params?: { icp_id?: number; search?: string; status?: string }): Promise<{ campaigns: any[]; total: number }> {
+  async getCampaigns(params?: { icp_id?: number; search?: string; status?: string }): Promise<import("@/types").CampaignListResponse> {
     const query = new URLSearchParams();
     if (params?.icp_id) query.set("icp_id", String(params.icp_id));
     if (params?.search) query.set("search", params.search);
@@ -490,12 +490,183 @@ class ApiClient {
     return this.get(`/campaigns${queryString ? `?${queryString}` : ''}`);
   }
 
-  async activateCampaign(campaignId: number): Promise<any> {
+  async getCampaign(campaignId: number): Promise<import("@/types").Campaign> {
+    return this.get(`/campaigns/${campaignId}`);
+  }
+
+  async createCampaign(data: Record<string, unknown>): Promise<import("@/types").Campaign> {
+    return this.post("/campaigns", data);
+  }
+
+  async updateCampaign(campaignId: number, data: Record<string, unknown>): Promise<import("@/types").Campaign> {
+    return this.put(`/campaigns/${campaignId}`, data);
+  }
+
+  async deleteCampaign(campaignId: number): Promise<void> {
+    await this.delete(`/campaigns/${campaignId}`);
+  }
+
+  async bulkDeleteCampaigns(campaignIds: number[]): Promise<{ deleted: number; instantly_deleted: number; errors: string[]; message: string }> {
+    return this.post("/campaigns/bulk-delete", { campaign_ids: campaignIds });
+  }
+
+  async syncCampaigns(): Promise<import("@/types").InstantlySyncResponse> {
+    return this.post("/campaigns/sync", {});
+  }
+
+  async syncAllCampaignMetrics(): Promise<{ synced: number; errors: number; total_campaigns: number; message: string }> {
+    return this.post("/campaigns/sync-all-metrics", {});
+  }
+
+  async syncCampaignMetrics(campaignId: number): Promise<import("@/types").Campaign> {
+    return this.post(`/campaigns/${campaignId}/sync-metrics`, {});
+  }
+
+  async activateCampaign(campaignId: number): Promise<import("@/types").Campaign> {
     return this.post(`/campaigns/${campaignId}/activate`, undefined);
   }
 
-  async pauseCampaign(campaignId: number): Promise<any> {
+  async pauseCampaign(campaignId: number): Promise<import("@/types").Campaign> {
     return this.post(`/campaigns/${campaignId}/pause`, undefined);
+  }
+
+  async uploadLeadsToCampaign(campaignId: number, leadIds: number[]): Promise<import("@/types").LeadUploadResponse> {
+    return this.post(`/campaigns/${campaignId}/upload-leads`, { lead_ids: leadIds });
+  }
+
+  async pushSequences(campaignId: number): Promise<import("@/types").PushSequencesResponse> {
+    return this.post(`/campaigns/${campaignId}/push-sequences`, {});
+  }
+
+  async generateTemplates(campaignId: number, data: { icp_id?: number; additional_context?: string; num_subject_lines?: number; num_steps?: number }): Promise<import("@/types").EmailTemplateGenerateResponse> {
+    return this.post(`/campaigns/${campaignId}/generate-templates`, data);
+  }
+
+  async getInstantlyAccounts(): Promise<import("@/types").InstantlyEmailAccountListResponse> {
+    return this.get("/campaigns/instantly/accounts");
+  }
+
+  async syncLeadsFromInstantly(campaignId: number): Promise<import("@/types").LeadSyncResponse> {
+    return this.post(`/campaigns/${campaignId}/sync-leads`, {});
+  }
+
+  async getCampaignDailyAnalytics(campaignId: number, startDate?: string, endDate?: string): Promise<Record<string, unknown>> {
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/campaigns/${campaignId}/daily-analytics${query}`);
+  }
+
+  async getInstantlyAccount(email: string): Promise<import("@/types").InstantlyAccountDetails> {
+    return this.get(`/campaigns/instantly/accounts/${encodeURIComponent(email)}`);
+  }
+
+  async updateInstantlyAccount(email: string, data: Record<string, unknown>): Promise<import("@/types").InstantlyAccountDetails> {
+    const url = `/campaigns/instantly/accounts/${encodeURIComponent(email)}`;
+    return this.request(url, { method: "PATCH", body: JSON.stringify(data) });
+  }
+
+  async manageInstantlyAccount(email: string, action: string): Promise<Record<string, unknown>> {
+    return this.post(`/campaigns/instantly/accounts/${encodeURIComponent(email)}/${action}`, {});
+  }
+
+  async getWarmupAnalytics(email: string, startDate?: string, endDate?: string): Promise<import("@/types").WarmupAnalytics> {
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.get(`/campaigns/instantly/accounts/${encodeURIComponent(email)}/warmup-analytics${query}`);
+  }
+
+  // ============================================================================
+  // Responses
+  // ============================================================================
+
+  async getResponses(params?: { campaign_id?: number; campaign_ids?: string; status?: string; sentiment?: string; date_from?: string; date_to?: string }): Promise<import("@/types").EmailResponseListResponse> {
+    const query = new URLSearchParams();
+    if (params?.campaign_id) query.set("campaign_id", String(params.campaign_id));
+    if (params?.campaign_ids) query.set("campaign_ids", params.campaign_ids);
+    if (params?.status) query.set("status", params.status);
+    if (params?.sentiment) query.set("sentiment", params.sentiment);
+    if (params?.date_from) query.set("date_from", params.date_from);
+    if (params?.date_to) query.set("date_to", params.date_to);
+    const queryString = query.toString();
+    return this.get(`/responses${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async fetchReplies(campaignIds: number[]): Promise<import("@/types").FetchRepliesResponse> {
+    return this.post("/responses/fetch", { campaign_ids: campaignIds });
+  }
+
+  async generateReply(responseId: number): Promise<import("@/types").EmailResponseWithDetails> {
+    return this.post(`/responses/${responseId}/generate-reply`);
+  }
+
+  async approveReply(responseId: number, editedReply?: string): Promise<import("@/types").EmailResponseWithDetails> {
+    return this.post(`/responses/${responseId}/approve`, { edited_reply: editedReply });
+  }
+
+  async sendReply(responseId: number): Promise<import("@/types").SendReplyResponse> {
+    return this.post(`/responses/${responseId}/send`);
+  }
+
+  async deleteResponse(responseId: number): Promise<void> {
+    await this.delete(`/responses/${responseId}`);
+  }
+
+  async bulkDeleteResponses(ids: number[]): Promise<{ deleted: number }> {
+    return this.post("/responses/bulk-delete", { ids });
+  }
+
+  // ============================================================================
+  // Dashboard & Analytics
+  // ============================================================================
+
+  async getDashboardStats(): Promise<import("@/types").DashboardStats> {
+    return this.get("/analytics/dashboard");
+  }
+
+  // ============================================================================
+  // People & Companies
+  // ============================================================================
+
+  async getPeople(params?: { search?: string; industry?: string; client_tag?: string; skip?: number; limit?: number }): Promise<import("@/types").PersonListResponse> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.industry) query.set("industry", params.industry);
+    if (params?.client_tag) query.set("client_tag", params.client_tag);
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const queryString = query.toString();
+    return this.get(`/people${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async deletePerson(personId: number): Promise<void> {
+    await this.delete(`/people/${personId}`);
+  }
+
+  async getPeopleIndustries(): Promise<string[]> {
+    return this.get("/people/industries");
+  }
+
+  async getCompanies(params?: { search?: string; industry?: string; client_tag?: string; skip?: number; limit?: number }): Promise<import("@/types").CompanyListResponse> {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.industry) query.set("industry", params.industry);
+    if (params?.client_tag) query.set("client_tag", params.client_tag);
+    if (params?.skip) query.set("skip", String(params.skip));
+    if (params?.limit) query.set("limit", String(params.limit));
+    const queryString = query.toString();
+    return this.get(`/companies${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async deleteCompany(companyId: number): Promise<void> {
+    await this.delete(`/companies/${companyId}`);
+  }
+
+  async getCompanyIndustries(): Promise<string[]> {
+    return this.get("/companies/industries");
   }
 
   // ============================================================================

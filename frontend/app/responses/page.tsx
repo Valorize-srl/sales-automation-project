@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Download, Loader2, X } from "lucide-react";
+import { Download, Loader2, X, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ResponsesTable } from "@/components/responses/responses-table";
 import { ResponseDetailDialog } from "@/components/responses/response-detail-dialog";
@@ -32,7 +32,11 @@ export default function ResponsesPage() {
   const [filterSentiment, setFilterSentiment] = useState<string>("");
   const [filterDateFrom, setFilterDateFrom] = useState<string>("");
   const [filterDateTo, setFilterDateTo] = useState<string>("");
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const { toast } = useToast();
+
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
   useEffect(() => {
     loadCampaigns();
@@ -42,13 +46,14 @@ export default function ResponsesPage() {
     campaignIds: number[],
     sentiment: string,
     dateFrom: string,
-    dateTo: string
+    dateTo: string,
+    silent = false
   ) => {
     if (campaignIds.length === 0) {
       setResponses([]);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ campaign_ids: campaignIds.join(",") });
       if (sentiment) params.set("sentiment", sentiment);
@@ -56,34 +61,41 @@ export default function ResponsesPage() {
       if (dateTo) params.set("date_to", dateTo);
       const data = await api.get<EmailResponseListResponse>(`/responses?${params}`);
       setResponses(data.responses);
+      setLastRefresh(new Date());
     } catch (err) {
       console.error("Failed to load responses:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
+
+  // Auto-fetch new replies from Instantly + refresh local data (silent)
+  const autoFetchAndRefresh = useCallback(async () => {
+    if (selectedCampaignIds.length === 0) return;
+    try {
+      // First fetch new replies from Instantly
+      await api.fetchReplies(selectedCampaignIds);
+      // Then reload the local responses list
+      await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, true);
+    } catch (err) {
+      console.error("Auto-refresh failed:", err);
+    }
+  }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses]);
 
   useEffect(() => {
     loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
   }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses]);
 
-  // Auto-refresh every 5 minutes
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Auto-polling every 5 minutes: fetch from Instantly + refresh
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
+    if (pollingRef.current) clearInterval(pollingRef.current);
     if (selectedCampaignIds.length > 0) {
-      intervalRef.current = setInterval(() => {
-        loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
-      }, 5 * 60 * 1000);
+      pollingRef.current = setInterval(autoFetchAndRefresh, POLL_INTERVAL);
     }
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses]);
+  }, [autoFetchAndRefresh, selectedCampaignIds.length]);
 
   const loadCampaigns = async () => {
     try {
@@ -100,10 +112,6 @@ export default function ResponsesPage() {
     setFetchProgress("Fetching replies from Instantly...");
 
     const campaignCount = selectedCampaignIds.length;
-    const campaignNames = campaigns
-      .filter(c => selectedCampaignIds.includes(c.id))
-      .map(c => c.name)
-      .join(", ");
 
     try {
       const result = await api.post<FetchRepliesResponse>("/responses/fetch", {
@@ -119,12 +127,12 @@ export default function ResponsesPage() {
       });
 
       await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Fetch failed:", err);
       setFetchProgress("");
       toast({
         title: "Fetch Failed",
-        description: err.response?.data?.detail || "Failed to fetch replies from Instantly",
+        description: err instanceof Error ? err.message : "Failed to fetch replies from Instantly",
         variant: "destructive",
       });
     } finally {
@@ -146,11 +154,11 @@ export default function ResponsesPage() {
         title: "Reply Approved",
         description: "AI-generated reply has been approved and is ready to send",
       });
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to approve:", err);
       toast({
         title: "Approval Failed",
-        description: err.response?.data?.detail || "Failed to approve reply",
+        description: err instanceof Error ? err.message : "Failed to approve reply",
         variant: "destructive",
       });
     }
@@ -165,11 +173,11 @@ export default function ResponsesPage() {
       });
       loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
       setDetailOpen(false);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to send:", err);
       toast({
         title: "Send Failed",
-        description: err.response?.data?.detail || err.message || "Failed to send reply",
+        description: err instanceof Error ? err.message : "Failed to send reply",
         variant: "destructive",
       });
     }
@@ -200,7 +208,11 @@ export default function ResponsesPage() {
       }
     } catch (err) {
       console.error("Failed to delete:", err);
-      alert("Failed to delete response.");
+      toast({
+        title: "Delete Failed",
+        description: err instanceof Error ? err.message : "Failed to delete response",
+        variant: "destructive",
+      });
     }
   };
 
@@ -218,6 +230,12 @@ export default function ResponsesPage() {
             {responses.length} response{responses.length !== 1 ? "s" : ""}
             {selectedCampaignIds.length > 0 &&
               ` from ${selectedCampaignIds.length} campaign${selectedCampaignIds.length > 1 ? "s" : ""}`}
+            {lastRefresh && (
+              <span className="ml-2 inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Updated {lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">

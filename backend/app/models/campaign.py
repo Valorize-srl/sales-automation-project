@@ -16,6 +16,8 @@ class CampaignStatus(str, enum.Enum):
     ACTIVE = "active"
     PAUSED = "paused"
     COMPLETED = "completed"
+    SCHEDULED = "scheduled"
+    ERROR = "error"
 
 
 class Campaign(Base):

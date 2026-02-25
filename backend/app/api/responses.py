@@ -510,13 +510,13 @@ async def approve_and_send_reply(
         raise HTTPException(status_code=500, detail=f"Failed to send reply: {str(e)}")
 
 
-@router.post("/{response_id}/approve")
+@router.post("/{response_id}/approve-only")
 async def approve_reply_without_sending(
     response_id: int,
     approved_body: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Approve reply without sending (for manual sending later)."""
+    """Approve AI reply without sending (for manual sending later)."""
     from app.services.ai_replier import AIReplierService
 
     service = AIReplierService(db)
@@ -535,12 +535,12 @@ async def approve_reply_without_sending(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.post("/{response_id}/ignore")
-async def ignore_response(
+@router.post("/{response_id}/ignore-ai")
+async def ignore_response_ai(
     response_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Mark email response as ignored (no reply needed)."""
+    """Mark email response as ignored via AI agent service (no reply needed)."""
     from app.services.ai_replier import AIReplierService
 
     service = AIReplierService(db)

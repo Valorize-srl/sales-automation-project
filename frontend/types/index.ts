@@ -2,7 +2,7 @@
 
 export type ICPStatus = "draft" | "active" | "archived";
 export type LeadSource = "csv" | "apollo" | "manual";
-export type CampaignStatus = "draft" | "active" | "paused" | "completed";
+export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "scheduled" | "error";
 export type MessageDirection = "inbound" | "outbound";
 export type Sentiment = "positive" | "negative" | "neutral" | "interested";
 export type ResponseStatus = "pending" | "ai_replied" | "human_approved" | "sent" | "ignored";
@@ -745,4 +745,49 @@ export interface BulkOperationResult {
   people_affected: number;
   companies_affected: number;
   message: string;
+}
+
+// === Instantly Account & Warmup ===
+
+export interface InstantlyAccountDetails {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  status: number;
+  warmup_status: string | null;
+  warmup_limit: number | null;
+  daily_limit: number | null;
+  sending_gap: number | null;
+  tracking_domain_name: string | null;
+}
+
+export interface WarmupAnalytics {
+  emails_sent: number;
+  emails_received: number;
+  inbox_rate: number;
+  spam_rate: number;
+  reply_rate: number;
+  daily_data: Array<{
+    date: string;
+    sent: number;
+    received: number;
+    inbox: number;
+    spam: number;
+  }>;
+}
+
+export interface LeadSyncResponse {
+  imported: number;
+  skipped: number;
+  errors: number;
+  message: string;
+}
+
+export interface DailyAnalyticsEntry {
+  date: string;
+  emails_sent: number;
+  opens: number;
+  clicks: number;
+  replies: number;
+  bounces: number;
 }

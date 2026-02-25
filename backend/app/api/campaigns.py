@@ -1,5 +1,5 @@
-from typing import Optional
 """Campaign management API routes."""
+from typing import Optional
 import json
 import logging
 from datetime import date, datetime
@@ -32,7 +32,6 @@ from app.schemas.campaign import (
     EmailAccountOut,
     PushSequencesResponse,
 )
-from app.services.instantly import instantly_service, InstantlyAPIError
 from app.services.email_generator import email_generator_service
 
 logger = logging.getLogger(__name__)
@@ -258,11 +257,18 @@ async def delete_campaign(campaign_id: int, db: AsyncSession = Depends(get_db)):
 
 
 def _map_instantly_status(status_value) -> CampaignStatus:
-    """Map Instantly status integer to our CampaignStatus enum."""
+    """Map Instantly status integer to our CampaignStatus enum.
+
+    Instantly statuses: 0=Draft, 1=Active, 2=Paused, 3=Completed, 4=Scheduled, -1=Error, -2=Deleted
+    """
     mapping = {
-        0: CampaignStatus.PAUSED,
+        0: CampaignStatus.DRAFT,
         1: CampaignStatus.ACTIVE,
-        2: CampaignStatus.COMPLETED,
+        2: CampaignStatus.PAUSED,
+        3: CampaignStatus.COMPLETED,
+        4: CampaignStatus.SCHEDULED,
+        -1: CampaignStatus.ERROR,
+        -2: CampaignStatus.ERROR,  # Deleted on Instantly = error state locally
     }
     return mapping.get(status_value, CampaignStatus.DRAFT)
 
@@ -419,6 +425,57 @@ async def sync_campaign_metrics(
         )
 
     return await _campaign_to_response(campaign, db)
+
+
+@router.post("/sync-all-metrics")
+async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
+    """Bulk sync metrics from Instantly for all active/linked campaigns. Used by auto-polling."""
+    result = await db.execute(
+        select(Campaign)
+        .options(selectinload(Campaign.icp))
+        .where(
+            Campaign.instantly_campaign_id.isnot(None),
+            Campaign.deleted_at.is_(None),
+            Campaign.status.in_([CampaignStatus.ACTIVE, CampaignStatus.PAUSED, CampaignStatus.SCHEDULED]),
+        )
+    )
+    campaigns = result.scalars().all()
+
+    synced = 0
+    errors = 0
+    for campaign in campaigns:
+        try:
+            analytics = await instantly_service.get_campaign_analytics(
+                campaign.instantly_campaign_id
+            )
+            campaign.total_sent = analytics.get("emails_sent_count", campaign.total_sent)
+            campaign.total_opened = analytics.get("open_count", campaign.total_opened)
+            campaign.total_replied = analytics.get("reply_count", campaign.total_replied)
+
+            # Also update Instantly status
+            try:
+                instantly_data = await instantly_service.get_campaign(campaign.instantly_campaign_id)
+                new_status = _map_instantly_status(instantly_data.get("status"))
+                campaign.status = new_status
+            except InstantlyAPIError:
+                pass  # Keep existing status if we can't fetch it
+
+            synced += 1
+        except InstantlyAPIError as e:
+            logger.warning(f"Failed to sync metrics for campaign {campaign.id}: {e.detail}")
+            errors += 1
+        except Exception as e:
+            logger.warning(f"Unexpected error syncing campaign {campaign.id}: {e}")
+            errors += 1
+
+    await db.flush()
+
+    return {
+        "synced": synced,
+        "errors": errors,
+        "total_campaigns": len(campaigns),
+        "message": f"Synced metrics for {synced}/{len(campaigns)} campaigns",
+    }
 
 
 @router.post("/{campaign_id}/activate", response_model=CampaignResponse)
@@ -698,6 +755,173 @@ async def instantly_webhook(request: Request, db: AsyncSession = Depends(get_db)
 
     await db.flush()
     return {"status": "ok"}
+
+
+# --- Sync Leads FROM Instantly ---
+
+
+@router.post("/{campaign_id}/sync-leads")
+async def sync_leads_from_instantly(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Pull leads FROM Instantly campaign back to local DB."""
+    result = await db.execute(
+        select(Campaign).where(Campaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not linked to Instantly")
+
+    imported = 0
+    skipped = 0
+    errors = 0
+
+    try:
+        starting_after = None
+        while True:
+            data = await instantly_service.list_leads(
+                campaign_id=campaign.instantly_campaign_id,
+                limit=100,
+                starting_after=starting_after,
+            )
+            items = data.get("items", [])
+            if not items:
+                break
+
+            for lead_data in items:
+                email = (lead_data.get("email", "") or "").lower().strip()
+                if not email:
+                    continue
+
+                # Check if lead already exists
+                existing = await db.execute(
+                    select(Lead).where(Lead.email == email)
+                )
+                if existing.scalar_one_or_none() is not None:
+                    skipped += 1
+                    continue
+
+                try:
+                    new_lead = Lead(
+                        email=email,
+                        first_name=lead_data.get("first_name", ""),
+                        last_name=lead_data.get("last_name", ""),
+                        company=lead_data.get("company_name", ""),
+                        source="instantly",
+                        icp_id=campaign.icp_id,
+                    )
+                    db.add(new_lead)
+                    await db.flush()
+                    imported += 1
+                except Exception as e:
+                    logger.warning(f"Error importing lead {email}: {e}")
+                    errors += 1
+
+            # Cursor pagination
+            pagination = data.get("pagination", {})
+            starting_after = pagination.get("next_starting_after")
+            if not starting_after:
+                break
+
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to fetch leads from Instantly: {e.detail}")
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors,
+        "message": f"Imported {imported} leads, {skipped} already existed, {errors} errors",
+    }
+
+
+# --- Daily Analytics from Instantly ---
+
+
+@router.get("/{campaign_id}/daily-analytics")
+async def get_campaign_daily_analytics(
+    campaign_id: int,
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get day-by-day analytics from Instantly for a campaign."""
+    result = await db.execute(
+        select(Campaign).where(Campaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not linked to Instantly")
+
+    try:
+        analytics = await instantly_service.get_daily_campaign_analytics(
+            campaign_id=campaign.instantly_campaign_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return analytics
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to get daily analytics: {e.detail}")
+
+
+# --- Instantly Account & Warmup Management ---
+
+
+@router.get("/instantly/accounts/{email}")
+async def get_instantly_account(email: str):
+    """Get details for a specific Instantly email account including warmup status."""
+    try:
+        return await instantly_service.get_account(email)
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to get account: {e.detail}")
+
+
+@router.patch("/instantly/accounts/{email}")
+async def update_instantly_account(email: str, request: Request):
+    """Update Instantly account settings (warmup config, daily limit, etc.)."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON payload")
+
+    try:
+        return await instantly_service.update_account(email, payload)
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to update account: {e.detail}")
+
+
+@router.post("/instantly/accounts/{email}/{action}")
+async def manage_instantly_account(email: str, action: str):
+    """Manage Instantly account state: pause, resume, enable_warmup, disable_warmup, test_vitals."""
+    valid_actions = {"pause", "resume", "enable_warmup", "disable_warmup", "test_vitals"}
+    if action not in valid_actions:
+        raise HTTPException(400, f"Invalid action. Must be one of: {', '.join(valid_actions)}")
+
+    try:
+        return await instantly_service.manage_account_state(email, action)
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to {action} account: {e.detail}")
+
+
+@router.get("/instantly/accounts/{email}/warmup-analytics")
+async def get_account_warmup_analytics(
+    email: str,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+):
+    """Get warmup analytics for a specific email account."""
+    try:
+        return await instantly_service.get_warmup_analytics(
+            emails=[email],
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except InstantlyAPIError as e:
+        raise HTTPException(502, f"Failed to get warmup analytics: {e.detail}")
 
 
 @router.delete("/bulk-delete")

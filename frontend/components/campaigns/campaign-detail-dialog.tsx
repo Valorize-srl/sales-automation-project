@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Wand2, Upload, Trash2, Send, Loader2 } from "lucide-react";
+import { RefreshCw, Wand2, Upload, Trash2, Send, Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -12,7 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
-import { Campaign, CampaignStatus, EmailStep, PushSequencesResponse } from "@/types";
+import { useToast } from "@/hooks/use-toast";
+import { Campaign, CampaignStatus, EmailStep } from "@/types";
 
 interface CampaignDetailDialogProps {
   campaign: Campaign | null;
@@ -29,6 +30,8 @@ const statusColors: Record<CampaignStatus, string> = {
   active: "bg-green-100 text-green-800",
   paused: "bg-yellow-100 text-yellow-800",
   completed: "bg-blue-100 text-blue-800",
+  scheduled: "bg-purple-100 text-purple-800",
+  error: "bg-red-100 text-red-800",
 };
 
 function parseJsonSafe<T>(value: string | null, fallback: T): T {
@@ -51,6 +54,8 @@ export function CampaignDetailDialog({
 }: CampaignDetailDialogProps) {
   const [deleting, setDeleting] = useState(false);
   const [pushingSequences, setPushingSequences] = useState(false);
+  const [syncingLeads, setSyncingLeads] = useState(false);
+  const { toast } = useToast();
 
   if (!campaign) return null;
 
@@ -76,19 +81,38 @@ export function CampaignDetailDialog({
   const handlePushSequences = async () => {
     setPushingSequences(true);
     try {
-      const result = await api.post<PushSequencesResponse>(
-        `/campaigns/${campaign.id}/push-sequences`,
-        {}
-      );
-      alert(result.message);
+      const result = await api.pushSequences(campaign.id);
+      toast({
+        title: "Sequences Pushed",
+        description: result.message,
+      });
     } catch (err) {
-      alert(
-        err instanceof Error
-          ? err.message
-          : "Failed to push sequences to Instantly"
-      );
+      toast({
+        title: "Push Failed",
+        description: err instanceof Error ? err.message : "Failed to push sequences to Instantly",
+        variant: "destructive",
+      });
     } finally {
       setPushingSequences(false);
+    }
+  };
+
+  const handleSyncLeads = async () => {
+    setSyncingLeads(true);
+    try {
+      const result = await api.syncLeadsFromInstantly(campaign.id);
+      toast({
+        title: "Leads Synced",
+        description: result.message,
+      });
+    } catch (err) {
+      toast({
+        title: "Sync Failed",
+        description: err instanceof Error ? err.message : "Failed to sync leads from Instantly",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingLeads(false);
     }
   };
 
@@ -220,6 +244,22 @@ export function CampaignDetailDialog({
             >
               <Upload className="h-3 w-3" />
               Upload Leads
+            </Button>
+          )}
+          {campaign.instantly_campaign_id && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={handleSyncLeads}
+              disabled={syncingLeads}
+            >
+              {syncingLeads ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Download className="h-3 w-3" />
+              )}
+              {syncingLeads ? "Syncing..." : "Sync Leads"}
             </Button>
           )}
           {campaign.instantly_campaign_id && emailSteps.length > 0 && (

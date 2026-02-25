@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Users,
   Building2,
@@ -8,6 +8,7 @@ import {
   Send,
   Eye,
   MessageSquareReply,
+  Clock,
 } from "lucide-react";
 import {
   LineChart,
@@ -43,14 +44,38 @@ interface KpiCard {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
-  useEffect(() => {
-    api
-      .get<DashboardStats>("/analytics/dashboard")
-      .then(setStats)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+  const loadStats = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const data = await api.get<DashboardStats>("/analytics/dashboard");
+      setStats(data);
+      setLastRefresh(new Date());
+    } catch (err) {
+      console.error("Failed to load dashboard:", err);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  // Auto-polling every 5 minutes
+  useEffect(() => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(() => {
+      loadStats(true);
+    }, POLL_INTERVAL);
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [loadStats]);
 
   const cards: KpiCard[] = stats
     ? [
@@ -104,7 +129,15 @@ export default function DashboardPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Platform overview</p>
+        <p className="text-sm text-muted-foreground">
+          Platform overview
+          {lastRefresh && (
+            <span className="ml-2 inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Updated {lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+        </p>
       </div>
 
       {/* KPI Cards */}
