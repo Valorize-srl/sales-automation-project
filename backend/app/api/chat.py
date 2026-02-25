@@ -294,10 +294,6 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
         await db.flush()
         await db.refresh(search_history)
 
-        # DEBUG: include raw first person to inspect Apollo response format
-        raw_people = raw.get("people", [])
-        debug_sample = raw_people[0] if raw_people else None
-
         return {
             "results": results,
             "total": total,
@@ -305,8 +301,6 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
             "returned": len(results),
             "credits_consumed": credits_consumed,
             "history_id": search_history.id,
-            "_debug_sample_keys": sorted(debug_sample.keys()) if debug_sample else [],
-            "_debug_sample": debug_sample,
         }
 
     except ApolloAPIError as e:

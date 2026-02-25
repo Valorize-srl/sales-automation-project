@@ -181,22 +181,13 @@ class ApolloService:
         # 1. Base search — try new api_search first, fall back to old endpoint
         try:
             raw = await self._post("/mixed_people/api_search", payload)
-            logger.info("✅ Using /mixed_people/api_search endpoint")
+            logger.info("Using /mixed_people/api_search endpoint")
         except ApolloAPIError as e:
-            logger.warning(f"⚠️ api_search failed ({e.status_code}), falling back to /mixed_people/search")
+            logger.warning(f"api_search failed ({e.status_code}), falling back to /mixed_people/search")
             raw = await self._post("/mixed_people/search", payload)
 
-        # LOG: See what raw search returns
         people = raw.get("people", [])
-        logger.info(f"🔍 APOLLO SEARCH: Found {len(people)} people. Top-level keys: {list(raw.keys())}")
-        if people:
-            sample = people[0]
-            logger.info(f"📄 SAMPLE PERSON KEYS: {sorted(sample.keys())}")
-            logger.info(f"📄 SAMPLE PERSON DATA: first_name={sample.get('first_name')}, "
-                       f"last_name={sample.get('last_name')}, name={sample.get('name')}, "
-                       f"city={sample.get('city')}, state={sample.get('state')}, "
-                       f"country={sample.get('country')}, linkedin_url={sample.get('linkedin_url')}, "
-                       f"organization={type(sample.get('organization')).__name__}")
+        logger.info(f"APOLLO SEARCH: Found {len(people)} people")
 
         if not auto_enrich:
             raw["enriched_count"] = 0
@@ -265,54 +256,63 @@ class ApolloService:
         return raw
 
     def format_people_results(self, raw: dict) -> list[dict]:
-        """Normalize Apollo people response to our preview format."""
+        """Normalize Apollo people response to our preview format.
+
+        Handles both old (/mixed_people/search) and new (/mixed_people/api_search)
+        response formats. The new api_search endpoint hides some PII fields
+        (last_name, city, linkedin_url) that only appear after enrichment.
+        """
         people = raw.get("people", [])
         results = []
 
-        logger.info(f"📊 FORMATTING {len(people)} people results (enriched_count: {raw.get('enriched_count', 0)}, credits: {raw.get('credits_consumed', 0)})")
-
         for p in people:
             org = p.get("organization") or {}
-            location_parts = filter(None, [
-                p.get("city"), p.get("state"), p.get("country")
-            ])
 
-            # Handle name parsing - Apollo might return "name" or separate first/last
+            # --- Name: try first_name/last_name, fall back to "name" split ---
             first_name = p.get("first_name") or ""
             last_name = p.get("last_name") or ""
-
-            # If we don't have first/last but have a "name" field, split it
             if not first_name and not last_name and p.get("name"):
-                name_parts = p.get("name", "").strip().split(None, 1)  # Split on first space
-                first_name = name_parts[0] if len(name_parts) > 0 else ""
+                name_parts = p["name"].strip().split(None, 1)
+                first_name = name_parts[0] if name_parts else ""
                 last_name = name_parts[1] if len(name_parts) > 1 else ""
 
-            # Use industry if available, otherwise use keywords as fallback
+            # --- Location: city/state/country or headline-derived ---
+            location_parts = list(filter(None, [
+                p.get("city"), p.get("state"), p.get("country")
+            ]))
+            location = ", ".join(location_parts) if location_parts else None
+            # Fallback: some responses have a flat "location" or org location
+            if not location:
+                location = p.get("location") or org.get("city") or org.get("primary_domain_location") or None
+
+            # --- Industry: org.industry → org.keywords fallback ---
             industry = org.get("industry")
-            if not industry and org.get("keywords"):
-                # Join first 3 keywords as industry fallback
-                keywords = org.get("keywords", [])
-                industry = ", ".join(keywords[:3]) if isinstance(keywords, list) else None
+            if not industry:
+                kw = org.get("keywords")
+                if isinstance(kw, list) and kw:
+                    industry = ", ".join(kw[:3])
+
+            # --- LinkedIn: multiple possible field names ---
+            linkedin = p.get("linkedin_url") or p.get("linkedin") or None
+
+            # --- Company name ---
+            company = org.get("name") or p.get("organization_name") or p.get("organization", {}).get("name") if isinstance(p.get("organization"), dict) else p.get("organization_name")
 
             result = {
                 "first_name": first_name,
                 "last_name": last_name,
-                "title": p.get("title"),
-                "company": org.get("name") or p.get("organization_name"),
-                "linkedin_url": p.get("linkedin_url"),
-                "location": ", ".join(location_parts) or None,
-                "email": p.get("email"),  # enriched
-                "phone": p.get("phone") or p.get("direct_phone"),  # enriched
-                "website": org.get("website_url"),
+                "title": p.get("title") or p.get("headline"),
+                "company": company,
+                "linkedin_url": linkedin,
+                "location": location,
+                "email": p.get("email"),
+                "phone": p.get("phone") or p.get("direct_phone"),
+                "website": org.get("website_url") or org.get("website"),
                 "industry": industry,
                 "apollo_id": p.get("id"),
                 "is_enriched": bool(p.get("email")),
             }
             results.append(result)
-
-        # LOG: Show first result to see what we extracted
-        if results:
-            logger.info(f"✅ FIRST FORMATTED RESULT: {results[0]}")
 
         return results
 

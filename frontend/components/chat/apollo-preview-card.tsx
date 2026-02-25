@@ -103,18 +103,22 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
       });
       const res = await api.apolloEnrichPeople(people);
 
-      // Merge enriched data back into local results
+      // Merge ALL enriched data back (email, phone, last_name, location, linkedin)
       setLocalResults((prev) => {
         const updated = [...prev];
         for (const idx of Array.from(selectedIds)) {
           const person = updated[idx] as ApolloPersonResult;
           const enriched = person.apollo_id ? res.enriched[person.apollo_id] : null;
           if (enriched) {
+            const locationParts = [enriched.city, enriched.state, enriched.country].filter(Boolean);
             updated[idx] = {
               ...person,
+              first_name: enriched.first_name || person.first_name,
+              last_name: enriched.last_name || person.last_name,
               email: enriched.email || person.email,
               phone: enriched.phone || enriched.direct_phone || person.phone,
               linkedin_url: enriched.linkedin_url || person.linkedin_url,
+              location: locationParts.length > 0 ? locationParts.join(", ") : person.location,
               is_enriched: true,
             };
           }
