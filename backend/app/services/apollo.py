@@ -183,15 +183,11 @@ class ApolloService:
 
         # LOG: See what raw search returns
         people = raw.get("people", [])
-        logger.info(f"🔍 APOLLO SEARCH: Found {len(people)} people")
+        logger.info(f"🔍 APOLLO SEARCH: Found {len(people)} people. Top-level keys: {list(raw.keys())}")
         if people:
             sample = people[0]
-            logger.info(f"📄 SAMPLE PERSON (before enrichment): id={sample.get('id')}, "
-                       f"name={sample.get('first_name')} {sample.get('last_name')}, "
-                       f"email={sample.get('email')}, "
-                       f"city={sample.get('city')}, state={sample.get('state')}, "
-                       f"org_industry={sample.get('organization', {}).get('industry')}, "
-                       f"org_keywords={sample.get('organization', {}).get('keywords')}")
+            logger.info(f"📄 SAMPLE PERSON KEYS: {list(sample.keys())}")
+            logger.info(f"📄 SAMPLE PERSON FULL: {sample}")
 
         if not auto_enrich:
             raw["enriched_count"] = 0
