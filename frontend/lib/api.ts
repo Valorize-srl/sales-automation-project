@@ -1,4 +1,6 @@
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+// Use relative URLs so requests go through Next.js rewrites (same origin = no CORS)
+// Only use full backend URL for server-side or local dev without rewrites
+const API_BASE_URL = "";
 
 class ApiClient {
   private baseUrl: string;
