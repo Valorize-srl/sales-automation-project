@@ -178,16 +178,25 @@ class ApolloService:
         if keywords:
             payload["q_keywords"] = keywords
 
-        # 1. Base search (api_search: no credits, no emails — use enrich for contact data)
-        raw = await self._post("/mixed_people/api_search", payload)
+        # 1. Base search — try new api_search first, fall back to old endpoint
+        try:
+            raw = await self._post("/mixed_people/api_search", payload)
+            logger.info("✅ Using /mixed_people/api_search endpoint")
+        except ApolloAPIError as e:
+            logger.warning(f"⚠️ api_search failed ({e.status_code}), falling back to /mixed_people/search")
+            raw = await self._post("/mixed_people/search", payload)
 
         # LOG: See what raw search returns
         people = raw.get("people", [])
         logger.info(f"🔍 APOLLO SEARCH: Found {len(people)} people. Top-level keys: {list(raw.keys())}")
         if people:
             sample = people[0]
-            logger.info(f"📄 SAMPLE PERSON KEYS: {list(sample.keys())}")
-            logger.info(f"📄 SAMPLE PERSON FULL: {sample}")
+            logger.info(f"📄 SAMPLE PERSON KEYS: {sorted(sample.keys())}")
+            logger.info(f"📄 SAMPLE PERSON DATA: first_name={sample.get('first_name')}, "
+                       f"last_name={sample.get('last_name')}, name={sample.get('name')}, "
+                       f"city={sample.get('city')}, state={sample.get('state')}, "
+                       f"country={sample.get('country')}, linkedin_url={sample.get('linkedin_url')}, "
+                       f"organization={type(sample.get('organization')).__name__}")
 
         if not auto_enrich:
             raw["enriched_count"] = 0
