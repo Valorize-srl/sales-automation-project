@@ -963,24 +963,18 @@ async def bulk_delete_campaigns(
                 instantly_deleted += 1
                 logger.info(f"Successfully deleted campaign {campaign.id} from Instantly")
         except InstantlyAPIError as e:
-            error_msg = f"Failed to delete campaign {campaign.id} ('{campaign.name}') from Instantly: {e.detail}"
-            logger.error(error_msg)
-            errors.append(error_msg)
-            # Rollback the transaction - don't delete anything if Instantly fails
-            await db.rollback()
-            raise HTTPException(
-                502,
-                f"Failed to delete from Instantly: {e.detail}. No campaigns were deleted."
-            )
+            # 404 = already deleted from Instantly, treat as success
+            if e.status_code == 404 or "not found" in e.detail.lower():
+                logger.info(f"Campaign {campaign.id} not found on Instantly (already deleted), proceeding")
+                instantly_deleted += 1
+            else:
+                error_msg = f"Failed to delete campaign {campaign.id} ('{campaign.name}') from Instantly: {e.detail}"
+                logger.error(error_msg)
+                errors.append(error_msg)
         except Exception as e:
             error_msg = f"Unexpected error deleting campaign {campaign.id} from Instantly: {str(e)}"
             logger.error(error_msg)
             errors.append(error_msg)
-            await db.rollback()
-            raise HTTPException(
-                500,
-                f"Unexpected error: {str(e)}. No campaigns were deleted."
-            )
 
     # If all Instantly deletions succeeded (or no instantly_campaign_id), mark as deleted in DB
     now = datetime.utcnow()
