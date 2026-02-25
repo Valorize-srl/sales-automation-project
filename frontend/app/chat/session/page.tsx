@@ -35,6 +35,7 @@ function SessionChatPageContent() {
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
   const [apolloCreditsUsed, setApolloCreditsUsed] = useState<number | null>(null);
   const [currentClientTag, setCurrentClientTag] = useState<string | undefined>(undefined);
+  const [currentAutoEnrich, setCurrentAutoEnrich] = useState<boolean>(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +75,7 @@ function SessionChatPageContent() {
       setApolloSearching(true);
       setApolloResults(null);
       setCurrentClientTag(params.client_tag);
+      setCurrentAutoEnrich(params.auto_enrich || false);
       try {
         const result = await api.apolloSearch(params);
         console.log("✅ Apollo search result:", result);
@@ -114,12 +116,13 @@ function SessionChatPageContent() {
   const handleFormSearch = useCallback(
     (formFilters: ApolloFormFilters) => {
       setShowSearchForm(false);
-      const { search_type, per_page, client_tag, ...filters } = formFilters;
+      const { search_type, per_page, client_tag, auto_enrich, ...filters } = formFilters;
       runApolloSearch({
         search_type,
         filters: filters as Record<string, unknown>,
         per_page,
         client_tag,
+        auto_enrich,
       });
     },
     [runApolloSearch]
@@ -284,7 +287,7 @@ function SessionChatPageContent() {
             <ApolloPreviewCard
               data={apolloResults}
               clientTag={currentClientTag}
-              autoEnrich={false}
+              autoEnrich={currentAutoEnrich}
               onImported={(target, count) => {
                 console.log(`${count} ${target} imported successfully.`);
               }}

@@ -351,6 +351,14 @@ export interface ApolloPersonResult {
   phone: string | null;
   website: string | null;
   industry: string | null;
+  apollo_id?: string;
+  is_enriched?: boolean;
+}
+
+export interface ApolloEnrichResponse {
+  enriched: Record<string, { id: string; email?: string; phone?: string; direct_phone?: string; linkedin_url?: string; first_name?: string; last_name?: string; city?: string; state?: string; country?: string }>;
+  credits_consumed: number;
+  enriched_count: number;
 }
 
 export interface ApolloCompanyResult {

@@ -155,8 +155,9 @@ class ApolloService:
         organization_sizes: Optional[list[str]] = None,
         keywords: Optional[str] = None,
         per_page: int = 25,
+        auto_enrich: bool = False,
     ) -> dict[str, Any]:
-        """Search Apollo people with automatic enrichment. Returns raw API response with enriched data."""
+        """Search Apollo people. When auto_enrich=True, enriches all results (1 credit/person)."""
         self._check_key()
 
         payload: dict[str, Any] = {"per_page": min(per_page, 100), "page": 1}
@@ -192,6 +193,12 @@ class ApolloService:
                        f"org_industry={sample.get('organization', {}).get('industry')}, "
                        f"org_keywords={sample.get('organization', {}).get('keywords')}")
 
+        if not auto_enrich:
+            raw["enriched_count"] = 0
+            raw["credits_consumed"] = 0
+            logger.info("Skipping enrichment (auto_enrich=False), 0 credits consumed")
+            return raw
+
         # 2. Extract people to enrich - enrich ALL to get emails (costs 1 credit/person)
         people_to_enrich = [
             p for p in people
@@ -205,19 +212,11 @@ class ApolloService:
             batch = people_to_enrich[i:i+10]
             try:
                 result = await self.enrich_people(batch)
-                # Track credits consumed from this batch
                 credits_consumed = result.get("credits_consumed", 0)
                 total_credits_consumed += credits_consumed
 
-                # LOG: See what enrichment returns
                 matches = result.get("matches", [])
-                logger.info(f"💎 ENRICHMENT BATCH {i//10 + 1}: Got {len(matches)} matches, consumed {credits_consumed} credits")
-                if matches:
-                    sample_match = matches[0]
-                    logger.info(f"📧 ENRICHED SAMPLE: id={sample_match.get('id')}, "
-                               f"email={sample_match.get('email')}, "
-                               f"phone={sample_match.get('phone')}, "
-                               f"city={sample_match.get('city')}, state={sample_match.get('state')}")
+                logger.info(f"ENRICHMENT BATCH {i//10 + 1}: Got {len(matches)} matches, consumed {credits_consumed} credits")
 
                 for match in matches:
                     if match.get("id"):
@@ -225,17 +224,15 @@ class ApolloService:
             except ApolloAPIError as e:
                 if e.status_code == 402:
                     logger.warning("Apollo credits exhausted, returning results without enrichment")
-                    break  # Stop enrichment but return what we have
+                    break
                 else:
                     logger.error(f"Apollo enrichment error: {e}")
-                    # Continue with next batch
 
         # 4. Merge enriched data back into search results
         for person in people:
             person_id = person.get("id")
             if person_id and person_id in enriched_data:
                 enriched = enriched_data[person_id]
-                # Merge enriched fields
                 if enriched.get("first_name"):
                     person["first_name"] = enriched["first_name"]
                 if enriched.get("last_name"):
@@ -248,20 +245,18 @@ class ApolloService:
                     person["direct_phone"] = enriched["direct_phone"]
                 if enriched.get("linkedin_url"):
                     person["linkedin_url"] = enriched["linkedin_url"]
-                # Merge location fields
                 if enriched.get("city"):
                     person["city"] = enriched["city"]
                 if enriched.get("state"):
                     person["state"] = enriched["state"]
                 if enriched.get("country"):
                     person["country"] = enriched["country"]
-                # Merge organization data (for industry)
                 if enriched.get("organization"):
                     person["organization"] = enriched["organization"]
 
         raw["people"] = people
-        raw["enriched_count"] = len(enriched_data)  # Track how many were enriched
-        raw["credits_consumed"] = total_credits_consumed  # Track credits used for enrichment
+        raw["enriched_count"] = len(enriched_data)
+        raw["credits_consumed"] = total_credits_consumed
         return raw
 
     def format_people_results(self, raw: dict) -> list[dict]:
@@ -305,6 +300,8 @@ class ApolloService:
                 "phone": p.get("phone") or p.get("direct_phone"),  # enriched
                 "website": org.get("website_url"),
                 "industry": industry,
+                "apollo_id": p.get("id"),
+                "is_enriched": bool(p.get("email")),
             }
             results.append(result)
 

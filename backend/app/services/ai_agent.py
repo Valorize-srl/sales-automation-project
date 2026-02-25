@@ -196,6 +196,7 @@ class AIAgentService:
         per_page: int = 100,
         auto_create_list: bool = True,
         list_name: Optional[str] = None,
+        auto_enrich: bool = True,
     ) -> dict:
         """
         Execute Apollo search using agent's ICP config.
@@ -236,13 +237,14 @@ class AIAgentService:
             organization_sizes=search_filters.get("organization_sizes"),
             keywords=search_filters.get("keywords"),
             per_page=per_page,
+            auto_enrich=auto_enrich,
         )
 
         people = apollo_result.get("people", [])
         breadcrumbs = apollo_result.get("breadcrumbs", {})
 
-        # Calculate credits consumed (people enrichment cost)
-        credits_consumed = len(people)  # 1 credit per person enriched
+        # Use actual credits consumed from Apollo response
+        credits_consumed = apollo_result.get("credits_consumed", 0)
 
         # Update agent credits
         agent.apollo_credits_consumed += credits_consumed

@@ -124,12 +124,13 @@ export default function ChatPage() {
   const handleFormSearch = useCallback(
     (formFilters: ApolloFormFilters) => {
       setShowSearchForm(false);
-      const { search_type, per_page, client_tag, ...filters } = formFilters;
+      const { search_type, per_page, client_tag, auto_enrich, ...filters } = formFilters;
       runApolloSearch({
         search_type,
         filters: filters as Record<string, unknown>,
         per_page,
-        client_tag
+        client_tag,
+        auto_enrich,
       });
     },
     [runApolloSearch]

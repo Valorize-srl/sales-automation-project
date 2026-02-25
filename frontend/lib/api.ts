@@ -129,6 +129,7 @@ class ApiClient {
     filters: Record<string, unknown>;
     per_page?: number;
     client_tag?: string;
+    auto_enrich?: boolean;
     claude_tokens?: {
       input_tokens: number;
       output_tokens: number;
@@ -136,6 +137,10 @@ class ApiClient {
     };
   }): Promise<import("@/types").ApolloSearchResponse> {
     return this.post("/chat/apollo/search", params);
+  }
+
+  async apolloEnrichPeople(people: Record<string, unknown>[]): Promise<import("@/types").ApolloEnrichResponse> {
+    return this.post("/chat/apollo/enrich", { people });
   }
 
   async apolloImport(

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Users, Building2, Loader2, ExternalLink } from "lucide-react";
+import { Download, Users, Building2, Loader2, ExternalLink, Sparkles, Mail, MailX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
 import { ApolloPersonResult, ApolloCompanyResult, ApolloSearchResponse } from "@/types";
 
@@ -49,11 +50,86 @@ interface Props {
 export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: Props) {
   const [importing, setImporting] = useState<"people" | "companies" | null>(null);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichResult, setEnrichResult] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Local copy of results so we can merge enriched data
+  const [localResults, setLocalResults] = useState<(ApolloPersonResult | ApolloCompanyResult)[]>(
+    data.results as (ApolloPersonResult | ApolloCompanyResult)[]
+  );
 
   const isPeople = data.search_type === "people";
-  const results = data.results as (ApolloPersonResult | ApolloCompanyResult)[];
+  const results = localResults;
 
-  console.log("🔥 APOLLO PREVIEW CARD V2.0 LOADED 🔥", { data, hasUsage: !!data.usage, creditsConsumed: data.credits_consumed });
+  // Count un-enriched people for display
+  const unenrichedCount = isPeople
+    ? (results as ApolloPersonResult[]).filter((p) => !p.is_enriched).length
+    : 0;
+
+  const selectedCount = selectedIds.size;
+  const allSelected = isPeople && results.length > 0 && selectedIds.size === results.length;
+
+  const toggleSelect = (idx: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(results.map((_, i) => i)));
+    }
+  };
+
+  const handleEnrichSelected = async () => {
+    if (selectedCount === 0) return;
+    setEnriching(true);
+    setEnrichResult(null);
+    try {
+      // Build payload: we need id, first_name, last_name, organization_name
+      const people = Array.from(selectedIds).map((idx) => {
+        const p = results[idx] as ApolloPersonResult;
+        return {
+          id: p.apollo_id,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          organization_name: p.company,
+        };
+      });
+      const res = await api.apolloEnrichPeople(people);
+
+      // Merge enriched data back into local results
+      setLocalResults((prev) => {
+        const updated = [...prev];
+        for (const idx of Array.from(selectedIds)) {
+          const person = updated[idx] as ApolloPersonResult;
+          const enriched = person.apollo_id ? res.enriched[person.apollo_id] : null;
+          if (enriched) {
+            updated[idx] = {
+              ...person,
+              email: enriched.email || person.email,
+              phone: enriched.phone || enriched.direct_phone || person.phone,
+              linkedin_url: enriched.linkedin_url || person.linkedin_url,
+              is_enriched: true,
+            };
+          }
+        }
+        return updated;
+      });
+
+      setEnrichResult(`Enriched ${res.enriched_count} people (${res.credits_consumed} credits)`);
+      setSelectedIds(new Set());
+    } catch (err) {
+      setEnrichResult(`Enrichment failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   const handleImport = async (target: "people" | "companies") => {
     setImporting(target);
@@ -92,18 +168,40 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
                 {" "}of {data.total.toLocaleString()} total
               </span>
             )}
-            <span className="ml-2 px-1.5 py-0.5 bg-green-500 text-white text-[9px] rounded font-mono">NEW</span>
           </span>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 text-xs"
-          onClick={() => downloadCSV(data)}
-        >
-          <Download className="h-3 w-3" />
-          CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Enrich Selected button - only for people with unenriched results */}
+          {isPeople && unenrichedCount > 0 && (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              disabled={enriching || selectedCount === 0}
+              onClick={handleEnrichSelected}
+            >
+              {enriching ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {enriching
+                ? "Enriching…"
+                : selectedCount > 0
+                  ? `Enrich ${selectedCount} (${selectedCount} credits)`
+                  : "Select to Enrich"}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={() => downloadCSV({ ...data, results: localResults as ApolloPersonResult[] | ApolloCompanyResult[] })}
+          >
+            <Download className="h-3 w-3" />
+            CSV
+          </Button>
+        </div>
       </div>
 
       {/* Usage Stats */}
@@ -142,11 +240,27 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
         </div>
       )}
 
+      {/* Enrichment result banner */}
+      {enrichResult && (
+        <div className="px-4 py-2 border-b bg-blue-50 text-xs text-blue-700">
+          {enrichResult}
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b bg-muted/20">
+              {isPeople && (
+                <th className="px-3 py-2 w-8">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </th>
+              )}
               {isPeople ? (
                 <>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Name</th>
@@ -171,6 +285,15 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
           <tbody>
             {results.map((row, i) => (
               <tr key={i} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                {isPeople && (
+                  <td className="px-3 py-2">
+                    <Checkbox
+                      checked={selectedIds.has(i)}
+                      onCheckedChange={() => toggleSelect(i)}
+                      aria-label={`Select ${(row as ApolloPersonResult).first_name}`}
+                    />
+                  </td>
+                )}
                 {isPeople ? (
                   <>
                     <td className="px-3 py-2 font-medium">
@@ -180,8 +303,18 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
                     <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).title ?? "—"}</td>
                     <td className="px-3 py-2">{(row as ApolloPersonResult).company ?? "—"}</td>
                     <td className="px-3 py-2 text-muted-foreground">{(row as ApolloPersonResult).industry ?? "—"}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {(row as ApolloPersonResult).email ?? "—"}
+                    <td className="px-3 py-2 text-xs">
+                      {(row as ApolloPersonResult).email ? (
+                        <span className="flex items-center gap-1 text-green-600">
+                          <Mail className="h-3 w-3" />
+                          {(row as ApolloPersonResult).email}
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-muted-foreground/50">
+                          <MailX className="h-3 w-3" />
+                          No email
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {(row as ApolloPersonResult).linkedin_url ? (
@@ -267,4 +400,3 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
     </div>
   );
 }
-// trigger reload

@@ -122,6 +122,7 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
         keywords: keywordsPeople.trim() || undefined,
         per_page: Math.min(100, Math.max(1, parseInt(perPagePeople) || 25)),
         client_tag: clientTag.trim() || undefined,
+        auto_enrich: autoEnrich,
       });
     } else {
       onSearch({
@@ -241,6 +242,24 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
               onChange={(e) => setClientTag(e.target.value)}
               className="h-8 text-sm"
             />
+          </div>
+          <div className="flex items-center space-x-2 pt-2">
+            <Checkbox
+              id="auto-enrich-people"
+              checked={autoEnrich}
+              onCheckedChange={(checked) => setAutoEnrich(checked as boolean)}
+            />
+            <div>
+              <Label
+                htmlFor="auto-enrich-people"
+                className="text-xs cursor-pointer"
+              >
+                Auto-enrich all results (1 credit/person)
+              </Label>
+              <p className="text-[10px] text-muted-foreground">
+                If off, you can selectively enrich from the results table
+              </p>
+            </div>
           </div>
         </div>
       ) : (

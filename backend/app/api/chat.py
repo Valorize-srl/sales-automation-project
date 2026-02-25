@@ -225,6 +225,7 @@ class ApolloSearchRequest(BaseModel):
     per_page: int = 25
     client_tag: Optional[str] = None
     claude_tokens: Optional[dict] = None  # {input_tokens, output_tokens, total_tokens}
+    auto_enrich: bool = False  # When True, enriches all results (1 credit/person)
 
 
 class ApolloImportRequest(BaseModel):
@@ -247,6 +248,7 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
                 organization_sizes=request.filters.organization_sizes,
                 keywords=request.filters.keywords,
                 per_page=request.per_page,
+                auto_enrich=request.auto_enrich,
             )
             results = apollo_service.format_people_results(raw)
             total = raw.get("pagination", {}).get("total_entries", len(results))
@@ -301,6 +303,61 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
             "history_id": search_history.id,
         }
 
+    except ApolloAPIError as e:
+        raise HTTPException(e.status_code, e.detail)
+
+
+class ApolloEnrichRequest(BaseModel):
+    people: list[dict]  # Apollo person records with id, first_name, last_name, organization_name
+
+
+@router.post("/apollo/enrich")
+async def apollo_enrich_selected(request: ApolloEnrichRequest, db: AsyncSession = Depends(get_db)):
+    """Enrich selected people from Apollo search results on-demand."""
+    if not request.people:
+        raise HTTPException(400, "No people to enrich")
+
+    try:
+        enriched_data = {}
+        total_credits = 0
+
+        for i in range(0, len(request.people), 10):
+            batch = request.people[i:i+10]
+            result = await apollo_service.enrich_people(batch)
+            credits = result.get("credits_consumed", 0)
+            total_credits += credits
+            for match in result.get("matches", []):
+                if match.get("id"):
+                    enriched_data[match["id"]] = {
+                        "id": match["id"],
+                        "email": match.get("email"),
+                        "phone": match.get("phone"),
+                        "direct_phone": match.get("direct_phone"),
+                        "linkedin_url": match.get("linkedin_url"),
+                        "first_name": match.get("first_name"),
+                        "last_name": match.get("last_name"),
+                        "city": match.get("city"),
+                        "state": match.get("state"),
+                        "country": match.get("country"),
+                    }
+
+        # Track in search history
+        from app.models.apollo_search_history import ApolloSearchHistory
+        history = ApolloSearchHistory(
+            search_type="enrich",
+            results_count=len(enriched_data),
+            apollo_credits_consumed=total_credits,
+            cost_apollo_usd=total_credits * 0.10,
+            cost_total_usd=total_credits * 0.10,
+        )
+        db.add(history)
+        await db.commit()
+
+        return {
+            "enriched": enriched_data,
+            "credits_consumed": total_credits,
+            "enriched_count": len(enriched_data),
+        }
     except ApolloAPIError as e:
         raise HTTPException(e.status_code, e.detail)
 
