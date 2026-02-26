@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search, TrendingUp, Users, CreditCard, FileText, Trash2, Link2, Unlink, Plus } from "lucide-react";
+import { ArrowLeft, Search, TrendingUp, Users, CreditCard, FileText, Trash2, Link2, Unlink, Save, BookOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -32,6 +33,9 @@ export default function AIAgentDashboardPage() {
   const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
   const [associatedCampaigns, setAssociatedCampaigns] = useState<any[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
+  const [knowledgeBaseText, setKnowledgeBaseText] = useState("");
+  const [savingKnowledge, setSavingKnowledge] = useState(false);
+  const [knowledgeDirty, setKnowledgeDirty] = useState(false);
 
   useEffect(() => {
     loadAgent();
@@ -44,6 +48,8 @@ export default function AIAgentDashboardPage() {
     try {
       const data = await api.getAIAgent(agentId);
       setAgent(data);
+      setKnowledgeBaseText(data.knowledge_base_text || "");
+      setKnowledgeDirty(false);
     } catch (error) {
       console.error("Failed to load agent:", error);
     } finally {
@@ -166,6 +172,31 @@ export default function AIAgentDashboardPage() {
         description: error.response?.data?.detail || "Failed to disconnect campaign",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleSaveKnowledgeBase = async () => {
+    setSavingKnowledge(true);
+    try {
+      await api.uploadKnowledgeBase(agentId, {
+        source_type: "manual",
+        content: knowledgeBaseText,
+      });
+      setKnowledgeDirty(false);
+      toast({
+        title: "Knowledge Base Saved",
+        description: "Reply instructions updated successfully",
+      });
+      await loadAgent();
+    } catch (error) {
+      console.error("Failed to save knowledge base:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save knowledge base",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingKnowledge(false);
     }
   };
 
@@ -305,23 +336,52 @@ export default function AIAgentDashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Knowledge Base */}
-      {agent.knowledge_base_text && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Knowledge Base</CardTitle>
-            <CardDescription>
-              Source: {agent.knowledge_base_source || "Unknown"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
-              {agent.knowledge_base_text.substring(0, 500)}
-              {agent.knowledge_base_text.length > 500 && "..."}
+      {/* Knowledge Base - Reply Instructions */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5" />
+                Knowledge Base
+              </CardTitle>
+              <CardDescription>
+                Instructions for AI auto-reply. Describe your product/service, tone, and how the agent should respond to leads.
+              </CardDescription>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <Button
+              onClick={handleSaveKnowledgeBase}
+              disabled={savingKnowledge || !knowledgeDirty}
+              size="sm"
+              className="gap-1"
+            >
+              {savingKnowledge ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {savingKnowledge ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            placeholder={"Example:\n- We are a SaaS company that provides CRM solutions for small businesses.\n- Always be professional and friendly.\n- If the lead asks about pricing, mention our starter plan at $29/month.\n- Try to book a demo call.\n- Never make promises about features we don't have."}
+            value={knowledgeBaseText}
+            onChange={(e) => {
+              setKnowledgeBaseText(e.target.value);
+              setKnowledgeDirty(true);
+            }}
+            rows={8}
+            className="font-mono text-sm"
+          />
+          {agent.knowledge_base_source && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Last saved source: {agent.knowledge_base_source}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Connected Campaigns */}
       <Card>

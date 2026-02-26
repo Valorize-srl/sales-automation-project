@@ -692,7 +692,10 @@ async def upload_leads_to_campaign(
     data: LeadUploadRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Push selected leads from our DB to an Instantly campaign."""
+    """Push selected leads from our DB to an Instantly campaign.
+
+    Supports both legacy Lead model (lead_ids) and new Person model (person_ids).
+    """
     result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
     campaign = result.scalar_one_or_none()
     if not campaign:
@@ -700,22 +703,42 @@ async def upload_leads_to_campaign(
     if not campaign.instantly_campaign_id:
         raise HTTPException(400, "Campaign is not linked to Instantly")
 
-    lead_result = await db.execute(
-        select(Lead).where(Lead.id.in_(data.lead_ids))
-    )
-    leads = lead_result.scalars().all()
-    if not leads:
-        raise HTTPException(400, "No valid leads found")
-
     instantly_leads = []
-    for lead in leads:
-        instantly_leads.append({
-            "email": lead.email,
-            "first_name": lead.first_name,
-            "last_name": lead.last_name,
-            "company_name": lead.company or "",
-            "personalization": lead.job_title or "",
-        })
+
+    # Handle Person model (new flow)
+    if data.person_ids:
+        person_result = await db.execute(
+            select(Person).where(Person.id.in_(data.person_ids))
+        )
+        people = person_result.scalars().all()
+        for person in people:
+            if not person.email:
+                continue
+            instantly_leads.append({
+                "email": person.email,
+                "first_name": person.first_name or "",
+                "last_name": person.last_name or "",
+                "company_name": person.company_name or "",
+                "personalization": "",
+            })
+
+    # Handle legacy Lead model (backward compatibility)
+    if data.lead_ids:
+        lead_result = await db.execute(
+            select(Lead).where(Lead.id.in_(data.lead_ids))
+        )
+        leads = lead_result.scalars().all()
+        for lead in leads:
+            instantly_leads.append({
+                "email": lead.email,
+                "first_name": lead.first_name,
+                "last_name": lead.last_name,
+                "company_name": lead.company or "",
+                "personalization": lead.job_title or "",
+            })
+
+    if not instantly_leads:
+        raise HTTPException(400, "No valid leads found")
 
     pushed = 0
     errors_count = 0

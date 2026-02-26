@@ -77,7 +77,8 @@ class InstantlySyncResponse(BaseModel):
 
 
 class LeadUploadRequest(BaseModel):
-    lead_ids: list[int]
+    lead_ids: list[int] = []  # Legacy: old Lead model IDs
+    person_ids: list[int] = []  # New: Person model IDs
 
 
 class LeadUploadResponse(BaseModel):

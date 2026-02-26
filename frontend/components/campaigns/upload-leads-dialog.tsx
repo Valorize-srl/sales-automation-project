@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Upload, Check } from "lucide-react";
+import { Loader2, Upload, Check, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -11,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
-import { Campaign, Lead, LeadListResponse, LeadUploadResponse } from "@/types";
+import { Campaign, Person, PersonListResponse, LeadUploadResponse } from "@/types";
 
 interface UploadLeadsDialogProps {
   campaign: Campaign | null;
@@ -24,39 +25,38 @@ export function UploadLeadsDialog({
   open,
   onOpenChange,
 }: UploadLeadsDialogProps) {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [loadingPeople, setLoadingPeople] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [result, setResult] = useState<LeadUploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (open && campaign) {
-      loadLeads();
+      loadPeople();
       setSelectedIds(new Set());
       setResult(null);
       setError(null);
+      setSearchQuery("");
     }
   }, [open, campaign]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadLeads = async () => {
+  const loadPeople = async () => {
     if (!campaign) return;
-    setLoadingLeads(true);
+    setLoadingPeople(true);
     try {
-      const endpoint = campaign.icp_id
-        ? `/leads?icp_id=${campaign.icp_id}`
-        : "/leads";
-      const data = await api.get<LeadListResponse>(endpoint);
-      setLeads(data.leads);
+      const data = await api.getPeople({ limit: 500 });
+      setPeople(data.people);
     } catch (err) {
-      console.error("Failed to load leads:", err);
+      console.error("Failed to load people:", err);
     } finally {
-      setLoadingLeads(false);
+      setLoadingPeople(false);
     }
   };
 
-  const toggleLead = (id: number) => {
+  const togglePerson = (id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -68,11 +68,22 @@ export function UploadLeadsDialog({
     });
   };
 
+  const filteredPeople = people.filter((p) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.first_name?.toLowerCase().includes(q) ||
+      p.last_name?.toLowerCase().includes(q) ||
+      p.email?.toLowerCase().includes(q) ||
+      p.company_name?.toLowerCase().includes(q)
+    );
+  });
+
   const toggleAll = () => {
-    if (selectedIds.size === leads.length) {
+    if (selectedIds.size === filteredPeople.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(leads.map((l) => l.id)));
+      setSelectedIds(new Set(filteredPeople.map((p) => p.id)));
     }
   };
 
@@ -83,7 +94,7 @@ export function UploadLeadsDialog({
     try {
       const data = await api.post<LeadUploadResponse>(
         `/campaigns/${campaign.id}/upload-leads`,
-        { lead_ids: Array.from(selectedIds) }
+        { person_ids: Array.from(selectedIds) }
       );
       setResult(data);
     } catch (err) {
@@ -97,9 +108,9 @@ export function UploadLeadsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[550px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Upload Leads to Instantly</DialogTitle>
+          <DialogTitle>Push Leads to Instantly</DialogTitle>
         </DialogHeader>
 
         {result ? (
@@ -130,55 +141,73 @@ export function UploadLeadsDialog({
           </div>
         ) : (
           <div className="space-y-4 pt-2">
-            {campaign?.icp_id && (
-              <p className="text-sm text-muted-foreground">
-                Showing leads for ICP: {campaign.icp_name || "linked ICP"}
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground">
+              Select people from your database to push to this Instantly campaign.
+            </p>
 
-            {loadingLeads ? (
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, email, or company..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-9 text-sm"
+              />
+            </div>
+
+            {loadingPeople ? (
               <p className="text-center text-muted-foreground py-4">
-                Loading leads...
+                Loading people...
               </p>
-            ) : leads.length === 0 ? (
+            ) : people.length === 0 ? (
               <p className="text-center text-muted-foreground py-4">
-                No leads found. Import leads first.
+                No people found. Import leads from Prospecting first.
               </p>
             ) : (
               <>
                 <div className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={selectedIds.size === leads.length}
+                    checked={selectedIds.size === filteredPeople.length && filteredPeople.length > 0}
                     onChange={toggleAll}
                     className="h-4 w-4 rounded border-gray-300"
                   />
                   <span>
-                    Select all ({leads.length} lead
-                    {leads.length !== 1 ? "s" : ""})
+                    Select all ({filteredPeople.length} people)
                   </span>
+                  {selectedIds.size > 0 && (
+                    <span className="text-muted-foreground">
+                      — {selectedIds.size} selected
+                    </span>
+                  )}
                 </div>
 
                 <Separator />
 
                 <div className="max-h-[300px] overflow-y-auto space-y-1">
-                  {leads.map((lead) => (
+                  {filteredPeople.map((person) => (
                     <label
-                      key={lead.id}
+                      key={person.id}
                       className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer text-sm"
                     >
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(lead.id)}
-                        onChange={() => toggleLead(lead.id)}
+                        checked={selectedIds.has(person.id)}
+                        onChange={() => togglePerson(person.id)}
                         className="h-4 w-4 rounded border-gray-300"
                       />
                       <span className="font-medium">
-                        {lead.first_name} {lead.last_name}
+                        {person.first_name} {person.last_name}
                       </span>
-                      <span className="text-muted-foreground truncate">
-                        {lead.email}
+                      <span className="text-muted-foreground truncate flex-1">
+                        {person.email}
                       </span>
+                      {person.company_name && (
+                        <span className="text-xs text-muted-foreground">
+                          {person.company_name}
+                        </span>
+                      )}
                     </label>
                   ))}
                 </div>
