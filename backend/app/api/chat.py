@@ -308,6 +308,16 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
         else:
             raise HTTPException(400, "search_type must be 'people' or 'companies'")
 
+        # Infer industry for results missing it
+        filters_dict = request.filters.model_dump()
+        results_missing_industry = [r for r in results if not r.get("industry")]
+        if results_missing_industry and len(results_missing_industry) > len(results) * 0.3:
+            org_kw = filters_dict.get("organization_keywords") or []
+            inferred = ", ".join(org_kw[:2]) if org_kw else (filters_dict.get("keywords") or None)
+            if inferred:
+                for r in results_missing_industry:
+                    r["industry"] = inferred
+
         credits_consumed = raw.get("credits_consumed", 0)
 
         # Calculate costs

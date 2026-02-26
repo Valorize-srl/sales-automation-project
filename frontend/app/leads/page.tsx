@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Upload, Search, X } from "lucide-react";
+import { Upload, Search, X, ListPlus, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -14,6 +14,8 @@ import { PeopleTable } from "@/components/leads/people-table";
 import { CompaniesTable } from "@/components/leads/companies-table";
 import { PeopleCSVDialog } from "@/components/leads/people-csv-dialog";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
+import { CreateListDialog } from "@/components/leads/create-list-dialog";
+import { AddListToCampaignDialog } from "@/components/leads/add-list-to-campaign-dialog";
 import { api } from "@/lib/api";
 import {
   Person,
@@ -37,6 +39,12 @@ export default function LeadsPage() {
   const [peopleClientTag, setPeopleClientTag] = useState<string>("");
   const [peopleCSVOpen, setPeopleCSVOpen] = useState(false);
 
+  // --- People selection ---
+  const [selectedPeopleIds, setSelectedPeopleIds] = useState<Set<number>>(new Set());
+  const [createListOpen, setCreateListOpen] = useState(false);
+  const [addToCampaignOpen, setAddToCampaignOpen] = useState(false);
+  const [lastCreatedListId, setLastCreatedListId] = useState<number | null>(null);
+
   // --- Companies state ---
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
@@ -53,6 +61,11 @@ export default function LeadsPage() {
     loadPeopleIndustries();
     loadCompaniesIndustries();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear selection when people data changes
+  useEffect(() => {
+    setSelectedPeopleIds(new Set());
+  }, [people]);
 
   // --- People ---
   const loadPeopleIndustries = useCallback(async () => {
@@ -109,6 +122,33 @@ export default function LeadsPage() {
 
   const handlePeopleCompanyClick = (_companyId: number) => {
     setActiveTab("companies");
+  };
+
+  // --- People selection ---
+  const handleToggleSelect = (id: number) => {
+    setSelectedPeopleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (people.every((p) => selectedPeopleIds.has(p.id))) {
+      setSelectedPeopleIds(new Set());
+    } else {
+      setSelectedPeopleIds(new Set(people.map((p) => p.id)));
+    }
+  };
+
+  const handleListCreated = (listId: number) => {
+    setLastCreatedListId(listId);
+    setCreateListOpen(false);
+    setAddToCampaignOpen(true);
   };
 
   // --- Companies ---
@@ -182,8 +222,8 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
           <p className="text-sm text-muted-foreground">
-            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}${peopleClientTag ? ` · tag: ${peopleClientTag}` : ""}`}
-            {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}${companiesClientTag ? ` · tag: ${companiesClientTag}` : ""}`}
+            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}${peopleClientTag ? ` \u00b7 tag: ${peopleClientTag}` : ""}`}
+            {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}${companiesClientTag ? ` \u00b7 tag: ${companiesClientTag}` : ""}`}
           </p>
         </div>
 
@@ -313,6 +353,32 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* Selection Toolbar */}
+      {activeTab === "people" && selectedPeopleIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20 mb-4">
+          <span className="text-sm font-medium">
+            {selectedPeopleIds.size} selected
+          </span>
+          <div className="h-4 w-px bg-border" />
+          <Button
+            size="sm"
+            variant="default"
+            className="gap-1.5"
+            onClick={() => setCreateListOpen(true)}
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+            Create List
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSelectedPeopleIds(new Set())}
+          >
+            Clear selection
+          </Button>
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex border-b mb-4">
         {tabs.map(({ key, label, count }) => (
@@ -340,6 +406,9 @@ export default function LeadsPage() {
         <PeopleTable
           people={people}
           loading={peopleLoading}
+          selectedIds={selectedPeopleIds}
+          onToggleSelect={handleToggleSelect}
+          onToggleSelectAll={handleToggleSelectAll}
           onDelete={handleDeletePerson}
           onCompanyClick={handlePeopleCompanyClick}
         />
@@ -366,6 +435,20 @@ export default function LeadsPage() {
         open={companiesCSVOpen}
         onOpenChange={setCompaniesCSVOpen}
         onImportComplete={() => { loadCompanies(companiesSearch, companiesIndustry, companiesClientTag); loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag); }}
+      />
+
+      <CreateListDialog
+        open={createListOpen}
+        onOpenChange={setCreateListOpen}
+        selectedPersonIds={Array.from(selectedPeopleIds)}
+        defaultClientTag={peopleClientTag}
+        onListCreated={handleListCreated}
+      />
+
+      <AddListToCampaignDialog
+        open={addToCampaignOpen}
+        onOpenChange={setAddToCampaignOpen}
+        leadListId={lastCreatedListId}
       />
     </div>
   );

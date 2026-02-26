@@ -70,6 +70,11 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
   const selectedCount = selectedIds.size;
   const allSelected = isPeople && results.length > 0 && selectedIds.size === results.length;
 
+  // Count enriched among selected (for import gating)
+  const enrichedSelectedCount = isPeople
+    ? Array.from(selectedIds).filter((idx) => (results[idx] as ApolloPersonResult).is_enriched).length
+    : selectedIds.size;
+
   const toggleSelect = (idx: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -152,11 +157,29 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
   };
 
   const handleImport = async (target: "people" | "companies") => {
+    // Determine which items to import
+    let toImport: (ApolloPersonResult | ApolloCompanyResult)[];
+    if (selectedCount > 0) {
+      toImport = Array.from(selectedIds).map((idx) => results[idx]);
+    } else {
+      toImport = [...results];
+    }
+
+    // For people: only allow enriched contacts
+    if (target === "people" && isPeople) {
+      const enrichedOnly = (toImport as ApolloPersonResult[]).filter((r) => r.is_enriched);
+      if (enrichedOnly.length === 0) {
+        setImportResult("Seleziona e arricchisci almeno un contatto prima di importare.");
+        return;
+      }
+      toImport = enrichedOnly;
+    }
+
     setImporting(target);
     setImportResult(null);
     try {
       const res = await api.apolloImport(
-        results as unknown as Record<string, unknown>[],
+        toImport as unknown as Record<string, unknown>[],
         target,
         clientTag,
         target === "companies" ? autoEnrich : undefined
@@ -402,12 +425,18 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
 
       {/* Footer actions */}
       <div className="flex items-center gap-2 px-4 py-3 border-t bg-muted/10 flex-wrap">
-        <span className="text-xs text-muted-foreground mr-auto">Import to:</span>
+        <span className="text-xs text-muted-foreground mr-auto">
+          {isPeople
+            ? enrichedSelectedCount > 0
+              ? `Import ${enrichedSelectedCount} enriched to:`
+              : "Select & enrich contacts to import"
+            : "Import to:"}
+        </span>
         <Button
           size="sm"
           variant="outline"
           className="h-7 gap-1.5 text-xs"
-          disabled={importing !== null}
+          disabled={importing !== null || (isPeople && enrichedSelectedCount === 0)}
           onClick={() => handleImport("people")}
         >
           {importing === "people" ? (
@@ -415,7 +444,7 @@ export function ApolloPreviewCard({ data, clientTag, autoEnrich, onImported }: P
           ) : (
             <Users className="h-3 w-3" />
           )}
-          People
+          People{isPeople && enrichedSelectedCount > 0 ? ` (${enrichedSelectedCount})` : ""}
         </Button>
         <Button
           size="sm"

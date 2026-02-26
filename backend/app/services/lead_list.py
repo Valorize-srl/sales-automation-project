@@ -32,19 +32,25 @@ class LeadListService:
 
     async def create_list(
         self,
-        ai_agent_id: int,
         name: str,
+        ai_agent_id: Optional[int] = None,
+        client_tag: Optional[str] = None,
         description: Optional[str] = None,
         filters_snapshot: Optional[dict] = None,
+        person_ids: Optional[list[int]] = None,
+        company_ids: Optional[list[int]] = None,
     ) -> LeadList:
         """
-        Create new lead list for AI Agent.
+        Create new lead list.
 
         Args:
-            ai_agent_id: Parent AI Agent ID
             name: List name (e.g., "Cliente XYZ - Wine Leads")
+            ai_agent_id: Optional parent AI Agent ID
+            client_tag: Optional client/project tag
             description: Optional description
             filters_snapshot: Optional Apollo filters used to create this list
+            person_ids: Optional list of person IDs to add
+            company_ids: Optional list of company IDs to add
 
         Returns:
             Created LeadList instance
@@ -52,13 +58,40 @@ class LeadListService:
         lead_list = LeadList(
             ai_agent_id=ai_agent_id,
             name=name,
+            client_tag=client_tag,
             description=description,
             filters_snapshot=filters_snapshot,
         )
         self.db.add(lead_list)
+        await self.db.flush()
+
+        people_count = 0
+        companies_count = 0
+
+        # Assign people to this list
+        if person_ids:
+            result = await self.db.execute(
+                select(Person).where(Person.id.in_(person_ids))
+            )
+            for p in result.scalars().all():
+                p.list_id = lead_list.id
+                people_count += 1
+
+        # Assign companies to this list
+        if company_ids:
+            result = await self.db.execute(
+                select(Company).where(Company.id.in_(company_ids))
+            )
+            for c in result.scalars().all():
+                c.list_id = lead_list.id
+                companies_count += 1
+
+        lead_list.people_count = people_count
+        lead_list.companies_count = companies_count
+
         await self.db.commit()
         await self.db.refresh(lead_list)
-        logger.info(f"✅ Created Lead List: {name} for Agent {ai_agent_id}")
+        logger.info(f"Created Lead List: {name} ({people_count} people, {companies_count} companies)")
         return lead_list
 
     async def get_list(self, list_id: int) -> Optional[LeadList]:

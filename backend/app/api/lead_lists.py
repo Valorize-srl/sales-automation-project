@@ -34,10 +34,13 @@ async def create_list(
     """Create new lead list for AI Agent."""
     service = LeadListService(db)
     lead_list = await service.create_list(
-        ai_agent_id=list_data.ai_agent_id,
         name=list_data.name,
+        ai_agent_id=list_data.ai_agent_id,
+        client_tag=list_data.client_tag,
         description=list_data.description,
         filters_snapshot=list_data.filters_snapshot,
+        person_ids=list_data.person_ids,
+        company_ids=list_data.company_ids,
     )
 
     # Add calculated property

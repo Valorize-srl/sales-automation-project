@@ -1,4 +1,4 @@
-"""Lead List model for organizing leads by AI Agent."""
+"""Lead List model for organizing leads."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,9 +13,9 @@ from app.db.database import Base
 
 class LeadList(Base):
     """
-    Lead List represents a collection of leads (people/companies) created by an AI Agent.
+    Lead List represents a collection of leads (people/companies).
 
-    Each AI Agent search creates a new list automatically, tagged with the agent's client_tag.
+    Can be created manually from the Leads page or automatically by an AI Agent.
     Lists help organize leads by project/client/search criteria.
     """
 
@@ -24,20 +24,20 @@ class LeadList(Base):
     # Primary Key
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    # Foreign Key to AI Agent
-    ai_agent_id: Mapped[int] = mapped_column(
+    # Foreign Key to AI Agent (optional — lists can exist independently)
+    ai_agent_id: Mapped[Optional[int]] = mapped_column(
         Integer,
-        ForeignKey("ai_agents.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("ai_agents.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
 
     # Basic Info
-    name: Mapped[str] = mapped_column(String(255), nullable=False)  # "Cliente XYZ - Wine Leads - 2024-02-24"
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Filter Snapshot - Apollo filters used to create this list
-    # Example: {"search_type": "companies", "filters": {"organization_locations": ["Tuscany"]}}
     filters_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Stats (cached counts, updated on lead add/remove)
@@ -53,16 +53,13 @@ class LeadList(Base):
     )
 
     # Relationships
-    ai_agent: Mapped["AIAgent"] = relationship(
+    ai_agent: Mapped[Optional["AIAgent"]] = relationship(
         "AIAgent",
         back_populates="lead_lists",
     )
 
-    # Note: Person and Company have list_id FK, but we don't define reverse relationship here
-    # to avoid circular dependencies. Query via Person.query.filter_by(list_id=X) instead.
-
     def __repr__(self) -> str:
-        return f"<LeadList(id={self.id}, name='{self.name}', agent_id={self.ai_agent_id})>"
+        return f"<LeadList(id={self.id}, name='{self.name}')>"
 
     @property
     def total_leads(self) -> int:

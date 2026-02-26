@@ -112,6 +112,7 @@ export function ApolloSearchForm({ onSearch, onClose, loading, initialFilters, c
   // Shared fields
   const [clientTag, setClientTag] = useState("");
   const [autoEnrich, setAutoEnrich] = useState(false);
+  const [clientTagError, setClientTagError] = useState(false);
 
   // Populate from initialFilters (e.g. when AI chat updates search params)
   useEffect(() => {
@@ -155,6 +156,11 @@ export function ApolloSearchForm({ onSearch, onClose, loading, initialFilters, c
   }, [initialFilters]);
 
   const handleSubmit = () => {
+    if (!clientTag.trim()) {
+      setClientTagError(true);
+      return;
+    }
+    setClientTagError(false);
     if (tab === "people") {
       onSearch({
         search_type: "people",
@@ -289,13 +295,14 @@ export function ApolloSearchForm({ onSearch, onClose, loading, initialFilters, c
             </select>
           </div>
           <div>
-            <Label className="text-xs mb-1 block">Client/Project Tag (Optional)</Label>
+            <Label className="text-xs mb-1 block">Client/Project Tag <span className="text-red-500">*</span></Label>
             <Input
               placeholder="e.g. Cliente X - Dentisti Milano"
               value={clientTag}
-              onChange={(e) => setClientTag(e.target.value)}
-              className="h-8 text-sm"
+              onChange={(e) => { setClientTag(e.target.value); setClientTagError(false); }}
+              className={`h-8 text-sm ${clientTagError ? "border-red-500" : ""}`}
             />
+            {clientTagError && <p className="text-xs text-red-500 mt-1">Client tag obbligatorio</p>}
           </div>
           <div className="flex items-center space-x-2 pt-2">
             <Checkbox
@@ -377,13 +384,14 @@ export function ApolloSearchForm({ onSearch, onClose, loading, initialFilters, c
             </select>
           </div>
           <div>
-            <Label className="text-xs mb-1 block">Client/Project Tag (Optional)</Label>
+            <Label className="text-xs mb-1 block">Client/Project Tag <span className="text-red-500">*</span></Label>
             <Input
               placeholder="e.g. Cliente X - Dentisti Milano"
               value={clientTag}
-              onChange={(e) => setClientTag(e.target.value)}
-              className="h-8 text-sm"
+              onChange={(e) => { setClientTag(e.target.value); setClientTagError(false); }}
+              className={`h-8 text-sm ${clientTagError ? "border-red-500" : ""}`}
             />
+            {clientTagError && <p className="text-xs text-red-500 mt-1">Client tag obbligatorio</p>}
           </div>
           <div className="flex items-center space-x-2 pt-2">
             <Checkbox

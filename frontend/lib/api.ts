@@ -458,6 +458,10 @@ class ApiClient {
     await this.delete(`/lead-lists/${id}`);
   }
 
+  async addLeadsToList(listId: number, personIds?: number[], companyIds?: number[]): Promise<import("@/types").BulkOperationResult> {
+    return this.post(`/lead-lists/${listId}/leads`, { person_ids: personIds, company_ids: companyIds });
+  }
+
   async exportLeadList(id: number): Promise<Blob> {
     const response = await fetch(`${this.baseUrl}/api/lead-lists/${id}/export`);
     if (!response.ok) throw new Error("Export failed");
@@ -575,6 +579,18 @@ class ApiClient {
 
   async getInstantlyAccounts(): Promise<import("@/types").InstantlyEmailAccountListResponse> {
     return this.get("/campaigns/instantly/accounts");
+  }
+
+  async addListToCampaign(campaignId: number, leadListId: number): Promise<import("@/types").AddListToCampaignResponse> {
+    return this.post(`/campaigns/${campaignId}/add-list`, { lead_list_id: leadListId });
+  }
+
+  async getCampaignLists(campaignId: number): Promise<{ campaign_id: number; lists: import("@/types").CampaignLeadListInfo[]; total: number }> {
+    return this.get(`/campaigns/${campaignId}/lists`);
+  }
+
+  async removeListFromCampaign(campaignId: number, listId: number): Promise<void> {
+    await this.delete(`/campaigns/${campaignId}/lists/${listId}`);
   }
 
   async syncLeadsFromInstantly(campaignId: number): Promise<import("@/types").LeadSyncResponse> {

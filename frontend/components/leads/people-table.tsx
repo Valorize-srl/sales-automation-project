@@ -2,6 +2,7 @@
 
 import { Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -15,11 +16,22 @@ import { Person } from "@/types";
 interface PeopleTableProps {
   people: Person[];
   loading: boolean;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+  onToggleSelectAll: () => void;
   onDelete: (id: number) => void;
   onCompanyClick: (companyId: number) => void;
 }
 
-export function PeopleTable({ people, loading, onDelete, onCompanyClick }: PeopleTableProps) {
+export function PeopleTable({
+  people,
+  loading,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+  onDelete,
+  onCompanyClick,
+}: PeopleTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
   }
@@ -34,11 +46,22 @@ export function PeopleTable({ people, loading, onDelete, onCompanyClick }: Peopl
     );
   }
 
+  const allSelected = people.length > 0 && people.every((p) => selectedIds.has(p.id));
+  const someSelected = people.some((p) => selectedIds.has(p.id));
+
   return (
     <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-[40px]">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={onToggleSelectAll}
+                aria-label="Select all"
+                className={someSelected && !allSelected ? "opacity-50" : ""}
+              />
+            </TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Company</TableHead>
             <TableHead>Email</TableHead>
@@ -52,7 +75,17 @@ export function PeopleTable({ people, loading, onDelete, onCompanyClick }: Peopl
         </TableHeader>
         <TableBody>
           {people.map((person) => (
-            <TableRow key={person.id}>
+            <TableRow
+              key={person.id}
+              className={selectedIds.has(person.id) ? "bg-primary/5" : ""}
+            >
+              <TableCell>
+                <Checkbox
+                  checked={selectedIds.has(person.id)}
+                  onCheckedChange={() => onToggleSelect(person.id)}
+                  aria-label={`Select ${person.first_name} ${person.last_name}`}
+                />
+              </TableCell>
               <TableCell className="font-medium">
                 {person.first_name} {person.last_name}
               </TableCell>
@@ -62,11 +95,11 @@ export function PeopleTable({ people, loading, onDelete, onCompanyClick }: Peopl
                     className="text-primary text-sm hover:underline font-medium"
                     onClick={() => onCompanyClick(person.company_id!)}
                   >
-                    {person.company_name || "—"}
+                    {person.company_name || "\u2014"}
                   </button>
                 ) : (
                   <span className="text-sm text-muted-foreground">
-                    {person.company_name || "—"}
+                    {person.company_name || "\u2014"}
                   </span>
                 )}
               </TableCell>
@@ -84,13 +117,13 @@ export function PeopleTable({ people, loading, onDelete, onCompanyClick }: Peopl
                     LinkedIn
                   </a>
                 ) : (
-                  <span className="text-muted-foreground text-sm">—</span>
+                  <span className="text-muted-foreground text-sm">{"\u2014"}</span>
                 )}
               </TableCell>
-              <TableCell className="text-sm">{person.phone || "—"}</TableCell>
-              <TableCell className="text-sm">{person.industry || "—"}</TableCell>
-              <TableCell className="text-sm">{person.location || "—"}</TableCell>
-              <TableCell className="text-sm">{person.client_tag || "—"}</TableCell>
+              <TableCell className="text-sm">{person.phone || "\u2014"}</TableCell>
+              <TableCell className="text-sm">{person.industry || "\u2014"}</TableCell>
+              <TableCell className="text-sm">{person.location || "\u2014"}</TableCell>
+              <TableCell className="text-sm">{person.client_tag || "\u2014"}</TableCell>
               <TableCell>
                 <Button
                   variant="ghost"

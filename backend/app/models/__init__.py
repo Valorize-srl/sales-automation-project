@@ -14,6 +14,7 @@ from app.models.ai_agent import AIAgent
 from app.models.lead_list import LeadList
 from app.models.signal_tracking import SignalTracking
 from app.models.ai_agent_campaign import AIAgentCampaign
+from app.models.campaign_lead_list import CampaignLeadList
 
 __all__ = [
     "ICP",
@@ -32,4 +33,5 @@ __all__ = [
     "LeadList",
     "SignalTracking",
     "AIAgentCampaign",
+    "CampaignLeadList",
 ]

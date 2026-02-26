@@ -15,6 +15,9 @@ from app.models.analytics import Analytics
 from app.models.email_response import EmailResponse, MessageDirection, ResponseStatus
 from app.models.icp import ICP
 from app.models.lead import Lead
+from app.models.lead_list import LeadList
+from app.models.person import Person
+from app.models.campaign_lead_list import CampaignLeadList
 from app.models.ai_agent_campaign import AIAgentCampaign
 from app.models.ai_agent import AIAgent
 from app.services.instantly import instantly_service, InstantlyAPIError
@@ -535,6 +538,149 @@ async def pause_campaign(
         )
 
     return await _campaign_to_response(campaign, db)
+
+
+# --- Lead Lists ---
+
+
+@router.post("/{campaign_id}/add-list")
+async def add_list_to_campaign(
+    campaign_id: int,
+    lead_list_id: int = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    """Associate a lead list with a campaign and push its people to Instantly."""
+    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not linked to Instantly")
+
+    # Verify lead list exists
+    list_result = await db.execute(select(LeadList).where(LeadList.id == lead_list_id))
+    lead_list = list_result.scalar_one_or_none()
+    if not lead_list:
+        raise HTTPException(404, "Lead list not found")
+
+    # Check if already associated
+    existing = await db.execute(
+        select(CampaignLeadList).where(
+            CampaignLeadList.campaign_id == campaign_id,
+            CampaignLeadList.lead_list_id == lead_list_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Lead list is already associated with this campaign")
+
+    # Get all people in this list
+    people_result = await db.execute(
+        select(Person).where(Person.list_id == lead_list_id)
+    )
+    people = people_result.scalars().all()
+
+    # Push to Instantly
+    pushed = 0
+    errors_count = 0
+    if people:
+        instantly_leads = []
+        for person in people:
+            if not person.email:
+                continue
+            instantly_leads.append({
+                "email": person.email,
+                "first_name": person.first_name or "",
+                "last_name": person.last_name or "",
+                "company_name": person.company_name or "",
+                "personalization": "",
+            })
+
+        batch_size = 1000
+        for i in range(0, len(instantly_leads), batch_size):
+            batch = instantly_leads[i:i + batch_size]
+            try:
+                await instantly_service.add_leads_to_campaign(
+                    campaign.instantly_campaign_id, batch
+                )
+                pushed += len(batch)
+            except InstantlyAPIError as e:
+                logger.error(f"Failed to push lead batch to Instantly: {e.detail}")
+                errors_count += len(batch)
+
+    # Create association record
+    assoc = CampaignLeadList(
+        campaign_id=campaign_id,
+        lead_list_id=lead_list_id,
+        pushed_to_instantly=pushed > 0,
+        pushed_count=pushed,
+    )
+    db.add(assoc)
+    await db.commit()
+
+    return {
+        "campaign_id": campaign_id,
+        "lead_list_id": lead_list_id,
+        "lead_list_name": lead_list.name,
+        "people_in_list": len(people),
+        "pushed_to_instantly": pushed,
+        "errors": errors_count,
+        "message": f"Added list '{lead_list.name}' to campaign. Pushed {pushed} leads to Instantly.",
+    }
+
+
+@router.get("/{campaign_id}/lists")
+async def get_campaign_lists(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all lead lists associated with a campaign."""
+    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
+    campaign = result.scalar_one_or_none()
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    assoc_result = await db.execute(
+        select(CampaignLeadList, LeadList)
+        .join(LeadList, CampaignLeadList.lead_list_id == LeadList.id)
+        .where(CampaignLeadList.campaign_id == campaign_id)
+        .order_by(CampaignLeadList.added_at.desc())
+    )
+    rows = assoc_result.all()
+
+    lists = []
+    for assoc, lead_list in rows:
+        lists.append({
+            "id": lead_list.id,
+            "name": lead_list.name,
+            "client_tag": lead_list.client_tag,
+            "people_count": lead_list.people_count,
+            "companies_count": lead_list.companies_count,
+            "pushed_to_instantly": assoc.pushed_to_instantly,
+            "pushed_count": assoc.pushed_count,
+            "added_at": assoc.added_at.isoformat() if assoc.added_at else None,
+        })
+
+    return {"campaign_id": campaign_id, "lists": lists, "total": len(lists)}
+
+
+@router.delete("/{campaign_id}/lists/{list_id}", status_code=204)
+async def remove_list_from_campaign(
+    campaign_id: int,
+    list_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a lead list association from a campaign."""
+    result = await db.execute(
+        select(CampaignLeadList).where(
+            CampaignLeadList.campaign_id == campaign_id,
+            CampaignLeadList.lead_list_id == list_id,
+        )
+    )
+    assoc = result.scalar_one_or_none()
+    if not assoc:
+        raise HTTPException(404, "Lead list association not found")
+    await db.delete(assoc)
+    await db.commit()
 
 
 # --- Lead Upload ---

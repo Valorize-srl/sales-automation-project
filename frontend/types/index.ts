@@ -737,9 +737,10 @@ export interface AIAgentStats {
 
 export interface LeadList {
   id: number;
-  ai_agent_id: number;
+  ai_agent_id: number | null;
   name: string;
   description: string | null;
+  client_tag: string | null;
   filters_snapshot: Record<string, any> | null;
   people_count: number;
   companies_count: number;
@@ -749,10 +750,34 @@ export interface LeadList {
 }
 
 export interface LeadListCreate {
-  ai_agent_id: number;
   name: string;
+  ai_agent_id?: number;
+  client_tag?: string;
   description?: string;
   filters_snapshot?: Record<string, any>;
+  person_ids?: number[];
+  company_ids?: number[];
+}
+
+export interface CampaignLeadListInfo {
+  id: number;
+  name: string;
+  client_tag: string | null;
+  people_count: number;
+  companies_count: number;
+  pushed_to_instantly: boolean;
+  pushed_count: number;
+  added_at: string | null;
+}
+
+export interface AddListToCampaignResponse {
+  campaign_id: number;
+  lead_list_id: number;
+  lead_list_name: string;
+  people_in_list: number;
+  pushed_to_instantly: number;
+  errors: number;
+  message: string;
 }
 
 export interface AIAgentApolloSearchRequest {

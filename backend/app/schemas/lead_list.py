@@ -7,10 +7,13 @@ from pydantic import BaseModel, Field
 
 class LeadListCreate(BaseModel):
     """Schema for creating a new lead list."""
-    ai_agent_id: int = Field(..., description="Parent AI Agent ID")
+    ai_agent_id: Optional[int] = Field(None, description="Parent AI Agent ID (optional)")
     name: str = Field(..., min_length=1, max_length=255, description="List name")
     description: Optional[str] = Field(None, description="Optional description")
+    client_tag: Optional[str] = Field(None, description="Client/project tag")
     filters_snapshot: Optional[dict] = Field(None, description="Apollo filters used to create this list")
+    person_ids: Optional[list[int]] = Field(None, description="People to add to list on creation")
+    company_ids: Optional[list[int]] = Field(None, description="Companies to add to list on creation")
 
 
 class LeadListUpdate(BaseModel):
@@ -22,9 +25,10 @@ class LeadListUpdate(BaseModel):
 class LeadListResponse(BaseModel):
     """Schema for lead list response."""
     id: int
-    ai_agent_id: int
+    ai_agent_id: Optional[int] = None
     name: str
     description: Optional[str] = None
+    client_tag: Optional[str] = None
     filters_snapshot: Optional[dict] = None
     people_count: int
     companies_count: int

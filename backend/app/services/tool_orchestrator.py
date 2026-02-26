@@ -465,6 +465,20 @@ class ToolOrchestrator:
             "icp_id": icp.id
         }
 
+    def _infer_industry_from_context(self, tool_input: dict, search_type: str) -> str | None:
+        """Infer industry from search parameters when Apollo doesn't provide it."""
+        # organization_keywords usually indicate the industry/sector
+        org_keywords = tool_input.get("organization_keywords", [])
+        if org_keywords:
+            return ", ".join(org_keywords[:2])
+
+        # Fallback to general keywords
+        keywords = tool_input.get("keywords", "")
+        if keywords:
+            return keywords
+
+        return None
+
     async def _search_apollo(self, tool_input: dict) -> dict:
         """
         Search Apollo backend-side and return summary to Claude.
@@ -512,6 +526,14 @@ class ToolOrchestrator:
                 total = raw.get("pagination", {}).get("total_entries", len(results))
             else:
                 return {"error": f"Unknown search_type: {search_type}", "summary": "Invalid search type"}
+
+            # Infer industry for results missing it (Apollo often doesn't return it)
+            results_missing_industry = [r for r in results if not r.get("industry")]
+            if results_missing_industry and len(results_missing_industry) > len(results) * 0.3:
+                inferred_industry = self._infer_industry_from_context(tool_input, search_type)
+                if inferred_industry:
+                    for r in results_missing_industry:
+                        r["industry"] = inferred_industry
 
             # Store full results for SSE emission
             self._pending_apollo_results = {
