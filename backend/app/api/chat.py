@@ -182,6 +182,36 @@ async def archive_chat_session(
     return {"status": "archived", "session_uuid": session_uuid}
 
 
+class UpdateSessionRequest(BaseModel):
+    client_tag: Optional[str] = None
+    title: Optional[str] = None
+
+
+@router.patch("/sessions/{session_uuid}")
+async def update_chat_session(
+    session_uuid: str,
+    request: UpdateSessionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update session fields (client_tag, title)."""
+    service = ConversationalChatService(db)
+    session = await service.get_session(session_uuid)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    if request.client_tag is not None:
+        session.client_tag = request.client_tag
+    if request.title is not None:
+        session.title = request.title
+
+    await db.commit()
+    return {
+        "session_uuid": session.session_uuid,
+        "client_tag": session.client_tag,
+        "title": session.title,
+    }
+
+
 class SearchContextRequest(BaseModel):
     search_type: str
     total: int

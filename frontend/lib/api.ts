@@ -289,6 +289,10 @@ class ApiClient {
     return this.delete(`/chat/sessions/${sessionUuid}`);
   }
 
+  async updateChatSession(sessionUuid: string, data: { client_tag?: string; title?: string }): Promise<{ session_uuid: string; client_tag: string | null; title: string | null }> {
+    return this.request(`/chat/sessions/${sessionUuid}`, { method: "PATCH", body: JSON.stringify(data) });
+  }
+
   async saveSearchContext(
     sessionUuid: string,
     data: { search_type: string; total: number; returned: number; filters: Record<string, unknown> }

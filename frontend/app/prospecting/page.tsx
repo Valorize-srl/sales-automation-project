@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Search, Loader2, Plus, MessageSquare } from "lucide-react";
+import { Search, Loader2, Plus, MessageSquare, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { ChatInput } from "@/components/chat/chat-input";
@@ -15,6 +16,10 @@ import { ApolloSearchResponse } from "@/types";
 export default function ProspectingPage() {
   const { context, sendMessage, createNewSession, error, onApolloResultsCallback } =
     useChatSession();
+
+  // Session client tag (for cost tracking per client)
+  const [sessionClientTag, setSessionClientTag] = useState("");
+  const clientTagTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Left panel state
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
@@ -38,9 +43,33 @@ export default function ProspectingPage() {
   // Auto-create session on mount
   useEffect(() => {
     if (!context) {
-      createNewSession({ title: "Prospecting Session" });
+      createNewSession({
+        title: "Prospecting Session",
+        client_tag: sessionClientTag || undefined,
+      });
     }
-  }, [context, createNewSession]);
+  }, [context, createNewSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced update of session client_tag on the server
+  const handleClientTagChange = useCallback(
+    (value: string) => {
+      setSessionClientTag(value);
+      setCurrentClientTag(value || undefined);
+
+      // Debounce the API call (wait 800ms after user stops typing)
+      if (clientTagTimerRef.current) {
+        clearTimeout(clientTagTimerRef.current);
+      }
+      clientTagTimerRef.current = setTimeout(() => {
+        if (context?.sessionUuid) {
+          api.updateChatSession(context.sessionUuid, {
+            client_tag: value || undefined,
+          }).catch(console.error);
+        }
+      }, 800);
+    },
+    [context?.sessionUuid]
+  );
 
   // Wire up apollo results callback from chat SSE
   useEffect(() => {
@@ -66,8 +95,18 @@ export default function ProspectingPage() {
     async (filters: ApolloFormFilters) => {
       setApolloSearching(true);
       setApolloResults(null);
-      setCurrentClientTag(filters.client_tag);
       setCurrentAutoEnrich(filters.auto_enrich || false);
+
+      // Sync client_tag from form to session
+      if (filters.client_tag) {
+        setSessionClientTag(filters.client_tag);
+        setCurrentClientTag(filters.client_tag);
+        if (context?.sessionUuid) {
+          api.updateChatSession(context.sessionUuid, {
+            client_tag: filters.client_tag,
+          }).catch(console.error);
+        }
+      }
 
       try {
         const { search_type, per_page, client_tag, auto_enrich, ...rest } = filters;
@@ -115,7 +154,10 @@ export default function ProspectingPage() {
   const handleNewSession = async () => {
     setApolloResults(null);
     setFormFilters(undefined);
-    await createNewSession({ title: "Prospecting Session" });
+    await createNewSession({
+      title: "Prospecting Session",
+      client_tag: sessionClientTag || undefined,
+    });
   };
 
   if (!context && !error) {
@@ -139,10 +181,21 @@ export default function ProspectingPage() {
             Search with the form, refine with AI chat
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleNewSession} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          New Session
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Tag className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Client / Project tag..."
+              value={sessionClientTag}
+              onChange={(e) => handleClientTagChange(e.target.value)}
+              className="h-8 w-[200px] text-sm"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={handleNewSession} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            New Session
+          </Button>
+        </div>
       </div>
 
       {/* Split View */}
