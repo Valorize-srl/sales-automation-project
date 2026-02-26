@@ -9,6 +9,7 @@ import {
   Eye,
   MessageSquareReply,
   Clock,
+  Calendar,
 } from "lucide-react";
 import {
   LineChart,
@@ -22,6 +23,27 @@ import {
 } from "recharts";
 import { api } from "@/lib/api";
 import { DashboardStats } from "@/types";
+
+type DateRange = "7d" | "30d" | "90d" | "all";
+
+const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "all", label: "All time" },
+];
+
+function getDateRange(range: DateRange): { start?: string; end?: string } {
+  if (range === "all") return {};
+  const end = new Date();
+  const start = new Date();
+  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  start.setDate(start.getDate() - days);
+  return {
+    start: start.toISOString().split("T")[0],
+    end: end.toISOString().split("T")[0],
+  };
+}
 
 function pct(num: number, den: number): string {
   if (den === 0) return "0%";
@@ -45,13 +67,19 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange>("30d");
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const data = await api.get<DashboardStats>("/analytics/dashboard");
+      const { start, end } = getDateRange(dateRange);
+      const params = new URLSearchParams();
+      if (start) params.set("start_date", start);
+      if (end) params.set("end_date", end);
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const data = await api.get<DashboardStats>(`/analytics/dashboard${query}`);
       setStats(data);
       setLastRefresh(new Date());
     } catch (err) {
@@ -59,9 +87,9 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [dateRange]);
 
-  // Initial load
+  // Load on mount and when date range changes
   useEffect(() => {
     loadStats();
   }, [loadStats]);
@@ -127,17 +155,35 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Platform overview
-          {lastRefresh && (
-            <span className="ml-2 inline-flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              Updated {lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Platform overview
+            {lastRefresh && (
+              <span className="ml-2 inline-flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Updated {lastRefresh.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
+          <Calendar className="h-4 w-4 text-muted-foreground ml-2" />
+          {DATE_RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setDateRange(opt.value)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                dateRange === opt.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -167,7 +213,9 @@ export default function DashboardPage() {
 
       {/* Line Chart */}
       <div className="rounded-lg border bg-card p-5">
-        <h2 className="text-sm font-semibold mb-4">Email Activity — Last 30 days</h2>
+        <h2 className="text-sm font-semibold mb-4">
+          Email Activity — {DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label}
+        </h2>
         {loading ? (
           <div className="h-64 bg-muted animate-pulse rounded" />
         ) : chartData.length === 0 ? (

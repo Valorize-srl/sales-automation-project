@@ -29,8 +29,29 @@ async def get_analytics(
 
 
 @router.get("/dashboard")
-async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    """Aggregate stats for the dashboard overview."""
+async def get_dashboard_stats(
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aggregate stats for the dashboard overview with optional date range."""
+
+    # Parse date range
+    if start_date:
+        try:
+            since = date.fromisoformat(start_date)
+        except ValueError:
+            since = date.today() - timedelta(days=30)
+    else:
+        since = date.today() - timedelta(days=30)
+
+    if end_date:
+        try:
+            until = date.fromisoformat(end_date)
+        except ValueError:
+            until = date.today()
+    else:
+        until = date.today()
 
     # People count
     people_result = await db.execute(select(sa_func.count(Person.id)))
@@ -40,23 +61,33 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     companies_result = await db.execute(select(sa_func.count(Company.id)))
     companies_count = companies_result.scalar() or 0
 
-    # Campaigns: active count + totals across all campaigns
+    # Campaigns: active count
     campaigns_result = await db.execute(select(Campaign))
     campaigns = campaigns_result.scalars().all()
     active_campaigns = sum(1 for c in campaigns if c.status == CampaignStatus.ACTIVE)
-    total_sent = sum(c.total_sent for c in campaigns)
-    total_opened = sum(c.total_opened for c in campaigns)
-    total_replied = sum(c.total_replied for c in campaigns)
 
-    # Analytics last 30 days, aggregated by date
-    since = date.today() - timedelta(days=30)
+    # Totals from Analytics table within date range
+    totals_result = await db.execute(
+        select(
+            sa_func.coalesce(sa_func.sum(Analytics.emails_sent), 0).label("sent"),
+            sa_func.coalesce(sa_func.sum(Analytics.opens), 0).label("opened"),
+            sa_func.coalesce(sa_func.sum(Analytics.replies), 0).label("replied"),
+        )
+        .where(Analytics.date >= since, Analytics.date <= until)
+    )
+    totals = totals_result.one()
+    total_sent = int(totals.sent)
+    total_opened = int(totals.opened)
+    total_replied = int(totals.replied)
+
+    # Chart data within date range
     chart_result = await db.execute(
         select(
             Analytics.date,
             sa_func.sum(Analytics.emails_sent).label("sent"),
             sa_func.sum(Analytics.replies).label("replies"),
         )
-        .where(Analytics.date >= since)
+        .where(Analytics.date >= since, Analytics.date <= until)
         .group_by(Analytics.date)
         .order_by(Analytics.date.asc())
     )
@@ -73,4 +104,5 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "total_opened": total_opened,
         "total_replied": total_replied,
         "chart_data": chart_data,
+        "date_range": {"start": str(since), "end": str(until)},
     }
