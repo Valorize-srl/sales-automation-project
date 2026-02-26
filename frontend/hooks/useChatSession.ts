@@ -7,6 +7,14 @@ import type {
   CreateSessionRequest,
 } from "@/types";
 
+export interface ApolloResultsData {
+  results: Record<string, unknown>[];
+  total: number;
+  search_type: string;
+  returned: number;
+  search_params: Record<string, unknown>;
+}
+
 interface ChatSessionContext {
   sessionUuid: string | null;
   messages: ChatMessageModel[];
@@ -27,20 +35,24 @@ interface ChatSessionContext {
     tool: string;
     input: Record<string, unknown>;
   } | null;
+  apolloResults: ApolloResultsData | null;
+  apolloSearching: boolean;
 }
 
 interface UseChatSessionReturn {
   context: ChatSessionContext | null;
-  sendMessage: (message: string, fileContent?: string) => Promise<void>;
+  sendMessage: (message: string, fileContent?: string, mode?: string) => Promise<void>;
   refreshSession: () => Promise<void>;
   createNewSession: (request?: CreateSessionRequest) => Promise<string>;
   error: Error | null;
+  onApolloResultsCallback: React.MutableRefObject<((data: ApolloResultsData) => void) | null>;
 }
 
 export function useChatSession(initialSessionUuid?: string): UseChatSessionReturn {
   const [context, setContext] = useState<ChatSessionContext | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const onApolloResultsCallback = useRef<((data: ApolloResultsData) => void) | null>(null);
 
   const loadSession = useCallback(async (sessionUuid: string) => {
     try {
@@ -62,7 +74,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
           }
         : null;
 
-      setContext({
+      setContext((prev) => ({
         sessionUuid: session.session_uuid,
         messages,
         currentIcp: session.current_icp_draft,
@@ -75,7 +87,9 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
         isLoading: false,
         isStreaming: false,
         currentToolExecution: null,
-      });
+        apolloResults: prev?.apolloResults ?? null,
+        apolloSearching: false,
+      }));
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
       setContext((prev) => prev ? { ...prev, isLoading: false } : null);
@@ -100,6 +114,8 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
         isLoading: false,
         isStreaming: false,
         currentToolExecution: null,
+        apolloResults: null,
+        apolloSearching: false,
       });
 
       return sessionResponse.session_uuid;
@@ -110,7 +126,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
   }, []);
 
   const sendMessage = useCallback(
-    async (message: string, fileContent?: string) => {
+    async (message: string, fileContent?: string, mode?: string) => {
       if (!context?.sessionUuid) {
         throw new Error("No active session");
       }
@@ -194,6 +210,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
                 ? {
                     ...prev,
                     currentToolExecution: { tool, input },
+                    apolloSearching: tool === "search_apollo" ? true : prev.apolloSearching,
                   }
                 : null
             );
@@ -206,6 +223,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
                 ? {
                     ...prev,
                     currentToolExecution: null,
+                    apolloSearching: tool === "search_apollo" ? false : prev.apolloSearching,
                   }
                 : null
             );
@@ -218,6 +236,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
                     ...prev,
                     isStreaming: false,
                     currentToolExecution: null,
+                    apolloSearching: false,
                   }
                 : null
             );
@@ -236,9 +255,23 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
                     ...prev,
                     isStreaming: false,
                     currentToolExecution: null,
+                    apolloSearching: false,
                   }
                 : null
             );
+          },
+          // options
+          {
+            mode,
+            onApolloResults: (data) => {
+              setContext((prev) =>
+                prev
+                  ? { ...prev, apolloResults: data, apolloSearching: false }
+                  : null
+              );
+              // Call external callback (used by prospecting page)
+              onApolloResultsCallback.current?.(data);
+            },
           }
         );
       } catch (err) {
@@ -249,6 +282,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
                 ...prev,
                 isStreaming: false,
                 currentToolExecution: null,
+                apolloSearching: false,
               }
             : null
         );
@@ -276,5 +310,6 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
     refreshSession,
     createNewSession,
     error,
+    onApolloResultsCallback,
   };
 }

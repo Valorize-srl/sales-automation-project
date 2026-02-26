@@ -122,7 +122,8 @@ async def stream_conversational_chat(
         service.stream_chat(
             session_uuid=session_uuid,
             user_message=request.message,
-            file_content=request.file_content
+            file_content=request.file_content,
+            mode=request.mode,
         ),
         media_type="text/event-stream",
         headers={
@@ -179,6 +180,40 @@ async def archive_chat_session(
     await service.archive_session(session_uuid)
     await db.commit()
     return {"status": "archived", "session_uuid": session_uuid}
+
+
+class SearchContextRequest(BaseModel):
+    search_type: str
+    total: int
+    returned: int
+    filters: dict
+
+
+@router.post("/sessions/{session_uuid}/search-context")
+async def save_search_context(
+    session_uuid: str,
+    request: SearchContextRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Save manual form search context into session metadata so AI chat knows about it."""
+    service = ConversationalChatService(db)
+    session = await service.get_session(session_uuid)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    from app.services.chat_session import ChatSessionService
+    session_service = ChatSessionService(db)
+    await session_service.update_session_metadata(session.id, {
+        "last_apollo_search": {
+            "type": request.search_type,
+            "count": request.total,
+            "returned": request.returned,
+            "params": request.filters,
+        }
+    })
+    await db.commit()
+
+    return {"status": "ok"}
 
 
 @router.post("/upload")

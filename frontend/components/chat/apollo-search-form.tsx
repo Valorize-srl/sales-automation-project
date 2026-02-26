@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Search, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Search, X, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -75,8 +75,10 @@ export interface ApolloFormFilters {
 
 interface Props {
   onSearch: (filters: ApolloFormFilters) => void;
-  onClose: () => void;
+  onClose?: () => void;
   loading?: boolean;
+  initialFilters?: Partial<ApolloFormFilters>;
+  collapsible?: boolean;
 }
 
 function splitTags(val: string): string[] {
@@ -86,8 +88,9 @@ function splitTags(val: string): string[] {
     .filter(Boolean);
 }
 
-export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
-  const [tab, setTab] = useState<"people" | "companies">("people");
+export function ApolloSearchForm({ onSearch, onClose, loading, initialFilters, collapsible }: Props) {
+  const [tab, setTab] = useState<"people" | "companies">(initialFilters?.search_type || "people");
+  const [collapsed, setCollapsed] = useState(false);
 
   // People fields
   const [personTitles, setPersonTitles] = useState("");
@@ -109,6 +112,47 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
   // Shared fields
   const [clientTag, setClientTag] = useState("");
   const [autoEnrich, setAutoEnrich] = useState(false);
+
+  // Populate from initialFilters (e.g. when AI chat updates search params)
+  useEffect(() => {
+    if (!initialFilters) return;
+    if (initialFilters.search_type) setTab(initialFilters.search_type);
+    if (initialFilters.person_titles) setPersonTitles(initialFilters.person_titles.join(", "));
+    if (initialFilters.person_locations) setPersonLocations(initialFilters.person_locations.join(", "));
+    if (initialFilters.person_seniorities) setPersonSeniorities(initialFilters.person_seniorities);
+    if (initialFilters.organization_keywords) {
+      if (initialFilters.search_type === "companies") {
+        setOrgKeywords(initialFilters.organization_keywords.join(", "));
+      } else {
+        setOrgKeywordsPeople(initialFilters.organization_keywords.join(", "));
+      }
+    }
+    if (initialFilters.organization_sizes) {
+      if (initialFilters.search_type === "companies") {
+        setOrgSizes(initialFilters.organization_sizes);
+      } else {
+        setOrgSizesPeople(initialFilters.organization_sizes);
+      }
+    }
+    if (initialFilters.organization_locations) setOrgLocations(initialFilters.organization_locations.join(", "));
+    if (initialFilters.technologies) setTechnologies(initialFilters.technologies.join(", "));
+    if (initialFilters.keywords) {
+      if (initialFilters.search_type === "companies") {
+        setKeywordsCompanies(initialFilters.keywords);
+      } else {
+        setKeywordsPeople(initialFilters.keywords);
+      }
+    }
+    if (initialFilters.per_page) {
+      const pp = String(initialFilters.per_page);
+      if (initialFilters.search_type === "companies") {
+        setPerPageCompanies(pp);
+      } else {
+        setPerPagePeople(pp);
+      }
+    }
+    if (initialFilters.client_tag) setClientTag(initialFilters.client_tag);
+  }, [initialFilters]);
 
   const handleSubmit = () => {
     if (tab === "people") {
@@ -143,11 +187,21 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
     <div className="rounded-xl border bg-card shadow-md p-4 w-full">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-semibold text-sm">Advanced Apollo Search</h3>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {collapsible && (
+            <button onClick={() => setCollapsed(!collapsed)} className="text-muted-foreground hover:text-foreground">
+              {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            </button>
+          )}
+          {onClose && (
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
+      {collapsed ? null : <>
       {/* Tabs */}
       <div className="flex border-b mb-4">
         {(["people", "companies"] as const).map((t) => (
@@ -348,14 +402,17 @@ export function ApolloSearchForm({ onSearch, onClose, loading }: Props) {
       )}
 
       <div className="flex justify-end gap-2 mt-4">
-        <Button variant="outline" size="sm" onClick={onClose} disabled={loading}>
-          Cancel
-        </Button>
+        {onClose && (
+          <Button variant="outline" size="sm" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
+        )}
         <Button size="sm" onClick={handleSubmit} disabled={loading} className="gap-1.5">
           <Search className="h-3.5 w-3.5" />
           {loading ? "Searching…" : "Search Apollo"}
         </Button>
       </div>
+      </>}
     </div>
   );
 }

@@ -23,6 +23,7 @@ class CreateSessionRequest(BaseModel):
 class ChatStreamRequest(BaseModel):
     message: str
     file_content: Optional[str] = None
+    mode: str = "default"  # "default" or "prospecting"
 
 
 class SessionResponse(BaseModel):

@@ -12,8 +12,10 @@ from app.models.chat_session import ChatSession
 from app.models.tool_execution import ToolExecution
 from app.models.company import Company
 from app.models.icp import ICP
+from app.config import settings as app_settings
 from app.services.chat_session import ChatSessionService
 from app.services.enrichment import CompanyEnrichmentService
+from app.services.apollo import apollo_service
 
 
 # Tool definitions
@@ -184,6 +186,13 @@ ALL_TOOLS = [
     UPDATE_ICP_DRAFT_TOOL,
 ]
 
+PROSPECTING_TOOLS = [
+    SAVE_ICP_TOOL,
+    SEARCH_APOLLO_TOOL,
+    GET_SESSION_CONTEXT_TOOL,
+    UPDATE_ICP_DRAFT_TOOL,
+]
+
 
 class ToolOrchestrator:
     """
@@ -192,11 +201,14 @@ class ToolOrchestrator:
     Manages Claude tool use, execution, and multi-turn loops.
     """
 
-    def __init__(self, db: AsyncSession, session_id: int, anthropic_api_key: str):
+    def __init__(self, db: AsyncSession, session_id: int, anthropic_api_key: str = "", tools_mode: str = "all"):
         self.db = db
         self.session_id = session_id
-        self.client = AsyncAnthropic(api_key=anthropic_api_key)
+        api_key = anthropic_api_key or app_settings.anthropic_api_key
+        self.client = AsyncAnthropic(api_key=api_key)
         self.session_service = ChatSessionService(db)
+        self.tools = PROSPECTING_TOOLS if tools_mode == "prospecting" else ALL_TOOLS
+        self._pending_apollo_results: Optional[dict] = None
 
     async def execute_and_continue(
         self,
@@ -240,7 +252,7 @@ class ToolOrchestrator:
                     max_tokens=2048,
                     system=system_prompt,
                     messages=current_messages,
-                    tools=ALL_TOOLS,
+                    tools=self.tools,
                 ) as stream:
                     # Stream text chunks
                     async for event in stream:
@@ -285,6 +297,11 @@ class ToolOrchestrator:
 
                     # Yield tool complete event
                     yield f"data: {json.dumps({'type': 'tool_complete', 'tool': tool_use.name, 'summary': result.get('summary', 'Completed')})}\n\n"
+
+                    # Emit apollo_results SSE event if search_apollo produced results
+                    if tool_use.name == "search_apollo" and self._pending_apollo_results:
+                        yield f"data: {json.dumps({'type': 'apollo_results', 'data': self._pending_apollo_results})}\n\n"
+                        self._pending_apollo_results = None
 
                 except Exception as e:
                     # Tool execution failed
@@ -440,16 +457,103 @@ class ToolOrchestrator:
 
     async def _search_apollo(self, tool_input: dict) -> dict:
         """
-        Search Apollo - placeholder that signals frontend to execute.
+        Search Apollo backend-side and return summary to Claude.
 
-        In the current architecture, Apollo search is frontend-driven.
-        This tool just returns the search parameters for the frontend to execute.
+        Full results are stored in self._pending_apollo_results
+        and emitted as an SSE event for the frontend.
         """
-        return {
-            "summary": "Apollo search parameters prepared",
-            "action": "frontend_execute_apollo_search",
-            "search_params": tool_input
-        }
+        import logging
+        logger = logging.getLogger(__name__)
+
+        search_type = tool_input.get("search_type", "people")
+        per_page = min(tool_input.get("per_page", 25), 100)
+
+        try:
+            if search_type == "people":
+                raw = await apollo_service.search_people(
+                    person_titles=tool_input.get("person_titles"),
+                    person_locations=tool_input.get("person_locations"),
+                    person_seniorities=tool_input.get("person_seniorities"),
+                    organization_keywords=tool_input.get("organization_keywords"),
+                    organization_sizes=tool_input.get("organization_sizes"),
+                    keywords=tool_input.get("keywords"),
+                    per_page=per_page,
+                    auto_enrich=False,  # Never auto-enrich from chat
+                )
+                results = apollo_service.format_people_results(raw)
+                # Inject fallback location
+                person_locations = tool_input.get("person_locations")
+                if person_locations:
+                    fallback_location = ", ".join(person_locations)
+                    for r in results:
+                        if not r.get("location"):
+                            r["location"] = fallback_location
+                total = raw.get("pagination", {}).get("total_entries", len(results))
+            elif search_type == "companies":
+                raw = await apollo_service.search_organizations(
+                    organization_locations=tool_input.get("organization_locations"),
+                    organization_keywords=tool_input.get("organization_keywords"),
+                    organization_sizes=tool_input.get("organization_sizes"),
+                    technologies=tool_input.get("technologies"),
+                    keywords=tool_input.get("keywords"),
+                    per_page=per_page,
+                )
+                results = apollo_service.format_org_results(raw)
+                total = raw.get("pagination", {}).get("total_entries", len(results))
+            else:
+                return {"error": f"Unknown search_type: {search_type}", "summary": "Invalid search type"}
+
+            # Store full results for SSE emission
+            self._pending_apollo_results = {
+                "results": results,
+                "total": total,
+                "search_type": search_type,
+                "returned": len(results),
+                "search_params": tool_input,
+            }
+
+            # Update session metadata
+            await self.session_service.update_session_metadata(self.session_id, {
+                "last_apollo_search": {
+                    "type": search_type,
+                    "count": total,
+                    "returned": len(results),
+                    "params": tool_input,
+                }
+            })
+
+            # Build compact summary for Claude (~200 tokens)
+            summary_parts = [f"Found {total} {search_type} total, showing {len(results)}."]
+            if search_type == "people" and results:
+                titles = {}
+                companies = {}
+                for r in results[:25]:
+                    t = r.get("title", "Unknown")
+                    c = r.get("company", "Unknown")
+                    titles[t] = titles.get(t, 0) + 1
+                    companies[c] = companies.get(c, 0) + 1
+                top_titles = sorted(titles.items(), key=lambda x: -x[1])[:5]
+                top_companies = sorted(companies.items(), key=lambda x: -x[1])[:5]
+                summary_parts.append(f"Top titles: {', '.join(f'{t} ({n})' for t, n in top_titles)}")
+                summary_parts.append(f"Top companies: {', '.join(f'{c} ({n})' for c, n in top_companies)}")
+            elif search_type == "companies" and results:
+                industries = {}
+                for r in results[:25]:
+                    ind = r.get("industry", "Unknown")
+                    industries[ind] = industries.get(ind, 0) + 1
+                top_industries = sorted(industries.items(), key=lambda x: -x[1])[:5]
+                summary_parts.append(f"Top industries: {', '.join(f'{i} ({n})' for i, n in top_industries)}")
+
+            return {
+                "summary": " ".join(summary_parts),
+                "total": total,
+                "returned": len(results),
+                "search_type": search_type,
+            }
+
+        except Exception as e:
+            logger.error(f"Apollo search error: {e}")
+            return {"error": str(e), "summary": f"Apollo search failed: {e}"}
 
     async def _enrich_companies(self, tool_input: dict) -> dict:
         """Enrich companies from last search."""

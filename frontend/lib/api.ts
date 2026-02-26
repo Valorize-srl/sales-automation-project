@@ -285,6 +285,13 @@ class ApiClient {
     return this.delete(`/chat/sessions/${sessionUuid}`);
   }
 
+  async saveSearchContext(
+    sessionUuid: string,
+    data: { search_type: string; total: number; returned: number; filters: Record<string, unknown> }
+  ): Promise<void> {
+    await this.post(`/chat/sessions/${sessionUuid}/search-context`, data);
+  }
+
   async streamChatSession(
     sessionUuid: string,
     message: string,
@@ -293,14 +300,21 @@ class ApiClient {
     onToolStart: (tool: string, input: Record<string, unknown>) => void,
     onToolComplete: (tool: string, summary: Record<string, unknown>) => void,
     onDone: () => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    options?: {
+      mode?: string;
+      onApolloResults?: (data: { results: Record<string, unknown>[]; total: number; search_type: string; returned: number; search_params: Record<string, unknown> }) => void;
+    }
   ): Promise<void> {
     const url = `${this.baseUrl}/api/chat/sessions/${sessionUuid}/stream`;
     try {
+      const body: Record<string, unknown> = { message, file_content: fileContent };
+      if (options?.mode) body.mode = options.mode;
+
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, file_content: fileContent }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -333,6 +347,8 @@ class ApiClient {
               onToolStart(data.tool, data.input);
             } else if (data.type === "tool_complete") {
               onToolComplete(data.tool, data.summary);
+            } else if (data.type === "apollo_results") {
+              options?.onApolloResults?.(data.data);
             } else if (data.type === "done") {
               onDone();
             } else if (data.type === "error") {

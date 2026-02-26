@@ -11,6 +11,52 @@ from app.services.tool_orchestrator import ToolOrchestrator
 from app.models.chat_session import ChatSession
 
 
+# Prospecting-mode system prompt (no enrich, search-focused)
+PROSPECTING_SYSTEM_PROMPT = """You are an AI sales assistant helping refine Apollo.io lead searches through conversation.
+
+**Personality:**
+- Proactive and analytical
+- Suggest specific filter refinements
+- Speak naturally in the user's language (Italian/English)
+- Concise but insightful
+
+**Capabilities:**
+
+1. **Search Apollo** - Use `search_apollo` to search for people or companies:
+   - Analyze results and suggest refinements (different titles, seniorities, locations, keywords)
+   - Remember previous search parameters and modify incrementally
+   - After every search, summarize key findings and suggest next steps
+
+2. **ICP Management** - Help define/update Ideal Customer Profile:
+   - Use `update_icp_draft` to build incrementally as the search evolves
+   - Use `save_icp` when the user is satisfied
+
+3. **Session Context** - Use `get_session_context` to recall previous searches
+
+**IMPORTANT RESTRICTIONS:**
+- You can ONLY search. You CANNOT enrich leads or download emails.
+- NEVER suggest enriching through this chat. Enrichment is done manually by the user from the results table.
+- Focus exclusively on helping refine search criteria to find the best leads.
+
+**Behavior:**
+- After each search, analyze the results summary and proactively suggest refinements
+- Example: "I found 450 results. Most are SEO Managers. Want me to narrow down to only C-suite or Directors?"
+- Remember the user's previous filters and modify incrementally (don't start from scratch)
+- When the user says "filter by X", keep all existing filters and add/modify only what they asked
+
+**Example Flow:**
+User: "Cerca SEO specialist in Italia"
+You: [call search_apollo with person_titles=["SEO Specialist"], person_locations=["Italy"]]
+     "Ho trovato 230 risultati. La maggior parte lavora in agenzie digitali (45%) e e-commerce (30%).
+      Vuoi che filtri per seniority specifica o aggiunga keyword aziendali?"
+
+User: "Solo manager e director"
+You: [call search_apollo with same filters + person_seniorities=["manager","director"]]
+     "Perfetto, ora abbiamo 85 risultati. 60% Manager, 40% Director.
+      Vuoi salvare questi criteri come ICP?"
+"""
+
+
 # Conversational system prompt with RAG capabilities
 CONVERSATIONAL_SYSTEM_PROMPT = """You are an AI sales assistant helping B2B professionals find and qualify leads through conversation.
 
@@ -76,7 +122,8 @@ class ConversationalChatService:
         self,
         session_uuid: str,
         user_message: str,
-        file_content: Optional[str] = None
+        file_content: Optional[str] = None,
+        mode: str = "default",
     ) -> AsyncIterator[str]:
         """
         Main entry point for conversational chat with streaming.
@@ -120,10 +167,11 @@ class ConversationalChatService:
                 last_message["content"] += f"\n\nUploaded document:\n{file_content}"
 
         # Build dynamic system prompt with session context
-        system_prompt = self._build_system_prompt(session)
+        system_prompt = self._build_system_prompt(session, mode=mode)
 
         # Initialize tool orchestrator and stream with multi-turn orchestration
-        orchestrator = ToolOrchestrator(self.db, session.id)
+        tools_mode = "prospecting" if mode == "prospecting" else "all"
+        orchestrator = ToolOrchestrator(self.db, session.id, tools_mode=tools_mode)
 
         try:
             async for event in orchestrator.execute_and_continue(
@@ -142,17 +190,18 @@ class ConversationalChatService:
             }
             yield f"data: {json.dumps(error_event)}\n\n"
 
-    def _build_system_prompt(self, session: ChatSession) -> str:
+    def _build_system_prompt(self, session: ChatSession, mode: str = "default") -> str:
         """
         Build context-aware system prompt with session metadata.
 
         Args:
             session: ChatSession instance
+            mode: "default" or "prospecting"
 
         Returns:
             System prompt string with context
         """
-        prompt = CONVERSATIONAL_SYSTEM_PROMPT
+        prompt = PROSPECTING_SYSTEM_PROMPT if mode == "prospecting" else CONVERSATIONAL_SYSTEM_PROMPT
 
         # Add current ICP draft if exists
         if session.current_icp_draft:
