@@ -10,6 +10,7 @@ from app.schemas.chat import ChatRequest, CreateSessionRequest, ChatStreamReques
 from app.services.icp_parser import icp_parser_service
 from app.services.file_parser import extract_text_from_file
 from app.services.apollo import apollo_service, ApolloAPIError
+from app.services.apify_enrichment import apify_enrichment_service, ApifyEnrichmentError
 from app.services.enrichment import CompanyEnrichmentService
 from app.services.conversational_chat import ConversationalChatService
 from app.models.person import Person
@@ -251,6 +252,12 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
                 auto_enrich=request.auto_enrich,
             )
             results = apollo_service.format_people_results(raw)
+            # Inject searched location as fallback when Apollo doesn't return it
+            if request.filters.person_locations:
+                fallback_location = ", ".join(request.filters.person_locations)
+                for r in results:
+                    if not r.get("location"):
+                        r["location"] = fallback_location
             total = raw.get("pagination", {}).get("total_entries", len(results))
         elif request.search_type == "companies":
             raw = await apollo_service.search_organizations(
@@ -309,14 +316,19 @@ async def apollo_search(request: ApolloSearchRequest, db: AsyncSession = Depends
 
 class ApolloEnrichRequest(BaseModel):
     people: list[dict]  # Apollo person records with id, first_name, last_name, organization_name
+    source: str = "apollo"  # "apollo" or "apify"
 
 
 @router.post("/apollo/enrich")
 async def apollo_enrich_selected(request: ApolloEnrichRequest, db: AsyncSession = Depends(get_db)):
-    """Enrich selected people from Apollo search results on-demand."""
+    """Enrich selected people on-demand. source=apollo (default) or source=apify (fallback)."""
     if not request.people:
         raise HTTPException(400, "No people to enrich")
 
+    if request.source == "apify":
+        return await _enrich_via_apify(request.people, db)
+
+    # Default: Apollo enrichment
     try:
         enriched_data = {}
         total_credits = 0
@@ -342,7 +354,6 @@ async def apollo_enrich_selected(request: ApolloEnrichRequest, db: AsyncSession 
                     }
 
         # Track in search history
-        from app.models.apollo_search_history import ApolloSearchHistory
         history = ApolloSearchHistory(
             search_type="enrich",
             results_count=len(enriched_data),
@@ -359,6 +370,42 @@ async def apollo_enrich_selected(request: ApolloEnrichRequest, db: AsyncSession 
             "enriched_count": len(enriched_data),
         }
     except ApolloAPIError as e:
+        # If credits exhausted (402), tell frontend to offer Apify fallback
+        if e.status_code == 402:
+            return {
+                "error": "credits_exhausted",
+                "message": "Crediti Apollo esauriti. Vuoi usare Apify (~$0.005/lead)?",
+                "enriched": {},
+                "credits_consumed": 0,
+                "enriched_count": 0,
+            }
+        raise HTTPException(e.status_code, e.detail)
+
+
+async def _enrich_via_apify(people: list[dict], db: AsyncSession) -> dict:
+    """Enrich people using Apify Waterfall as fallback."""
+    try:
+        result = await apify_enrichment_service.enrich_people(people)
+
+        # Track in search history
+        history = ApolloSearchHistory(
+            search_type="apify_enrich",
+            results_count=result.get("enriched_count", 0),
+            apollo_credits_consumed=0,
+            cost_apollo_usd=0,
+            cost_total_usd=result.get("apify_cost_usd", 0),
+        )
+        db.add(history)
+        await db.commit()
+
+        return {
+            "enriched": result["enriched"],
+            "credits_consumed": 0,
+            "enriched_count": result["enriched_count"],
+            "source": "apify",
+            "apify_cost_usd": result.get("apify_cost_usd", 0),
+        }
+    except ApifyEnrichmentError as e:
         raise HTTPException(e.status_code, e.detail)
 
 

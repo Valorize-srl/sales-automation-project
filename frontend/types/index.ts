@@ -359,6 +359,10 @@ export interface ApolloEnrichResponse {
   enriched: Record<string, { id: string; email?: string; phone?: string; direct_phone?: string; linkedin_url?: string; first_name?: string; last_name?: string; city?: string; state?: string; country?: string }>;
   credits_consumed: number;
   enriched_count: number;
+  error?: "credits_exhausted";
+  message?: string;
+  source?: "apollo" | "apify";
+  apify_cost_usd?: number;
 }
 
 export interface ApolloCompanyResult {

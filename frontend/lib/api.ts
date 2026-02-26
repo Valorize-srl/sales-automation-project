@@ -139,8 +139,8 @@ class ApiClient {
     return this.post("/chat/apollo/search", params);
   }
 
-  async apolloEnrichPeople(people: Record<string, unknown>[]): Promise<import("@/types").ApolloEnrichResponse> {
-    return this.post("/chat/apollo/enrich", { people });
+  async apolloEnrichPeople(people: Record<string, unknown>[], source: "apollo" | "apify" = "apollo"): Promise<import("@/types").ApolloEnrichResponse> {
+    return this.post("/chat/apollo/enrich", { people, source });
   }
 
   async apolloImport(

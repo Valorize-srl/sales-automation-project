@@ -2,6 +2,7 @@
 
 import { Settings as SettingsIcon } from "lucide-react";
 import ExchangeRateSettings from "@/components/settings/exchange-rate-settings";
+import ApifySettings from "@/components/settings/apify-settings";
 
 export default function SettingsPage() {
   return (
@@ -20,6 +21,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-6">
         <ExchangeRateSettings />
+        <ApifySettings />
       </div>
     </div>
   );

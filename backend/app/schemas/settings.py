@@ -10,7 +10,7 @@ class SettingOut(BaseModel):
     key: str
     value: str
     description: Optional[str] = None
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -18,4 +18,4 @@ class SettingOut(BaseModel):
 class SettingUpdate(BaseModel):
     """Schema for updating a setting value."""
 
-    value: str = Field(..., min_length=1, max_length=500)
+    value: str = Field(..., max_length=500)

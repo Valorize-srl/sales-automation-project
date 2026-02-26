@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Apollo
     apollo_api_key: str = ""
 
+    # Apify
+    apify_api_token: str = ""
+
     # Webhooks
     webhook_base_url: str = ""
 
