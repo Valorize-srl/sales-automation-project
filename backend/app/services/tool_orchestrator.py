@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat_session import ChatSession
 from app.models.tool_execution import ToolExecution
+from app.models.apollo_search_history import ApolloSearchHistory
 from app.models.company import Company
 from app.models.icp import ICP
 from app.config import settings as app_settings
@@ -239,6 +240,8 @@ class ToolOrchestrator:
         """
         iteration = 0
         current_messages = messages.copy()
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         while iteration < max_iterations:
             iteration += 1
@@ -264,6 +267,11 @@ class ToolOrchestrator:
                     final_message = await stream.get_final_message()
                     assistant_content_blocks = final_message.content
 
+                    # Capture token usage from Claude API response
+                    if final_message.usage:
+                        total_input_tokens += final_message.usage.input_tokens
+                        total_output_tokens += final_message.usage.output_tokens
+
                     # Extract tool uses
                     for block in final_message.content:
                         if block.type == "tool_use":
@@ -273,8 +281,9 @@ class ToolOrchestrator:
                 yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
                 break
 
-            # No tools? Done!
+            # No tools? Done — emit usage data before done event
             if not tool_uses:
+                yield f"data: {json.dumps({'type': 'usage', 'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 break
 
@@ -328,6 +337,7 @@ class ToolOrchestrator:
             # Continue loop - Claude will process tool results
 
         if iteration >= max_iterations:
+            yield f"data: {json.dumps({'type': 'usage', 'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens})}\n\n"
             yield f"data: {json.dumps({'type': 'error', 'content': 'Max iterations reached'})}\n\n"
 
     async def execute_tool(
@@ -543,6 +553,25 @@ class ToolOrchestrator:
                     industries[ind] = industries.get(ind, 0) + 1
                 top_industries = sorted(industries.items(), key=lambda x: -x[1])[:5]
                 summary_parts.append(f"Top industries: {', '.join(f'{i} ({n})' for i, n in top_industries)}")
+
+            # Create ApolloSearchHistory record so it appears in Usage page
+            session = await self.db.get(ChatSession, self.session_id)
+            search_history = ApolloSearchHistory(
+                search_type=search_type,
+                search_query=tool_input.get("keywords"),
+                filters_applied=tool_input,
+                results_count=len(results),
+                apollo_credits_consumed=0,  # Search is free
+                claude_input_tokens=0,
+                claude_output_tokens=0,
+                cost_apollo_usd=0.0,
+                cost_claude_usd=0.0,
+                cost_total_usd=0.0,
+                client_tag=session.client_tag if session else None,
+                session_id=self.session_id,
+            )
+            self.db.add(search_history)
+            await self.db.commit()
 
             return {
                 "summary": " ".join(summary_parts),

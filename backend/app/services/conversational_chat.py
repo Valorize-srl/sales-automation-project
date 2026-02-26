@@ -181,6 +181,24 @@ class ConversationalChatService:
             ):
                 yield event
 
+                # Capture usage event to save token costs to session
+                if event.startswith("data: "):
+                    try:
+                        data = json.loads(event[6:].strip())
+                        if data.get("type") == "usage":
+                            input_tokens = data.get("input_tokens", 0)
+                            output_tokens = data.get("output_tokens", 0)
+                            if input_tokens > 0 or output_tokens > 0:
+                                await self.session_service.add_message(
+                                    session_id=session.id,
+                                    role="assistant",
+                                    content="[streamed response]",
+                                    input_tokens=input_tokens,
+                                    output_tokens=output_tokens,
+                                )
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+
         except Exception as e:
             # Yield error event
             error_event = {

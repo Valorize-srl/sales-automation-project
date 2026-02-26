@@ -233,6 +233,10 @@ class ApiClient {
     return this.get(`/usage/history${query}`);
   }
 
+  async getClientSummary(): Promise<import("@/types").ClientSummaryResponse> {
+    return this.get("/usage/client-summary");
+  }
+
   async getSetting(key: string): Promise<import("@/types").Setting> {
     return this.get(`/settings/${key}`);
   }

@@ -50,3 +50,26 @@ class UsageStatsResponse(BaseModel):
 
     stats: UsageStats
     date_range: dict = Field(..., description="Date range for statistics")
+
+
+class ClientCostSummary(BaseModel):
+    """Cost summary for a single client/project tag."""
+
+    client_tag: str
+    total_sessions: int = Field(..., description="Number of chat sessions")
+    total_searches: int = Field(..., description="Number of Apollo searches")
+    total_apollo_credits: int = Field(..., description="Apollo credits consumed")
+    total_claude_input_tokens: int = Field(..., description="Claude input tokens")
+    total_claude_output_tokens: int = Field(..., description="Claude output tokens")
+    cost_apollo_usd: float = Field(..., description="Apollo cost in USD")
+    cost_claude_usd: float = Field(..., description="Claude cost in USD")
+    total_cost_usd: float = Field(..., description="Total cost in USD")
+    first_activity: Optional[datetime] = Field(None, description="First session date")
+    last_activity: Optional[datetime] = Field(None, description="Last activity date")
+
+
+class ClientSummaryResponse(BaseModel):
+    """Response for client cost summary."""
+
+    clients: list[ClientCostSummary]
+    totals: dict = Field(..., description="Grand totals across all clients")

@@ -456,6 +456,30 @@ export interface SearchHistoryListResponse {
   total: number;
 }
 
+export interface ClientCostSummary {
+  client_tag: string;
+  total_sessions: number;
+  total_searches: number;
+  total_apollo_credits: number;
+  total_claude_input_tokens: number;
+  total_claude_output_tokens: number;
+  cost_apollo_usd: number;
+  cost_claude_usd: number;
+  total_cost_usd: number;
+  first_activity: string | null;
+  last_activity: string | null;
+}
+
+export interface ClientSummaryResponse {
+  clients: ClientCostSummary[];
+  totals: {
+    total_cost_usd: number;
+    total_apollo_credits: number;
+    total_claude_tokens: number;
+    total_clients: number;
+  };
+}
+
 export interface Setting {
   key: string;
   value: string;
