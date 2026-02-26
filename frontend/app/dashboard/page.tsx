@@ -24,26 +24,14 @@ import {
 import { api } from "@/lib/api";
 import { DashboardStats } from "@/types";
 
-type DateRange = "7d" | "30d" | "90d" | "all";
+type DateRange = "7d" | "30d" | "custom" | "all";
 
-const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "all", label: "All time" },
+const DATE_RANGE_PRESETS: { value: DateRange; label: string }[] = [
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+  { value: "custom", label: "Custom" },
+  { value: "all", label: "All" },
 ];
-
-function getDateRange(range: DateRange): { start?: string; end?: string } {
-  if (range === "all") return {};
-  const end = new Date();
-  const start = new Date();
-  const days = range === "7d" ? 7 : range === "30d" ? 30 : 90;
-  start.setDate(start.getDate() - days);
-  return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
-  };
-}
 
 function pct(num: number, den: number): string {
   if (den === 0) return "0%";
@@ -63,18 +51,37 @@ interface KpiCard {
   color: string;
 }
 
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function daysAgoStr(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split("T")[0];
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>("30d");
+  const [customStart, setCustomStart] = useState(daysAgoStr(30));
+  const [customEnd, setCustomEnd] = useState(todayStr());
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+  const getApiDates = useCallback((): { start?: string; end?: string } => {
+    if (dateRange === "all") return {};
+    if (dateRange === "custom") return { start: customStart, end: customEnd };
+    const days = dateRange === "7d" ? 7 : 30;
+    return { start: daysAgoStr(days), end: todayStr() };
+  }, [dateRange, customStart, customEnd]);
 
   const loadStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { start, end } = getDateRange(dateRange);
+      const { start, end } = getApiDates();
       const params = new URLSearchParams();
       if (start) params.set("start_date", start);
       if (end) params.set("end_date", end);
@@ -87,7 +94,7 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [dateRange]);
+  }, [getApiDates]);
 
   // Load on mount and when date range changes
   useEffect(() => {
@@ -168,21 +175,40 @@ export default function DashboardPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
-          <Calendar className="h-4 w-4 text-muted-foreground ml-2" />
-          {DATE_RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setDateRange(opt.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                dateRange === opt.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
+            <Calendar className="h-4 w-4 text-muted-foreground ml-2" />
+            {DATE_RANGE_PRESETS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDateRange(opt.value)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  dateRange === opt.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {dateRange === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="h-8 rounded-md border bg-card px-2 text-xs"
+              />
+              <span className="text-xs text-muted-foreground">—</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="h-8 rounded-md border bg-card px-2 text-xs"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -214,7 +240,9 @@ export default function DashboardPage() {
       {/* Line Chart */}
       <div className="rounded-lg border bg-card p-5">
         <h2 className="text-sm font-semibold mb-4">
-          Email Activity — {DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label}
+          Email Activity — {dateRange === "custom"
+            ? `${customStart} → ${customEnd}`
+            : DATE_RANGE_PRESETS.find((o) => o.value === dateRange)?.label}
         </h2>
         {loading ? (
           <div className="h-64 bg-muted animate-pulse rounded" />
