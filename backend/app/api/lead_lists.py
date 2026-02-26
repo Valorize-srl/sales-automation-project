@@ -43,9 +43,6 @@ async def create_list(
         company_ids=list_data.company_ids,
     )
 
-    # Add calculated property
-    lead_list.total_leads = lead_list.people_count + lead_list.companies_count
-
     return lead_list
 
 
@@ -64,10 +61,6 @@ async def list_all_lists(
         limit=limit,
     )
 
-    # Add calculated properties
-    for lead_list in lists:
-        lead_list.total_leads = lead_list.people_count + lead_list.companies_count
-
     return LeadListListResponse(lists=lists, total=len(lists))
 
 
@@ -81,9 +74,6 @@ async def get_list(
     lead_list = await service.get_list(list_id)
     if not lead_list:
         raise HTTPException(status_code=404, detail=f"Lead list {list_id} not found")
-
-    # Add calculated property
-    lead_list.total_leads = lead_list.people_count + lead_list.companies_count
 
     return lead_list
 
@@ -103,9 +93,6 @@ async def update_list(
     )
     if not lead_list:
         raise HTTPException(status_code=404, detail=f"Lead list {list_id} not found")
-
-    # Add calculated property
-    lead_list.total_leads = lead_list.people_count + lead_list.companies_count
 
     return lead_list
 
