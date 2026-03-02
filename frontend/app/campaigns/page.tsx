@@ -14,7 +14,6 @@ import {
 import { CampaignTable } from "@/components/campaigns/campaign-table";
 import { CreateCampaignDialog } from "@/components/campaigns/create-campaign-dialog";
 import { CampaignDetailDialog } from "@/components/campaigns/campaign-detail-dialog";
-import { GenerateTemplatesDialog } from "@/components/campaigns/generate-templates-dialog";
 import { UploadLeadsDialog } from "@/components/campaigns/upload-leads-dialog";
 import { DeleteConfirmDialog } from "@/components/campaigns/delete-confirm-dialog";
 import { api } from "@/lib/api";
@@ -47,7 +46,6 @@ export default function CampaignsPage() {
     null
   );
   const [detailOpen, setDetailOpen] = useState(false);
-  const [generateOpen, setGenerateOpen] = useState(false);
   const [uploadLeadsOpen, setUploadLeadsOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
@@ -248,12 +246,6 @@ export default function CampaignsPage() {
     setDetailOpen(true);
   };
 
-  const handleGenerateTemplates = (campaign: Campaign) => {
-    setSelectedCampaign(campaign);
-    setDetailOpen(false);
-    setGenerateOpen(true);
-  };
-
   const handleUploadLeads = (campaign: Campaign) => {
     setSelectedCampaign(campaign);
     setDetailOpen(false);
@@ -371,17 +363,9 @@ export default function CampaignsPage() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onSyncMetrics={handleSyncMetrics}
-        onGenerateTemplates={handleGenerateTemplates}
         onUploadLeads={handleUploadLeads}
         onDelete={handleDelete}
-      />
-
-      <GenerateTemplatesDialog
-        campaign={selectedCampaign}
-        open={generateOpen}
-        onOpenChange={setGenerateOpen}
-        icps={icps}
-        onGenerated={loadCampaigns}
+        onUpdated={loadCampaigns}
       />
 
       <UploadLeadsDialog

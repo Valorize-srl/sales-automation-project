@@ -146,10 +146,38 @@ async def create_campaign(
                 502, f"Failed to create campaign on Instantly: {e.detail}"
             )
 
+    # Save email steps as JSON if provided
+    email_templates_json = None
+    if data.email_steps:
+        steps_data = [s.model_dump() for s in data.email_steps]
+        email_templates_json = json.dumps(steps_data)
+
+        # Push sequences to Instantly during creation
+        if instantly_campaign_id:
+            instantly_steps = []
+            for step in steps_data:
+                instantly_steps.append({
+                    "type": "email",
+                    "delay": step.get("wait_days", 0),
+                    "delay_unit": "day",
+                    "variants": [{
+                        "subject": step.get("subject", ""),
+                        "body": step.get("body", ""),
+                    }],
+                })
+            try:
+                await instantly_service.update_campaign(
+                    instantly_campaign_id,
+                    {"sequences": [{"steps": instantly_steps}]},
+                )
+            except InstantlyAPIError as e:
+                logger.warning(f"Failed to push sequences during creation: {e.detail}")
+
     campaign = Campaign(
         name=data.name,
         icp_id=data.icp_id,
         instantly_campaign_id=instantly_campaign_id,
+        email_templates=email_templates_json,
         status=CampaignStatus.DRAFT,
     )
     db.add(campaign)

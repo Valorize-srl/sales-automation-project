@@ -1,44 +1,46 @@
-# B2B Multi-Agent Outreach Platform
+# Miriade - B2B Sales Automation Platform
 
 ## Context
-Tool personale che automatizza la generazione di lead e l'outreach via email B2B. L'utente definisce il proprio Ideal Customer Profile (ICP) tramite chat o upload documento, e il sistema si occupa automaticamente di: trovare lead in target, creare campagne email su Instantly, analizzare il sentiment delle risposte e suggerire reply intelligenti tramite AI.
+Piattaforma che automatizza la generazione di lead e l'outreach via email B2B. L'utente definisce il proprio Ideal Customer Profile (ICP) tramite chat, cerca lead con Apollo.io, crea campagne email su Instantly, analizza il sentiment delle risposte e genera reply intelligenti tramite AI con approvazione manuale.
 
-**Uso**: Personale (singolo utente, niente autenticazione)
-**API disponibili ora**: Instantly (già attiva), Anthropic Claude
-**API future**: Apollo.io (da aggiungere per scraping automatico)
-**Scraping iniziale**: Import manuale CSV + predisposizione architettura per Apollo.io
+**Uso**: Multi-client (client tagging per separare costi e lead)
+**API attive**: Instantly v2, Anthropic Claude, Apollo.io, Apify
+**Deploy**: Railway (backend, frontend, worker) + PostgreSQL + Redis
 
 ---
 
-## Architettura Generale
+## Architettura
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    FRONTEND (Next.js)                │
-│  ┌──────────┐ ┌───────────┐ ┌────────────────────┐  │
-│  │ Chat ICP │ │ Dashboard │ │ Campaign Manager   │  │
-│  │ + Upload │ │ + Analytics│ │ + Sentiment View  │  │
-│  └──────────┘ └───────────┘ └────────────────────┘  │
-└─────────────────────────┬───────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                     FRONTEND (Next.js 14)                     │
+│  ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌─────────────┐  │
+│  │ Dashboard │ │Prospecting│ │ Campaigns  │ │ AI Agents   │  │
+│  │+Analytics │ │ + Apollo  │ │ +Instantly │ │+KnowledgeBase│ │
+│  └──────────┘ └───────────┘ └────────────┘ └─────────────┘  │
+│  ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌─────────────┐  │
+│  │ Leads    │ │ Responses │ │   Usage    │ │  Settings   │  │
+│  │+LeadLists│ │+AI Replies│ │  + Costs   │ │             │  │
+│  └──────────┘ └───────────┘ └────────────┘ └─────────────┘  │
+└─────────────────────────┬────────────────────────────────────┘
                           │ REST API
-┌─────────────────────────┴───────────────────────────┐
-│                  BACKEND (FastAPI)                    │
-│  ┌────────────────────────────────────────────────┐  │
-│  │           AI ORCHESTRATOR (Claude)              │  │
-│  │  ┌─────────┐ ┌───────────┐ ┌──────────────┐  │  │
-│  │  │ ICP     │ │ Sentiment │ │ AI Replier   │  │  │
-│  │  │ Parser  │ │ Analyzer  │ │              │  │  │
-│  │  └─────────┘ └───────────┘ └──────────────┘  │  │
-│  └────────────────────────────────────────────────┘  │
-│  ┌──────────────┐ ┌────────────┐ ┌────────────────┐ │
-│  │ Scraping     │ │ Instantly  │ │ Background     │ │
-│  │ Service      │ │ Service    │ │ Workers (Celery)│ │
-│  └──────────────┘ └────────────┘ └────────────────┘ │
-└─────────────────────────┬───────────────────────────┘
+┌─────────────────────────┴────────────────────────────────────┐
+│                    BACKEND (FastAPI)                           │
+│  ┌──────────────────────────────────────────────────────────┐│
+│  │              AI Services (Claude API)                     ││
+│  │  ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌───────────┐ ││
+│  │  │ICP Parser│ │ Sentiment │ │AI Replier│ │CSV Mapper │ ││
+│  │  └──────────┘ └───────────┘ └──────────┘ └───────────┘ ││
+│  └──────────────────────────────────────────────────────────┘│
+│  ┌──────────────┐ ┌────────────┐ ┌──────────┐ ┌──────────┐ │
+│  │ Apollo.io    │ │ Instantly  │ │  Apify   │ │  Celery  │ │
+│  │ Service      │ │ Service    │ │ Enrichment│ │ Workers  │ │
+│  └──────────────┘ └────────────┘ └──────────┘ └──────────┘ │
+└─────────────────────────┬────────────────────────────────────┘
                           │
-┌─────────────────────────┴───────────────────────────┐
-│              PostgreSQL + Redis (Railway)             │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────┴────────────────────────────────────┐
+│                PostgreSQL + Redis (Railway)                    │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -48,232 +50,234 @@ Tool personale che automatizza la generazione di lead e l'outreach via email B2B
 | Componente | Tecnologia |
 |---|---|
 | Frontend | Next.js 14 + TypeScript + Tailwind CSS + shadcn/ui |
-| Backend | Python 3.12 + FastAPI |
-| AI | Claude API (Anthropic) |
-| Database | PostgreSQL (Railway) |
-| Cache/Queue | Redis (Railway) |
+| Backend | Python 3.12 + FastAPI + SQLAlchemy (async) |
+| AI | Claude API (Anthropic) — Sonnet 4.5 |
+| Database | PostgreSQL 16 |
+| Cache/Queue | Redis 7 |
 | Background Jobs | Celery |
-| Auth | Nessuna (uso personale) |
-| Scraping | Import CSV manuale + Apollo.io API (futuro) |
-| Email Outreach | Instantly API |
-| Deploy | Railway (tutti i servizi) |
+| Lead Search | Apollo.io API |
+| Lead Enrichment | Apollo.io + Apify (fallback) |
+| Email Outreach | Instantly API v2 |
+| Deploy | Railway (backend, frontend, worker) |
 
 ---
 
 ## Struttura del Progetto
 
 ```
-b2b-outreach-platform/
-├── frontend/                    # Next.js App
-│   ├── src/
-│   │   ├── app/                 # App Router (pages)
-│   │   │   ├── chat/            # Chat ICP
-│   │   │   ├── dashboard/       # Dashboard principale
-│   │   │   ├── leads/           # Gestione lead
-│   │   │   ├── campaigns/       # Gestione campagne
-│   │   │   ├── settings/        # Impostazioni account
-│   │   ├── components/          # Componenti UI
-│   │   ├── lib/                 # Utilities, API client
-│   │   ├── types/               # TypeScript types
-│   ├── package.json
-│   ├── next.config.js
+sales-automation-project/
+├── frontend/
+│   ├── app/                     # Next.js App Router
+│   │   ├── dashboard/           # KPI + analytics + chart
+│   │   ├── campaigns/           # Gestione campagne Instantly
+│   │   ├── leads/               # People, Companies, Lead Lists
+│   │   ├── prospecting/         # Ricerca Apollo.io
+│   │   ├── ai-agents/           # AI Agents per client
+│   │   │   ├── new/             # Creazione agente
+│   │   │   └── [id]/dashboard/  # Dashboard agente
+│   │   ├── responses/           # Risposte email + AI replies
+│   │   ├── chat/                # Chat ICP conversazionale
+│   │   ├── usage/               # Costi e utilizzo API
+│   │   └── settings/            # Configurazione
+│   ├── components/              # Componenti UI riutilizzabili
+│   │   ├── campaigns/           # Tabelle, dialog campagne
+│   │   ├── leads/               # CSV import, tabelle lead
+│   │   ├── responses/           # Tabelle risposte, dettagli
+│   │   ├── chat/                # Apollo search, message bubble
+│   │   └── ui/                  # shadcn/ui components
+│   ├── lib/                     # API client, utilities
+│   └── types/                   # TypeScript definitions
 │
-├── backend/                     # FastAPI App
+├── backend/
 │   ├── app/
-│   │   ├── main.py              # Entry point FastAPI
-│   │   ├── config.py            # Settings & env vars
+│   │   ├── main.py              # FastAPI entry point + CORS
+│   │   ├── config.py            # Settings da env vars
 │   │   ├── models/              # SQLAlchemy models
-│   │   │   ├── icp.py
-│   │   │   ├── lead.py
-│   │   │   ├── campaign.py
-│   │   │   ├── email_response.py
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── api/                 # API routes
-│   │   │   ├── chat.py
-│   │   │   ├── leads.py
-│   │   │   ├── campaigns.py
-│   │   │   ├── analytics.py
+│   │   │   ├── icp.py           # Ideal Customer Profile
+│   │   │   ├── person.py        # Contatti (da Apollo/CSV)
+│   │   │   ├── company.py       # Aziende
+│   │   │   ├── lead.py          # Lead (legacy)
+│   │   │   ├── lead_list.py     # Liste di lead raggruppate
+│   │   │   ├── campaign.py      # Campagne email
+│   │   │   ├── email_response.py # Risposte + sentiment
+│   │   │   ├── analytics.py     # Metriche giornaliere
+│   │   │   ├── ai_agent.py      # AI Agent + Knowledge Base
+│   │   │   ├── chat_session.py  # Sessioni chat
+│   │   │   └── apollo_search_history.py # Storico ricerche + costi
+│   │   ├── schemas/             # Pydantic request/response
+│   │   ├── api/                 # Route handlers
+│   │   │   ├── chat.py          # Chat streaming + Apollo tools
+│   │   │   ├── campaigns.py     # CRUD + Instantly sync
+│   │   │   ├── leads.py         # CRUD + CSV import
+│   │   │   ├── people.py        # People CRUD
+│   │   │   ├── companies.py     # Companies CRUD
+│   │   │   ├── lead_lists.py    # Lead Lists CRUD
+│   │   │   ├── responses.py     # Risposte + AI reply generation
+│   │   │   ├── ai_agents.py     # AI Agents + Knowledge Base
+│   │   │   ├── analytics.py     # Dashboard stats + date range
+│   │   │   └── usage.py         # Cost tracking per client
 │   │   ├── services/            # Business logic
-│   │   │   ├── orchestrator.py  # AI Orchestrator principale
-│   │   │   ├── icp_parser.py    # Parsing ICP da chat/doc
-│   │   │   ├── scraper.py       # Multi-source lead scraping
-│   │   │   ├── instantly.py     # Instantly API client
-│   │   │   ├── sentiment.py     # AI Sentiment Analysis
-│   │   │   ├── replier.py       # AI Reply Suggestions
-│   │   ├── workers/             # Celery tasks
-│   │   │   ├── scraping_tasks.py
-│   │   │   ├── campaign_tasks.py
-│   │   │   ├── sentiment_tasks.py
-│   │   ├── db/                  # Database config
-│   │       ├── database.py
-│   │       ├── migrations/      # Alembic migrations
-│   ├── requirements.txt
-│   ├── Dockerfile
+│   │   │   ├── instantly.py     # Instantly API v2 client
+│   │   │   ├── apollo.py        # Apollo.io search + enrichment
+│   │   │   ├── ai_replier.py    # Generazione reply AI
+│   │   │   ├── sentiment.py     # Analisi sentiment
+│   │   │   ├── icp_parser.py    # Parsing ICP da chat
+│   │   │   ├── email_generator.py # Template email AI
+│   │   │   ├── csv_mapper.py    # Auto-mapping CSV (Claude)
+│   │   │   ├── apify_enrichment.py # Enrichment fallback
+│   │   │   └── ai_agent.py      # Gestione AI Agent
+│   │   └── db/
+│   │       └── database.py      # Async engine + session
+│   ├── alembic/                 # Database migrations
+│   └── Dockerfile
 │
 ├── docker-compose.yml           # Dev locale
-├── railway.toml                 # Config Railway
+└── PLAN.md                      # Questo file
 ```
 
 ---
 
-## Database Schema (PostgreSQL)
+## Database Schema
 
-### Tabelle principali:
+### Tabelle principali
 
-**icps** — Ideal Customer Profiles definiti
-- id, name, description, industry, company_size, job_titles, geography, revenue_range, keywords, raw_input, status, created_at
+**icps** — Ideal Customer Profiles
+- id, name, description, industry, company_size, job_titles, geography, revenue_range, keywords, raw_input, status
 
-**leads** — Lead trovate/importate
-- id, icp_id, first_name, last_name, email, company, job_title, linkedin_url, phone, source (csv/apollo), verified, score, created_at
+**people** — Contatti importati (da Apollo, CSV, manuale)
+- id, first_name, last_name, email, phone, job_title, linkedin_url, company_id, company_name, source, client_tag
 
-**campaigns** — Campagne Instantly
-- id, icp_id, instantly_campaign_id, name, status, subject_lines, email_templates, total_sent, total_opened, total_replied, created_at
+**companies** — Aziende
+- id, name, domain, industry, size, revenue, location, description
 
-**email_responses** — Risposte ricevute
-- id, campaign_id, lead_id, message_body, direction (inbound/outbound), sentiment (positive/negative/neutral/interested), sentiment_score, ai_suggested_reply, human_approved_reply, status, created_at
+**lead_lists** — Liste raggruppate di lead
+- id, name, description, people (M2M)
 
-**analytics** — Metriche aggregate
-- id, campaign_id, date, emails_sent, opens, replies, positive_replies, meetings_booked
+**campaigns** — Campagne email (sync con Instantly)
+- id, instantly_campaign_id, name, status, subject, body, ai_agent_id, total_sent, total_opened, total_replied
 
----
+**email_responses** — Risposte ricevute con sentiment
+- id, campaign_id, from_email, subject, body, sentiment, sentiment_score, ai_suggested_reply, status, ai_reply_generated
 
-## Flusso Operativo Dettagliato
+**ai_agents** — Agenti AI per client
+- id, name, description, icp_config, signals_config, knowledge_base_text, apollo_credits_allocated
 
-### 1. Definizione ICP (Chat + Upload)
-- L'utente accede alla chat e descrive il suo cliente ideale
-- Oppure carica un documento (PDF, DOCX, TXT)
-- Claude analizza l'input e estrae i parametri strutturati dell'ICP:
-  - Settore/Industry
-  - Dimensione azienda
-  - Job titles target
-  - Geografia
-  - Range fatturato
-  - Keywords specifiche
-- La chat è interattiva: Claude fa domande di follow-up se mancano informazioni
-- L'ICP viene salvato su DB
+**analytics** — Metriche giornaliere per campagna
+- id, campaign_id, date, emails_sent, opens, replies, positive_replies
 
-### 2. Import/Scraping Lead
-- **Fase 1 (ora)**: Import manuale CSV con mapping colonne automatico
-  - Upload file CSV dalla UI
-  - Claude analizza le colonne e le mappa ai campi lead
-  - Deduplicazione per email
-- **Fase 2 (futuro - con Apollo API key)**:
-  - L'Orchestratore traduce l'ICP in query Apollo.io
-  - Apollo People Search API → filtra per title, industry, company size, location
-  - Scraping automatico in background tramite Celery
-- Le lead vengono deduplicate (per email) e salvate su PostgreSQL
-- Ogni lead riceve uno score di qualità (completezza dati, match con ICP)
+**apollo_search_history** — Storico ricerche con costi
+- id, query_params, results_count, apollo_credits_consumed, claude_input_tokens, claude_output_tokens, cost_total_usd, client_tag
 
-### 3. Creazione Campagna Instantly
-- L'Orchestratore genera email templates personalizzati tramite Claude:
-  - Subject lines (A/B testing)
-  - Email body con personalizzazione per lead
-  - Follow-up sequence (3-5 step)
-- Crea la campagna via Instantly API
-- Carica le lead dal DB alla campagna Instantly
-- Lancia la campagna
-
-### 4. AI Sentiment Analysis
-- Worker Celery in polling sulle risposte via Instantly API
-- Ogni risposta viene analizzata da Claude:
-  - **Positive/Interested**: Lead interessata, vuole saperne di più
-  - **Neutral**: Risposta generica, richiede follow-up
-  - **Negative**: Non interessata, unsubscribe
-  - **Meeting Request**: Vuole un meeting
-- Score numerico 1-10 + categorizzazione
-- Risultati salvati su DB
-
-### 5. AI Replier
-- Per ogni risposta, Claude genera una reply suggerita basata su:
-  - Sentiment della risposta
-  - Contesto dell'ICP originale
-  - Storico conversazione
-  - Obiettivo (booking meeting, qualificazione, ecc.)
-- L'utente vede la reply suggerita nella dashboard
-- Può approvarla, modificarla o scartarla
-- Una volta approvata, viene inviata via Instantly
+**chat_sessions** — Sessioni chat conversazionali
+- id, uuid, title, total_claude_input_tokens, total_claude_output_tokens, total_apollo_credits, total_cost_usd, client_tag
 
 ---
 
-## Step di Implementazione
+## Flussi Operativi
 
-### Step 1: Setup Progetto e Infrastruttura ✅
-- Inizializzare repo con struttura frontend/ + backend/
-- Setup FastAPI con SQLAlchemy + Alembic
-- Setup Next.js con Tailwind + shadcn/ui
-- Configurare PostgreSQL e Redis su Railway
-- Configurare variabili d'ambiente
-- Docker compose per sviluppo locale
+### 1. Prospecting (Ricerca Lead)
+1. L'utente va in Prospecting e configura i filtri: job title, industry, location, company size, revenue
+2. La ricerca usa Apollo.io People Search API
+3. I risultati vengono mostrati in anteprima con selezione individuale
+4. L'utente sceglie quali lead importare e assegna un client tag
+5. Claude inferisce l'industry quando Apollo non la fornisce
+6. Le lead vengono salvate come People nel database
 
-### Step 2: Chat ICP
-- UI chat nel frontend (conversazione con Claude)
-- Endpoint streaming per la chat
-- Parsing ICP strutturato da conversazione
-- Upload e parsing documenti (PDF, DOCX)
-- Salvataggio ICP su DB
-- Pagina di review/edit dell'ICP generato
+### 2. Lead Lists & Gestione
+1. Le lead importate sono visibili in Leads → People
+2. Si possono creare Lead Lists per raggruppare lead per campagna/progetto
+3. Import CSV con auto-mapping colonne via Claude
+4. Enrichment via Apollo (1 credit/lead) o Apify (~$0.005/lead) come fallback
 
-### Step 3: Import Lead (CSV + futuro Apollo)
-- UI upload CSV con drag & drop
-- Parsing CSV e mapping colonne automatico (Claude)
-- Logica di deduplicazione e scoring lead
-- Predisposizione interfaccia scraper per Apollo.io (futuro)
-- Task Celery per import/scraping asincrono
-- UI gestione lead (tabella, filtri, export)
+### 3. Campagne Email
+1. Creare campagna con nome, subject, body (template AI generato da Claude)
+2. Assegnare sender accounts (da Instantly)
+3. Push lead dalla tabella People alla campagna Instantly
+4. Attivare la campagna
+5. Sync automatico metriche giornaliere da Instantly (sent, opens, replies, bounces)
 
-### Step 4: Integrazione Instantly
-- Client API Instantly (campagne, lead, analytics)
-- Generazione template email con Claude
-- Creazione campagna automatica
-- Caricamento lead da DB a Instantly
-- UI gestione campagne
+### 4. AI Agents & Knowledge Base
+1. Creare un AI Agent per client con ICP e signals config
+2. Scrivere le istruzioni nella Knowledge Base (tono, stile, informazioni prodotto)
+3. Connettere campagne all'agente
+4. L'agente usa la Knowledge Base per generare reply personalizzate
 
-### Step 5: AI Sentiment Analysis
-- Worker polling risposte da Instantly
-- Prompt engineering per sentiment analysis con Claude
-- Classificazione e scoring risposte
-- Salvataggio risultati su DB
-- UI vista sentiment (badge colori, filtri)
+### 5. Risposte Email & AI Auto-Reply
+1. Fetch risposte da Instantly per le campagne monitorate
+2. Analisi sentiment automatica: positive, negative, neutral, interested
+3. Generazione reply AI basata su Knowledge Base + contesto conversazione
+4. **Workflow manuale**: l'utente rivede la reply generata, la approva o modifica, poi invia
+5. Filtri per campagna, sentiment, stato, data
 
-### Step 6: AI Replier
-- Generazione reply suggerite con Claude
-- UI approvazione/modifica reply
-- Invio reply approvate via Instantly
-- Storico conversazioni
+### 6. Dashboard & Analytics
+1. KPI aggregati: people, companies, campagne attive, email inviate, aperture, risposte
+2. Selettore time range: 7gg, 30gg, custom, tutto
+3. Grafico daily: invii vs risposte nel tempo
+4. Analytics per campagna da Instantly
 
-### Step 7: Dashboard e Analytics
-- Dashboard principale con KPI
-- Grafici campagne (open rate, reply rate, sentiment)
-- Pipeline lead (funnel visualization)
-- Export dati (CSV)
-
-### Step 8: Polish e Deploy
-- Error handling robusto
-- Rate limiting API esterne
-- Logging e monitoring
-- Deploy su Railway (frontend, backend, DB, Redis)
-- Test end-to-end
+### 7. Tracking Costi
+1. Ogni chiamata API viene tracciata con token/crediti e costo USD
+2. Breakdown per client tag nella pagina Usage
+3. Breakdown giornaliero con grafico costi
+4. Stima costi prima dell'enrichment
 
 ---
 
-## Verifica e Testing
+## Costi API
 
-1. **Test manuale flusso completo**:
-   - Creare ICP via chat → Importare lead CSV → Verificare lead su DB → Creare campagna → Verificare su Instantly → Simulare risposta → Verificare sentiment → Verificare reply suggerita
+| Servizio | Unita' | Costo | Note |
+|----------|--------|-------|------|
+| Claude API (Sonnet 4.5) | Input tokens | $3.00 / 1M | ICP, template, reply, CSV mapping |
+| Claude API (Sonnet 4.5) | Output tokens | $15.00 / 1M | |
+| Apollo.io | Per credito | $0.10 | 1 credito = 1 enrichment persona |
+| Apify | Per lead | ~$0.005 | Fallback quando Apollo credits esauriti |
+| Instantly | Abbonamento | Variabile | Gestito su dashboard Instantly |
 
-2. **Test unitari**: Logica di scraping, sentiment, replier
+### Stime Tipiche
 
-3. **Test integrazione**: API Instantly, import CSV
-
-4. **Test E2E frontend**: Flusso critico chat → dashboard
+| Operazione | Costo Approssimativo |
+|------------|---------------------|
+| Ricerca Apollo (senza enrichment) | Gratis (search credits) |
+| Enrichment 100 lead (Apollo) | ~$10.00 |
+| Enrichment 100 lead (Apify) | ~$0.50 |
+| Generare reply AI | ~$0.01 - $0.05 |
+| Generare template email | ~$0.01 - $0.03 |
+| Conversazione ICP | ~$0.02 - $0.10 |
+| Auto-mapping CSV | ~$0.01 |
 
 ---
 
-## API Esterne Necessarie
+## Stato Implementazione
 
-**Disponibili ora:**
-- **Instantly**: API key (già attiva)
+### Completato
+- [x] Setup progetto e infrastruttura (FastAPI, Next.js, PostgreSQL, Redis, Railway)
+- [x] Chat ICP conversazionale con Claude (streaming)
+- [x] Import lead CSV con auto-mapping colonne AI
+- [x] Integrazione Apollo.io (search, enrichment, credits tracking)
+- [x] Prospecting page con import selettivo e client tagging
+- [x] Industry inference via Claude quando Apollo non fornisce il dato
+- [x] People & Companies tables con CRUD
+- [x] Lead Lists (creazione, gestione, assegnazione a campagne)
+- [x] Integrazione Instantly v2 (campagne, lead, metriche, warmup)
+- [x] Push lead (da People) a campagne Instantly
+- [x] Generazione template email AI (subject + body)
+- [x] Gestione account email (warmup, limiti, sending gaps)
+- [x] AI Agents per client con Knowledge Base editabile
+- [x] Connessione campagne ad AI Agents
+- [x] Fetch risposte da Instantly
+- [x] Sentiment analysis (positive, negative, neutral, interested)
+- [x] Generazione reply AI con Knowledge Base
+- [x] Workflow approvazione manuale reply (genera → rivedi → approva & invia)
+- [x] Dashboard con KPI e grafico daily
+- [x] Time range selector (7gg, 30gg, custom, tutto)
+- [x] Tracking costi per client (Apollo, Claude, Apify)
+- [x] Deploy su Railway (backend, frontend, worker)
+- [x] Database migrations automatiche (Alembic su startup)
 
-**Da procurare:**
-- **Anthropic (Claude)**: API key per AI → necessaria subito
-- **Apollo.io**: API key per scraping automatico → da aggiungere in futuro
+### Da fare
+- [ ] Migrazione database a Supabase (backup automatici, PITR)
+- [ ] Notifiche real-time per nuove risposte
+- [ ] Scheduling automatico fetch risposte (cron/worker)
+- [ ] Export dati (CSV/Excel)
+- [ ] A/B testing template email
+- [ ] Multi-step sequence management dalla UI

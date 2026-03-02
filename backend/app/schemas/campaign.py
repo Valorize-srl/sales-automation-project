@@ -17,6 +17,13 @@ class ScheduleDays(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class EmailStepInput(BaseModel):
+    step: int = 1
+    subject: str = ""
+    body: str = ""
+    wait_days: int = 0
+
+
 class CampaignCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     icp_id: Optional[int] = None
@@ -36,6 +43,8 @@ class CampaignCreate(BaseModel):
     link_tracking: bool = False
     open_tracking: bool = True
     text_only: bool = False
+    # Email sequence steps (up to 3)
+    email_steps: list[EmailStepInput] = Field(default_factory=list)
 
 
 class CampaignUpdate(BaseModel):

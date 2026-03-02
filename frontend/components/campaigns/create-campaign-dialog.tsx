@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -122,6 +123,31 @@ export function CreateCampaignDialog({
   const [openTracking, setOpenTracking] = useState(true);
   const [textOnly, setTextOnly] = useState(false);
 
+  // Email sequence steps
+  interface EmailStepInput {
+    subject: string;
+    body: string;
+    wait_days: number;
+  }
+  const [emailSteps, setEmailSteps] = useState<EmailStepInput[]>([
+    { subject: "", body: "", wait_days: 0 },
+  ]);
+
+  const addStep = () => {
+    if (emailSteps.length >= 3) return;
+    setEmailSteps((prev) => [...prev, { subject: "", body: "", wait_days: 3 }]);
+  };
+
+  const removeStep = (index: number) => {
+    setEmailSteps((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateStep = (index: number, field: keyof EmailStepInput, value: string | number) => {
+    setEmailSteps((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+    );
+  };
+
   // UI state
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +197,7 @@ export function CreateCampaignDialog({
     setLinkTracking(false);
     setOpenTracking(true);
     setTextOnly(false);
+    setEmailSteps([{ subject: "", body: "", wait_days: 0 }]);
     setCreating(false);
     setError(null);
   };
@@ -225,6 +252,19 @@ export function CreateCampaignDialog({
         payload.text_only = textOnly;
         if (dailyLimit) payload.daily_limit = parseInt(dailyLimit);
         if (emailGap) payload.email_gap = parseInt(emailGap);
+
+        // Include email steps that have at least a subject or body
+        const filledSteps = emailSteps
+          .filter((s) => s.subject.trim() || s.body.trim())
+          .map((s, i) => ({
+            step: i + 1,
+            subject: s.subject.trim(),
+            body: s.body.trim(),
+            wait_days: i === 0 ? 0 : s.wait_days,
+          }));
+        if (filledSteps.length > 0) {
+          payload.email_steps = filledSteps;
+        }
       }
 
       await api.post<Campaign>("/campaigns", payload);
@@ -513,6 +553,84 @@ export function CreateCampaignDialog({
                     <span className="text-sm">Text Only</span>
                   </label>
                 </div>
+              </div>
+
+              <Separator />
+
+              {/* Section 5: Email Sequence */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm">Email Sequence</h4>
+                  {emailSteps.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={addStep}
+                      className="text-xs text-primary hover:underline"
+                      disabled={creating}
+                    >
+                      + Add Step
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Write up to 3 email steps. Use {"{{firstName}}"}, {"{{lastName}}"}, {"{{companyName}}"} for personalization.
+                </p>
+
+                {emailSteps.map((step, index) => (
+                  <div key={index} className="border rounded-md p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium">
+                        Step {index + 1}{index === 0 ? " (sent immediately)" : ""}
+                      </span>
+                      {index > 0 && (
+                        <div className="flex items-center gap-2">
+                          <Label className="text-xs">Wait</Label>
+                          <Input
+                            className="w-16 h-7 text-xs"
+                            type="number"
+                            min={1}
+                            max={30}
+                            value={step.wait_days}
+                            onChange={(e) =>
+                              updateStep(index, "wait_days", parseInt(e.target.value) || 1)
+                            }
+                            disabled={creating}
+                          />
+                          <span className="text-xs text-muted-foreground">days</span>
+                          <button
+                            type="button"
+                            onClick={() => removeStep(index)}
+                            disabled={creating}
+                            className="text-muted-foreground hover:text-destructive ml-1"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <Label className="text-xs">Subject</Label>
+                      <Input
+                        className="mt-1 text-sm"
+                        placeholder="e.g. Quick question, {{firstName}}"
+                        value={step.subject}
+                        onChange={(e) => updateStep(index, "subject", e.target.value)}
+                        disabled={creating}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Body</Label>
+                      <Textarea
+                        className="mt-1 text-sm"
+                        placeholder="Write your email body here..."
+                        rows={4}
+                        value={step.body}
+                        onChange={(e) => updateStep(index, "body", e.target.value)}
+                        disabled={creating}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           )}

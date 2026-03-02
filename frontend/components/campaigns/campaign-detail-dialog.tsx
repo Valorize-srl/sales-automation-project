@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { RefreshCw, Wand2, Upload, Trash2, Send, Loader2, Download } from "lucide-react";
+import { useState, useEffect } from "react";
+import { RefreshCw, Upload, Trash2, Send, Loader2, Download, Save, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -20,9 +23,9 @@ interface CampaignDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSyncMetrics: (id: number) => void;
-  onGenerateTemplates: (campaign: Campaign) => void;
   onUploadLeads: (campaign: Campaign) => void;
   onDelete: (id: number) => void;
+  onUpdated?: () => void;
 }
 
 const statusColors: Record<CampaignStatus, string> = {
@@ -43,24 +46,51 @@ function parseJsonSafe<T>(value: string | null, fallback: T): T {
   }
 }
 
+interface EditableStep {
+  step: number;
+  subject: string;
+  body: string;
+  wait_days: number;
+}
+
 export function CampaignDetailDialog({
   campaign,
   open,
   onOpenChange,
   onSyncMetrics,
-  onGenerateTemplates,
   onUploadLeads,
   onDelete,
+  onUpdated,
 }: CampaignDetailDialogProps) {
   const [deleting, setDeleting] = useState(false);
   const [pushingSequences, setPushingSequences] = useState(false);
   const [syncingLeads, setSyncingLeads] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editableSteps, setEditableSteps] = useState<EditableStep[]>([]);
+  const [dirty, setDirty] = useState(false);
   const { toast } = useToast();
+
+  // Sync editable steps when campaign changes or dialog opens
+  useEffect(() => {
+    if (campaign && open) {
+      const steps = parseJsonSafe<EmailStep[]>(campaign.email_templates, []);
+      setEditableSteps(
+        steps.length > 0
+          ? steps.map((s) => ({
+              step: s.step,
+              subject: s.subject || "",
+              body: s.body || "",
+              wait_days: s.wait_days ?? 0,
+            }))
+          : [{ step: 1, subject: "", body: "", wait_days: 0 }]
+      );
+      setDirty(false);
+    }
+  }, [campaign, open]);
 
   if (!campaign) return null;
 
   const subjectLines = parseJsonSafe<string[]>(campaign.subject_lines, []);
-  const emailSteps = parseJsonSafe<EmailStep[]>(campaign.email_templates, []);
 
   const openRate =
     campaign.total_sent > 0
@@ -70,6 +100,68 @@ export function CampaignDetailDialog({
     campaign.total_sent > 0
       ? ((campaign.total_replied / campaign.total_sent) * 100).toFixed(1)
       : "—";
+
+  const updateStep = (index: number, field: keyof EditableStep, value: string | number) => {
+    setEditableSteps((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+    );
+    setDirty(true);
+  };
+
+  const addStep = () => {
+    if (editableSteps.length >= 3) return;
+    setEditableSteps((prev) => [
+      ...prev,
+      { step: prev.length + 1, subject: "", body: "", wait_days: 3 },
+    ]);
+    setDirty(true);
+  };
+
+  const removeStep = (index: number) => {
+    setEditableSteps((prev) =>
+      prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, step: i + 1 }))
+    );
+    setDirty(true);
+  };
+
+  const handleSaveSequences = async () => {
+    setSaving(true);
+    try {
+      const filledSteps = editableSteps
+        .filter((s) => s.subject.trim() || s.body.trim())
+        .map((s, i) => ({
+          step: i + 1,
+          subject: s.subject.trim(),
+          body: s.body.trim(),
+          wait_days: i === 0 ? 0 : s.wait_days,
+        }));
+
+      await api.put(`/campaigns/${campaign.id}`, {
+        email_templates: JSON.stringify(filledSteps),
+      });
+      setDirty(false);
+      onUpdated?.();
+      toast({
+        title: "Sequences Saved",
+        description: `${filledSteps.length} email step${filledSteps.length !== 1 ? "s" : ""} saved`,
+      });
+    } catch (err) {
+      toast({
+        title: "Save Failed",
+        description: err instanceof Error ? err.message : "Failed to save sequences",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveAndPush = async () => {
+    await handleSaveSequences();
+    if (!dirty) {
+      handlePushSequences();
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm(`Delete campaign "${campaign.name}"? This cannot be undone.`))
@@ -116,9 +208,11 @@ export function CampaignDetailDialog({
     }
   };
 
+  const hasFilledSteps = editableSteps.some((s) => s.subject.trim() || s.body.trim());
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[650px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {campaign.name}
@@ -164,7 +258,7 @@ export function CampaignDetailDialog({
 
         <Separator />
 
-        {/* Subject Lines */}
+        {/* Subject Lines (read-only, from old data) */}
         {subjectLines.length > 0 && (
           <div>
             <h4 className="font-medium mb-2">Subject Lines</h4>
@@ -178,38 +272,111 @@ export function CampaignDetailDialog({
           </div>
         )}
 
-        {/* Email Steps */}
-        {emailSteps.length > 0 && (
-          <div>
-            <h4 className="font-medium mb-2">Email Sequence</h4>
-            <div className="space-y-3">
-              {emailSteps.map((step, i) => (
-                <div key={i} className="bg-muted p-3 rounded space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-medium">
-                      Step {step.step}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {step.wait_days === 0
-                        ? "Immediate"
-                        : `Wait ${step.wait_days} days`}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium">{step.subject}</p>
-                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-                    {step.body}
-                  </p>
-                </div>
-              ))}
-            </div>
+        {/* Editable Email Sequence */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium">Email Sequence</h4>
+            {editableSteps.length < 3 && (
+              <button
+                type="button"
+                onClick={addStep}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" />
+                Add Step
+              </button>
+            )}
           </div>
-        )}
-
-        {subjectLines.length === 0 && emailSteps.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No email templates generated yet.
+          <p className="text-xs text-muted-foreground">
+            Use {"{{firstName}}"}, {"{{lastName}}"}, {"{{companyName}}"} for personalization.
           </p>
-        )}
+
+          {editableSteps.map((step, index) => (
+            <div key={index} className="border rounded-md p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">
+                  Step {index + 1}{index === 0 ? " (sent immediately)" : ""}
+                </span>
+                {index > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Wait</Label>
+                    <Input
+                      className="w-16 h-7 text-xs"
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={step.wait_days}
+                      onChange={(e) =>
+                        updateStep(index, "wait_days", parseInt(e.target.value) || 1)
+                      }
+                    />
+                    <span className="text-xs text-muted-foreground">days</span>
+                    <button
+                      type="button"
+                      onClick={() => removeStep(index)}
+                      className="text-muted-foreground hover:text-destructive ml-1"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs">Subject</Label>
+                <Input
+                  className="mt-1 text-sm"
+                  placeholder="e.g. Quick question, {{firstName}}"
+                  value={step.subject}
+                  onChange={(e) => updateStep(index, "subject", e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Body</Label>
+                <Textarea
+                  className="mt-1 text-sm"
+                  placeholder="Write your email body here..."
+                  rows={4}
+                  value={step.body}
+                  onChange={(e) => updateStep(index, "body", e.target.value)}
+                />
+              </div>
+            </div>
+          ))}
+
+          {/* Save & Push buttons for sequences */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={handleSaveSequences}
+              disabled={saving || !dirty}
+            >
+              {saving ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Save className="h-3 w-3" />
+              )}
+              {saving ? "Saving..." : "Save"}
+            </Button>
+            {campaign.instantly_campaign_id && hasFilledSteps && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={dirty ? handleSaveAndPush : handlePushSequences}
+                disabled={pushingSequences || saving}
+              >
+                {pushingSequences ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Send className="h-3 w-3" />
+                )}
+                {pushingSequences ? "Pushing..." : dirty ? "Save & Push to Instantly" : "Push to Instantly"}
+              </Button>
+            )}
+          </div>
+        </div>
 
         <Separator />
 
@@ -226,15 +393,6 @@ export function CampaignDetailDialog({
               Sync Metrics
             </Button>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={() => onGenerateTemplates(campaign)}
-          >
-            <Wand2 className="h-3 w-3" />
-            Generate Templates
-          </Button>
           {campaign.instantly_campaign_id && (
             <Button
               variant="outline"
@@ -260,22 +418,6 @@ export function CampaignDetailDialog({
                 <Download className="h-3 w-3" />
               )}
               {syncingLeads ? "Syncing..." : "Sync Leads"}
-            </Button>
-          )}
-          {campaign.instantly_campaign_id && emailSteps.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              onClick={handlePushSequences}
-              disabled={pushingSequences}
-            >
-              {pushingSequences ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Send className="h-3 w-3" />
-              )}
-              {pushingSequences ? "Pushing..." : "Push Sequences"}
             </Button>
           )}
           <Button
