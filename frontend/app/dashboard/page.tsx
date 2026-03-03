@@ -10,6 +10,7 @@ import {
   MessageSquareReply,
   Clock,
   Calendar,
+  Trophy,
 } from "lucide-react";
 import {
   LineChart,
@@ -152,6 +153,12 @@ export default function DashboardPage() {
           icon: MessageSquareReply,
           color: "text-green-600",
         },
+        {
+          label: "Converted",
+          value: stats.converted_count,
+          icon: Trophy,
+          color: "text-emerald-600",
+        },
       ]
     : [];
 
@@ -214,8 +221,8 @@ export default function DashboardPage() {
 
       {/* KPI Cards */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="rounded-lg border bg-card p-5 animate-pulse">
               <div className="h-4 w-24 bg-muted rounded mb-3" />
               <div className="h-8 w-16 bg-muted rounded" />
@@ -223,7 +230,7 @@ export default function DashboardPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {cards.map(({ label, value, sub, icon: Icon, color }) => (
             <div key={label} className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between mb-2">
@@ -281,6 +288,15 @@ export default function DashboardPage() {
                 dataKey="sent"
                 name="Sent"
                 stroke="#3b82f6"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="opens"
+                name="Opens"
+                stroke="#f59e0b"
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2, ExternalLink } from "lucide-react";
+import { Trash2, ExternalLink, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,6 +23,7 @@ interface PeopleTableProps {
   onDelete: (id: number) => void;
   onCompanyClick: (companyId: number) => void;
   onEdit: (person: Person) => void;
+  onToggleConverted: (person: Person) => void;
 }
 
 export function PeopleTable({
@@ -34,6 +35,7 @@ export function PeopleTable({
   onDelete,
   onCompanyClick,
   onEdit,
+  onToggleConverted,
 }: PeopleTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
@@ -73,6 +75,7 @@ export function PeopleTable({
             <TableHead>Industry</TableHead>
             <TableHead>Location</TableHead>
             <TableHead>Client/Project</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
@@ -143,6 +146,20 @@ export function PeopleTable({
                 ) : (
                   "\u2014"
                 )}
+              </TableCell>
+              <TableCell>
+                <button
+                  onClick={() => onToggleConverted(person)}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border transition-colors ${
+                    person.converted_at
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                      : "bg-muted text-muted-foreground border-transparent hover:bg-accent"
+                  }`}
+                  title={person.converted_at ? "Click to remove conversion" : "Click to mark as converted"}
+                >
+                  <Trophy className="h-3 w-3" />
+                  {person.converted_at ? "Converted" : "—"}
+                </button>
               </TableCell>
               <TableCell>
                 <Button

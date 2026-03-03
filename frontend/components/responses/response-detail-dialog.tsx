@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Send, X, Loader2, Pencil, Brain, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, Send, X, Loader2, Pencil, Brain, Trash2, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,7 @@ import {
   EmailResponseWithDetails,
   Sentiment,
   ResponseStatus,
+  PersonListResponse,
 } from "@/types";
 import { api } from "@/lib/api";
 
@@ -60,6 +61,47 @@ export function ResponseDetailDialog({
   const [sending, setSending] = useState(false);
   const [approving, setApproving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [convertedState, setConvertedState] = useState<boolean | null>(null);
+  const [convertingLead, setConvertingLead] = useState(false);
+
+  // Load converted status when dialog opens with a new response
+  useEffect(() => {
+    if (!response || !open) {
+      setConvertedState(null);
+      return;
+    }
+    const email = response.lead_email || response.from_email;
+    if (!email) return;
+    (async () => {
+      try {
+        const data = await api.get<PersonListResponse>(`/people?search=${encodeURIComponent(email)}`);
+        const person = data.people.find((p) => p.email.toLowerCase() === email.toLowerCase());
+        if (person) {
+          setConvertedState(!!person.converted_at);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, [response?.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleToggleConverted = async () => {
+    const email = response?.lead_email || response?.from_email;
+    if (!email) return;
+    setConvertingLead(true);
+    try {
+      const data = await api.get<PersonListResponse>(`/people?search=${encodeURIComponent(email)}`);
+      const person = data.people.find((p) => p.email.toLowerCase() === email.toLowerCase());
+      if (person) {
+        await api.updatePerson(person.id, { converted: !person.converted_at });
+        setConvertedState(person.converted_at ? false : true);
+      }
+    } catch (err) {
+      console.error("Failed to toggle converted:", err);
+    } finally {
+      setConvertingLead(false);
+    }
+  };
 
   if (!response) return null;
 
@@ -151,23 +193,39 @@ export function ResponseDetailDialog({
 
         <Separator />
 
-        {/* Sentiment */}
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">Sentiment:</span>
-          {response.sentiment ? (
-            <Badge
-              variant="outline"
-              className={sentimentColors[response.sentiment]}
-            >
-              {response.sentiment}{" "}
-              {response.sentiment_score !== null &&
-                `(${(response.sentiment_score * 100).toFixed(0)}%)`}
-            </Badge>
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              Not available
-            </span>
-          )}
+        {/* Sentiment + Converted */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">Sentiment:</span>
+            {response.sentiment ? (
+              <Badge
+                variant="outline"
+                className={sentimentColors[response.sentiment]}
+              >
+                {response.sentiment}{" "}
+                {response.sentiment_score !== null &&
+                  `(${(response.sentiment_score * 100).toFixed(0)}%)`}
+              </Badge>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not available
+              </span>
+            )}
+          </div>
+          <Button
+            variant={convertedState ? "default" : "outline"}
+            size="sm"
+            className={`gap-1.5 ${convertedState ? "bg-emerald-600 hover:bg-emerald-700" : ""}`}
+            onClick={handleToggleConverted}
+            disabled={convertingLead || !(response.lead_email || response.from_email)}
+          >
+            {convertingLead ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trophy className="h-3 w-3" />
+            )}
+            {convertedState ? "Converted" : "Mark Converted"}
+          </Button>
         </div>
 
         <Separator />

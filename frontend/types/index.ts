@@ -106,6 +106,7 @@ export interface Person {
   location: string | null;
   client_tag: string | null;
   tags: string[] | null;
+  converted_at: string | null;
   created_at: string;
 }
 
@@ -119,6 +120,7 @@ export interface PersonUpdate {
   industry?: string;
   location?: string;
   client_tag?: string;
+  converted?: boolean;
 }
 
 export interface Company {
@@ -355,6 +357,7 @@ export interface PushSequencesResponse {
 export interface DashboardChartEntry {
   date: string;
   sent: number;
+  opens: number;
   replies: number;
 }
 
@@ -365,6 +368,7 @@ export interface DashboardStats {
   total_sent: number;
   total_opened: number;
   total_replied: number;
+  converted_count: number;
   chart_data: DashboardChartEntry[];
 }
 

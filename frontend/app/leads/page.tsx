@@ -128,6 +128,17 @@ export default function LeadsPage() {
     setEditDialogOpen(true);
   };
 
+  const handleToggleConverted = async (person: Person) => {
+    try {
+      const updated = await api.updatePerson(person.id, {
+        converted: !person.converted_at,
+      });
+      setPeople((prev) => prev.map((p) => (p.id === person.id ? updated : p)));
+    } catch (err) {
+      console.error("Failed to toggle converted:", err);
+    }
+  };
+
   const handlePeopleCompanyClick = (_companyId: number) => {
     setActiveTab("companies");
   };
@@ -420,6 +431,7 @@ export default function LeadsPage() {
           onDelete={handleDeletePerson}
           onCompanyClick={handlePeopleCompanyClick}
           onEdit={handleEditPerson}
+          onToggleConverted={handleToggleConverted}
         />
       )}
 

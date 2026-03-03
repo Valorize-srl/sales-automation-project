@@ -2,6 +2,7 @@ from typing import Optional
 """People API - manage person records with CSV import and company matching."""
 import json
 import logging
+from datetime import datetime, timezone
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
@@ -181,6 +182,14 @@ async def update_person(
         raise HTTPException(404, "Person not found")
 
     updates = data.model_dump(exclude_unset=True)
+
+    # Handle virtual 'converted' field → converted_at timestamp
+    if "converted" in updates:
+        converted = updates.pop("converted")
+        if converted:
+            person.converted_at = datetime.now(timezone.utc)
+        else:
+            person.converted_at = None
 
     if "company_name" in updates:
         person.company_id = await _find_matching_company(

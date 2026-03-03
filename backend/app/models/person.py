@@ -37,6 +37,7 @@ class Person(Base):
     )
     tags: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)  # ["cliente_xyz", "wine_industry"]
     enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -85,6 +85,7 @@ async def get_dashboard_stats(
         select(
             Analytics.date,
             sa_func.sum(Analytics.emails_sent).label("sent"),
+            sa_func.sum(Analytics.opens).label("opens"),
             sa_func.sum(Analytics.replies).label("replies"),
         )
         .where(Analytics.date >= since, Analytics.date <= until)
@@ -92,9 +93,15 @@ async def get_dashboard_stats(
         .order_by(Analytics.date.asc())
     )
     chart_data = [
-        {"date": str(row.date), "sent": row.sent or 0, "replies": row.replies or 0}
+        {"date": str(row.date), "sent": row.sent or 0, "opens": row.opens or 0, "replies": row.replies or 0}
         for row in chart_result.all()
     ]
+
+    # Converted leads count
+    converted_result = await db.execute(
+        select(sa_func.count(Person.id)).where(Person.converted_at.isnot(None))
+    )
+    converted_count = converted_result.scalar() or 0
 
     return {
         "people_count": people_count,
@@ -103,6 +110,7 @@ async def get_dashboard_stats(
         "total_sent": total_sent,
         "total_opened": total_opened,
         "total_replied": total_replied,
+        "converted_count": converted_count,
         "chart_data": chart_data,
         "date_range": {"start": str(since), "end": str(until)},
     }
