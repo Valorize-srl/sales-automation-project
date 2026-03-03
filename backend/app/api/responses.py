@@ -286,7 +286,33 @@ async def get_response_stats(
         val, count = row
         by_status[val.value if val else "unknown"] = count
 
-    return {"total": total, "by_sentiment": by_sentiment, "by_status": by_status}
+    # Daily chart data grouped by sentiment
+    chart_result = await db.execute(
+        select(
+            sa_func.date(date_col).label("day"),
+            EmailResponse.sentiment,
+            sa_func.count().label("cnt"),
+        )
+        .where(*base_filter)
+        .group_by("day", EmailResponse.sentiment)
+        .order_by(sa_func.date(date_col).asc())
+    )
+    chart_map: dict[str, dict[str, int]] = {}
+    for row in chart_result.all():
+        day_str = str(row.day)
+        if day_str not in chart_map:
+            chart_map[day_str] = {"interested": 0, "positive": 0, "neutral": 0, "negative": 0}
+        key = row.sentiment.value if row.sentiment else "neutral"
+        chart_map[day_str][key] = row.cnt
+
+    chart_data = [{"date": day, **counts} for day, counts in chart_map.items()]
+
+    return {
+        "total": total,
+        "by_sentiment": by_sentiment,
+        "by_status": by_status,
+        "chart_data": chart_data,
+    }
 
 
 # --- Generate AI Reply ---

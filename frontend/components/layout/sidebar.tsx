@@ -8,6 +8,7 @@ import {
   Mail,
   MessageSquareReply,
   BarChart3,
+  PieChart,
   Settings,
   Bot,
   LogOut,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
   { href: "/responses", label: "Replies", icon: MessageSquareReply },
+  { href: "/replies-analytics", label: "Replies Analytics", icon: PieChart },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

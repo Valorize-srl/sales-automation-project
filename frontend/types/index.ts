@@ -314,10 +314,19 @@ export interface FetchRepliesResponse {
   errors: number;
 }
 
+export interface ResponseStatsChartEntry {
+  date: string;
+  interested: number;
+  positive: number;
+  neutral: number;
+  negative: number;
+}
+
 export interface ResponseStats {
   total: number;
   by_sentiment: Record<string, number>;
   by_status: Record<string, number>;
+  chart_data: ResponseStatsChartEntry[];
 }
 
 export interface SendReplyResponse {
