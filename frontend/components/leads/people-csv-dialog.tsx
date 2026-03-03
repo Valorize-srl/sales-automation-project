@@ -110,7 +110,7 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
     }
   };
 
-  const headerOptions = uploadData?.headers ?? [];
+  const headerOptions = (uploadData?.headers ?? []).filter((h) => h && h.trim());
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

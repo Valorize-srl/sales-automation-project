@@ -74,7 +74,7 @@ export function CSVColumnMapper({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NOT_MAPPED}>Not mapped</SelectItem>
-                  {headers.map((header) => (
+                  {headers.filter((h) => h && h.trim()).map((header) => (
                     <SelectItem key={header} value={header}>
                       {header}
                     </SelectItem>
