@@ -24,6 +24,19 @@ class PersonCreate(BaseModel):
     phone: Optional[str] = None
     industry: Optional[str] = None
     location: Optional[str] = None
+    client_tag: Optional[str] = None
+
+
+class PersonUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    company_name: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    phone: Optional[str] = None
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    client_tag: Optional[str] = None
 
 
 class PersonResponse(BaseModel):
@@ -39,6 +52,8 @@ class PersonResponse(BaseModel):
     phone: Optional[str]
     industry: Optional[str]
     location: Optional[str]
+    client_tag: Optional[str] = None
+    tags: Optional[list[str]] = None
     created_at: datetime
 
 
@@ -59,6 +74,8 @@ class PersonCSVUploadResponse(BaseModel):
 class PersonCSVImportRequest(BaseModel):
     mapping: PersonCSVMapping
     rows: list[dict]
+    industry: Optional[str] = None
+    client_tag: Optional[str] = None
 
 
 class PersonCSVImportResponse(BaseModel):

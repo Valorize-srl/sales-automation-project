@@ -14,6 +14,7 @@ import { PeopleTable } from "@/components/leads/people-table";
 import { CompaniesTable } from "@/components/leads/companies-table";
 import { PeopleCSVDialog } from "@/components/leads/people-csv-dialog";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
+import { EditPersonDialog } from "@/components/leads/edit-person-dialog";
 import { CreateListDialog } from "@/components/leads/create-list-dialog";
 import { AddListToCampaignDialog } from "@/components/leads/add-list-to-campaign-dialog";
 import { api } from "@/lib/api";
@@ -44,6 +45,8 @@ export default function LeadsPage() {
   const [createListOpen, setCreateListOpen] = useState(false);
   const [addToCampaignOpen, setAddToCampaignOpen] = useState(false);
   const [lastCreatedListId, setLastCreatedListId] = useState<number | null>(null);
+  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // --- Companies state ---
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -118,6 +121,11 @@ export default function LeadsPage() {
     } catch (err) {
       console.error("Failed to delete person:", err);
     }
+  };
+
+  const handleEditPerson = (person: Person) => {
+    setEditingPerson(person);
+    setEditDialogOpen(true);
   };
 
   const handlePeopleCompanyClick = (_companyId: number) => {
@@ -411,6 +419,7 @@ export default function LeadsPage() {
           onToggleSelectAll={handleToggleSelectAll}
           onDelete={handleDeletePerson}
           onCompanyClick={handlePeopleCompanyClick}
+          onEdit={handleEditPerson}
         />
       )}
 
@@ -435,6 +444,13 @@ export default function LeadsPage() {
         open={companiesCSVOpen}
         onOpenChange={setCompaniesCSVOpen}
         onImportComplete={() => { loadCompanies(companiesSearch, companiesIndustry, companiesClientTag); loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag); }}
+      />
+
+      <EditPersonDialog
+        person={editingPerson}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onUpdated={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag)}
       />
 
       <CreateListDialog

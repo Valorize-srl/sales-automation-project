@@ -2,6 +2,7 @@
 
 import { Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
@@ -21,6 +22,7 @@ interface PeopleTableProps {
   onToggleSelectAll: () => void;
   onDelete: (id: number) => void;
   onCompanyClick: (companyId: number) => void;
+  onEdit: (person: Person) => void;
 }
 
 export function PeopleTable({
@@ -31,6 +33,7 @@ export function PeopleTable({
   onToggleSelectAll,
   onDelete,
   onCompanyClick,
+  onEdit,
 }: PeopleTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
@@ -87,7 +90,12 @@ export function PeopleTable({
                 />
               </TableCell>
               <TableCell className="font-medium">
-                {person.first_name} {person.last_name}
+                <button
+                  className="text-primary hover:underline text-left"
+                  onClick={() => onEdit(person)}
+                >
+                  {person.first_name} {person.last_name}
+                </button>
               </TableCell>
               <TableCell>
                 {person.company_id ? (
@@ -123,7 +131,19 @@ export function PeopleTable({
               <TableCell className="text-sm">{person.phone || "\u2014"}</TableCell>
               <TableCell className="text-sm">{person.industry || "\u2014"}</TableCell>
               <TableCell className="text-sm">{person.location || "\u2014"}</TableCell>
-              <TableCell className="text-sm">{person.client_tag || "\u2014"}</TableCell>
+              <TableCell className="text-sm">
+                {person.client_tag ? (
+                  <div className="flex flex-wrap gap-1">
+                    {person.client_tag.split(",").map((tag) => tag.trim()).filter(Boolean).map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  "\u2014"
+                )}
+              </TableCell>
               <TableCell>
                 <Button
                   variant="ghost"

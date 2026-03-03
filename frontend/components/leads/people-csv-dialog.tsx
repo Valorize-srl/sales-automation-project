@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Upload, Loader2, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -53,11 +55,14 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; duplicates_skipped: number; errors: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [manualIndustry, setManualIndustry] = useState("");
+  const [manualClientTag, setManualClientTag] = useState("");
 
   const reset = () => {
     setStep(1); setFile(null); setUploading(false);
     setUploadData(null); setMapping(EMPTY_MAPPING);
     setImporting(false); setImportResult(null); setError(null);
+    setManualIndustry(""); setManualClientTag("");
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -88,7 +93,12 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
     try {
       const result = await api.post<{ imported: number; duplicates_skipped: number; errors: number }>(
         "/people/csv/import",
-        { mapping, rows: uploadData.rows }
+        {
+          mapping,
+          rows: uploadData.rows,
+          industry: manualIndustry.trim() || undefined,
+          client_tag: manualClientTag.trim() || undefined,
+        }
       );
       setImportResult(result);
       setStep(4);
@@ -208,6 +218,28 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="manual-industry" className="text-xs">Industry (applied to all rows without one)</Label>
+                <Input
+                  id="manual-industry"
+                  placeholder="e.g. SaaS, Finance..."
+                  value={manualIndustry}
+                  onChange={(e) => setManualIndustry(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="manual-client" className="text-xs">Client / Project (applied to all rows)</Label>
+                <Input
+                  id="manual-client"
+                  placeholder="e.g. Acme Corp"
+                  value={manualClientTag}
+                  onChange={(e) => setManualClientTag(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex justify-between">

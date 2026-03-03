@@ -14,6 +14,7 @@ from app.models.company import Company
 from app.models.person import Person
 from app.schemas.person import (
     PersonCreate,
+    PersonUpdate,
     PersonResponse,
     PersonListResponse,
     PersonCSVMapping,
@@ -100,14 +101,32 @@ async def get_industries(db: AsyncSession = Depends(get_db)):
     return industries
 
 
+@router.get("/client-tags", response_model=list[str])
+async def get_client_tags(db: AsyncSession = Depends(get_db)):
+    """Get unique list of client tags from people (splits comma-separated values)."""
+    result = await db.execute(
+        select(Person.client_tag)
+        .where(Person.client_tag.isnot(None))
+        .distinct()
+    )
+    all_tags = set()
+    for row in result.all():
+        for tag in row[0].split(","):
+            tag = tag.strip()
+            if tag:
+                all_tags.add(tag)
+    return sorted(all_tags)
+
+
 @router.get("", response_model=PersonListResponse)
 async def list_people(
     search: Optional[str] = Query(None),
     company_id: Optional[int] = Query(None),
     industry: Optional[str] = Query(None),
+    client_tag: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List people with optional search, company, and industry filters."""
+    """List people with optional search, company, industry and client_tag filters."""
     query = select(Person).order_by(Person.last_name.asc(), Person.first_name.asc())
     if search:
         query = query.where(
@@ -118,6 +137,8 @@ async def list_people(
         query = query.where(Person.company_id == company_id)
     if industry is not None:
         query = query.where(Person.industry == industry)
+    if client_tag is not None:
+        query = query.where(Person.client_tag.ilike(f"%{client_tag}%"))
     result = await db.execute(query)
     people = result.scalars().all()
     return PersonListResponse(people=people, total=len(people))
@@ -142,6 +163,33 @@ async def create_person(data: PersonCreate, db: AsyncSession = Depends(get_db)):
         company_id=company_id,
     )
     db.add(person)
+    await db.flush()
+    await db.refresh(person)
+    return person
+
+
+@router.put("/{person_id}", response_model=PersonResponse)
+async def update_person(
+    person_id: int,
+    data: PersonUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a person's fields."""
+    result = await db.execute(select(Person).where(Person.id == person_id))
+    person = result.scalar_one_or_none()
+    if not person:
+        raise HTTPException(404, "Person not found")
+
+    updates = data.model_dump(exclude_unset=True)
+
+    if "company_name" in updates:
+        person.company_id = await _find_matching_company(
+            db, updates.get("company_name"), person.email
+        )
+
+    for field, value in updates.items():
+        setattr(person, field, value)
+
     await db.flush()
     await db.refresh(person)
     return person
@@ -247,8 +295,9 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
                 company_name=company_name,
                 linkedin_url=_clean(row, data.mapping.linkedin_url),
                 phone=_clean(row, data.mapping.phone),
-                industry=_clean(row, data.mapping.industry),
+                industry=_clean(row, data.mapping.industry) or data.industry,
                 location=_clean(row, data.mapping.location),
+                client_tag=data.client_tag,
             )
             db.add(person)
             existing_emails.add(email)

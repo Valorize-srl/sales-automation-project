@@ -105,7 +105,20 @@ export interface Person {
   industry: string | null;
   location: string | null;
   client_tag: string | null;
+  tags: string[] | null;
   created_at: string;
+}
+
+export interface PersonUpdate {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  company_name?: string;
+  linkedin_url?: string;
+  phone?: string;
+  industry?: string;
+  location?: string;
+  client_tag?: string;
 }
 
 export interface Company {

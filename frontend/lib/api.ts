@@ -697,8 +697,16 @@ class ApiClient {
     await this.delete(`/people/${personId}`);
   }
 
+  async updatePerson(personId: number, data: import("@/types").PersonUpdate): Promise<import("@/types").Person> {
+    return this.put(`/people/${personId}`, data);
+  }
+
   async getPeopleIndustries(): Promise<string[]> {
     return this.get("/people/industries");
+  }
+
+  async getClientTags(): Promise<string[]> {
+    return this.get("/people/client-tags");
   }
 
   async getCompanies(params?: { search?: string; industry?: string; client_tag?: string; skip?: number; limit?: number }): Promise<import("@/types").CompanyListResponse> {
