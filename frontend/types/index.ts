@@ -314,6 +314,12 @@ export interface FetchRepliesResponse {
   errors: number;
 }
 
+export interface ResponseStats {
+  total: number;
+  by_sentiment: Record<string, number>;
+  by_status: Record<string, number>;
+}
+
 export interface SendReplyResponse {
   success: boolean;
   message: string;

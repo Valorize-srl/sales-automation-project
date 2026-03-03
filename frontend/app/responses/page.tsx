@@ -14,6 +14,7 @@ import {
   EmailResponseWithDetails,
   EmailResponseListResponse,
   FetchRepliesResponse,
+  ResponseStats,
 } from "@/types";
 
 export default function ResponsesPage() {
@@ -33,6 +34,7 @@ export default function ResponsesPage() {
   const [filterDateFrom, setFilterDateFrom] = useState<string>("");
   const [filterDateTo, setFilterDateTo] = useState<string>("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [stats, setStats] = useState<ResponseStats | null>(null);
   const { toast } = useToast();
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,6 +42,19 @@ export default function ResponsesPage() {
 
   useEffect(() => {
     loadCampaigns();
+  }, []);
+
+  const loadStats = useCallback(async (campaignIds: number[], dateFrom: string, dateTo: string) => {
+    if (campaignIds.length === 0) {
+      setStats(null);
+      return;
+    }
+    try {
+      const data = await api.getResponseStats(campaignIds, dateFrom || undefined, dateTo || undefined);
+      setStats(data);
+    } catch (err) {
+      console.error("Failed to load stats:", err);
+    }
   }, []);
 
   const loadResponses = useCallback(async (
@@ -84,7 +99,8 @@ export default function ResponsesPage() {
 
   useEffect(() => {
     loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
-  }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses]);
+    loadStats(selectedCampaignIds, filterDateFrom, filterDateTo);
+  }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses, loadStats]);
 
   // Auto-polling every 5 minutes: fetch from Instantly + refresh
   useEffect(() => {
@@ -127,6 +143,7 @@ export default function ResponsesPage() {
       });
 
       await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
+      await loadStats(selectedCampaignIds, filterDateFrom, filterDateTo);
     } catch (err) {
       console.error("Fetch failed:", err);
       setFetchProgress("");
@@ -227,7 +244,8 @@ export default function ResponsesPage() {
         <div>
           <h1 className="text-2xl font-bold">Replies</h1>
           <p className="text-sm text-muted-foreground">
-            {responses.length} response{responses.length !== 1 ? "s" : ""}
+            {responses.length} {filterSentiment || ""} response{responses.length !== 1 ? "s" : ""}
+            {filterSentiment && stats ? ` (${stats.total} total)` : ""}
             {selectedCampaignIds.length > 0 &&
               ` from ${selectedCampaignIds.length} campaign${selectedCampaignIds.length > 1 ? "s" : ""}`}
             {lastRefresh && (
@@ -279,6 +297,34 @@ export default function ResponsesPage() {
         </div>
       )}
 
+      {/* Sentiment summary cards */}
+      {stats && stats.total > 0 && (
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          {([
+            { key: "interested", label: "Interested", color: "bg-green-50 border-green-200 text-green-800" },
+            { key: "positive", label: "Positive", color: "bg-blue-50 border-blue-200 text-blue-800" },
+            { key: "neutral", label: "Neutral", color: "bg-gray-50 border-gray-200 text-gray-800" },
+            { key: "negative", label: "Negative", color: "bg-red-50 border-red-200 text-red-800" },
+          ] as const).map(({ key, label, color }) => {
+            const count = stats.by_sentiment[key] || 0;
+            const pct = stats.total > 0 ? ((count / stats.total) * 100).toFixed(0) : "0";
+            const isActive = filterSentiment === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setFilterSentiment(isActive ? "" : key)}
+                className={`rounded-lg border p-3 text-left transition-all ${color} ${
+                  isActive ? "ring-2 ring-offset-1 ring-current" : "opacity-80 hover:opacity-100"
+                }`}
+              >
+                <p className="text-2xl font-bold">{count}</p>
+                <p className="text-xs font-medium">{label} ({pct}%)</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         {/* Sentiment filter */}
@@ -299,6 +345,9 @@ export default function ResponsesPage() {
                 neutral: "bg-gray-100 text-gray-800 border-gray-300",
                 negative: "bg-red-100 text-red-800 border-red-300",
               };
+              const count = s === ""
+                ? stats?.total ?? null
+                : stats?.by_sentiment[s] ?? null;
               const isActive = filterSentiment === s;
               return (
                 <button
@@ -314,7 +363,7 @@ export default function ResponsesPage() {
                       : colors[s] + " opacity-60 hover:opacity-100"
                   }`}
                 >
-                  {labels[s]}
+                  {labels[s]}{count !== null ? ` (${count})` : ""}
                 </button>
               );
             }

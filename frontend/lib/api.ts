@@ -650,6 +650,13 @@ class ApiClient {
     return this.post("/responses/fetch", { campaign_ids: campaignIds });
   }
 
+  async getResponseStats(campaignIds: number[], dateFrom?: string, dateTo?: string): Promise<import("@/types").ResponseStats> {
+    const params = new URLSearchParams({ campaign_ids: campaignIds.join(",") });
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    return this.get(`/responses/stats?${params}`);
+  }
+
   async generateReply(responseId: number): Promise<import("@/types").EmailResponseWithDetails> {
     return this.post(`/responses/${responseId}/generate-reply`);
   }

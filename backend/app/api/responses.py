@@ -236,6 +236,59 @@ async def fetch_replies(
     )
 
 
+# --- Response Stats ---
+
+
+@router.get("/stats")
+async def get_response_stats(
+    campaign_ids: Optional[str] = Query(None, description="Comma-separated campaign IDs"),
+    date_from: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get response counts grouped by sentiment and status."""
+    date_col = sa_func.coalesce(EmailResponse.received_at, EmailResponse.created_at)
+    base_filter = [EmailResponse.direction == MessageDirection.INBOUND]
+
+    if campaign_ids:
+        ids = [int(x.strip()) for x in campaign_ids.split(",") if x.strip()]
+        if ids:
+            base_filter.append(EmailResponse.campaign_id.in_(ids))
+    if date_from:
+        base_filter.append(date_col >= datetime.fromisoformat(date_from))
+    if date_to:
+        base_filter.append(date_col <= datetime.fromisoformat(date_to + "T23:59:59"))
+
+    # Count by sentiment
+    sentiment_result = await db.execute(
+        select(EmailResponse.sentiment, sa_func.count())
+        .where(*base_filter)
+        .group_by(EmailResponse.sentiment)
+    )
+    by_sentiment: dict[str, int] = {
+        "interested": 0, "positive": 0, "neutral": 0, "negative": 0, "unknown": 0
+    }
+    total = 0
+    for row in sentiment_result.all():
+        val, count = row
+        key = val.value if val else "unknown"
+        by_sentiment[key] = count
+        total += count
+
+    # Count by status
+    status_result = await db.execute(
+        select(EmailResponse.status, sa_func.count())
+        .where(*base_filter)
+        .group_by(EmailResponse.status)
+    )
+    by_status: dict[str, int] = {}
+    for row in status_result.all():
+        val, count = row
+        by_status[val.value if val else "unknown"] = count
+
+    return {"total": total, "by_sentiment": by_sentiment, "by_status": by_status}
+
+
 # --- Generate AI Reply ---
 
 
