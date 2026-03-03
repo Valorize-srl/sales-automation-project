@@ -66,14 +66,14 @@ async def get_dashboard_stats(
     campaigns = campaigns_result.scalars().all()
     active_campaigns = sum(1 for c in campaigns if c.status == CampaignStatus.ACTIVE)
 
-    # Totals from Analytics table within date range
+    # Totals from Campaign table (always up-to-date after sync)
     totals_result = await db.execute(
         select(
-            sa_func.coalesce(sa_func.sum(Analytics.emails_sent), 0).label("sent"),
-            sa_func.coalesce(sa_func.sum(Analytics.opens), 0).label("opened"),
-            sa_func.coalesce(sa_func.sum(Analytics.replies), 0).label("replied"),
+            sa_func.coalesce(sa_func.sum(Campaign.total_sent), 0).label("sent"),
+            sa_func.coalesce(sa_func.sum(Campaign.total_opened), 0).label("opened"),
+            sa_func.coalesce(sa_func.sum(Campaign.total_replied), 0).label("replied"),
         )
-        .where(Analytics.date >= since, Analytics.date <= until)
+        .where(Campaign.deleted_at.is_(None))
     )
     totals = totals_result.one()
     total_sent = int(totals.sent)

@@ -492,6 +492,28 @@ async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
             except InstantlyAPIError:
                 pass  # Keep existing status if we can't fetch it
 
+            # Also write to Analytics table (for dashboard chart)
+            today = date.today()
+            existing = await db.execute(
+                select(Analytics).where(
+                    Analytics.campaign_id == campaign.id,
+                    Analytics.date == today,
+                )
+            )
+            entry = existing.scalar_one_or_none()
+            if entry:
+                entry.emails_sent = campaign.total_sent
+                entry.opens = campaign.total_opened
+                entry.replies = campaign.total_replied
+            else:
+                db.add(Analytics(
+                    campaign_id=campaign.id,
+                    date=today,
+                    emails_sent=campaign.total_sent,
+                    opens=campaign.total_opened,
+                    replies=campaign.total_replied,
+                ))
+
             synced += 1
         except InstantlyAPIError as e:
             logger.warning(f"Failed to sync metrics for campaign {campaign.id}: {e.detail}")
