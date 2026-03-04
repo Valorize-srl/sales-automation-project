@@ -85,3 +85,9 @@ class CompanyCSVImportResponse(BaseModel):
     imported: int
     duplicates_skipped: int
     errors: int
+
+
+class FindPeopleRequest(BaseModel):
+    titles: Optional[list[str]] = None
+    seniorities: Optional[list[str]] = None
+    per_page: int = 25

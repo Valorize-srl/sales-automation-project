@@ -1,8 +1,9 @@
 "use client";
 
-import { Trash2, ExternalLink, Users } from "lucide-react";
+import { Trash2, ExternalLink, Users, UserSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -18,12 +19,16 @@ import { EnrichButton } from "@/components/companies/enrich-button";
 interface CompaniesTableProps {
   companies: Company[];
   loading: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
+  onToggleSelectAll?: () => void;
   onDelete: (id: number) => void;
   onPeopleClick: (companyId: number) => void;
+  onFindPeople?: (company: Company) => void;
   onRefresh?: () => void;
 }
 
-export function CompaniesTable({ companies, loading, onDelete, onPeopleClick, onRefresh }: CompaniesTableProps) {
+export function CompaniesTable({ companies, loading, selectedIds, onToggleSelect, onToggleSelectAll, onDelete, onPeopleClick, onFindPeople, onRefresh }: CompaniesTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
   }
@@ -43,6 +48,14 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick, on
       <Table>
         <TableHeader>
           <TableRow>
+            {onToggleSelect && (
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={companies.length > 0 && companies.every((c) => selectedIds?.has(c.id))}
+                  onCheckedChange={onToggleSelectAll}
+                />
+              </TableHead>
+            )}
             <TableHead>Company</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Phone</TableHead>
@@ -59,6 +72,14 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick, on
         <TableBody>
           {companies.map((company) => (
             <TableRow key={company.id}>
+              {onToggleSelect && (
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds?.has(company.id)}
+                    onCheckedChange={() => onToggleSelect(company.id)}
+                  />
+                </TableCell>
+              )}
               <TableCell className="font-medium">{company.name}</TableCell>
               <TableCell className="text-sm">
                 <EmailListDisplay
@@ -112,7 +133,18 @@ export function CompaniesTable({ companies, loading, onDelete, onPeopleClick, on
                   <span className="text-muted-foreground text-sm">—</span>
                 )}
               </TableCell>
-              <TableCell>
+              <TableCell className="space-x-1">
+                {onFindPeople && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 h-7 text-xs"
+                    onClick={() => onFindPeople(company)}
+                  >
+                    <UserSearch className="h-3 w-3" />
+                    Find People
+                  </Button>
+                )}
                 {company.website && (
                   <EnrichButton
                     companyId={company.id}

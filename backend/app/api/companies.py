@@ -18,6 +18,7 @@ from app.schemas.company import (
     CompanyCSVUploadResponse,
     CompanyCSVImportRequest,
     CompanyCSVImportResponse,
+    FindPeopleRequest,
 )
 from app.schemas.enrichment import (
     EnrichmentResult,
@@ -26,6 +27,7 @@ from app.schemas.enrichment import (
 )
 from app.services.enrichment import CompanyEnrichmentService
 from app.services.csv_mapper import csv_mapper_service
+from app.services.apollo import ApolloService, ApolloAPIError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -443,6 +445,39 @@ def _clean(row: dict, column_name: Optional[str], max_len: int = 0) -> Optional[
     if max_len and len(val) > max_len:
         val = val[:max_len]
     return val
+
+
+@router.post("/{company_id}/find-people")
+async def find_people_at_company(
+    company_id: int,
+    body: FindPeopleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Search Apollo for people working at this company (free, 0 credits)."""
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    apollo = ApolloService()
+    try:
+        raw = await apollo.search_people(
+            person_titles=body.titles or None,
+            person_seniorities=body.seniorities or None,
+            organization_keywords=[company.name],
+            per_page=body.per_page,
+        )
+    except ApolloAPIError as e:
+        raise HTTPException(e.status_code, e.detail)
+
+    results = apollo.format_people_results(raw)
+    total = raw.get("pagination", {}).get("total_entries", len(results))
+
+    return {
+        "company_id": company_id,
+        "company_name": company.name,
+        "results": results,
+        "total": total,
+    }
 
 
 # ==============================================================================

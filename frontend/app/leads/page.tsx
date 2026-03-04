@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Upload, Search, X, ListPlus, Send } from "lucide-react";
+import { Upload, Search, X, ListPlus, Send, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -17,6 +17,7 @@ import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
 import { EditPersonDialog } from "@/components/leads/edit-person-dialog";
 import { CreateListDialog } from "@/components/leads/create-list-dialog";
 import { AddListToCampaignDialog } from "@/components/leads/add-list-to-campaign-dialog";
+import { FindPeopleDialog } from "@/components/leads/find-people-dialog";
 import { api } from "@/lib/api";
 import {
   Person,
@@ -57,6 +58,17 @@ export default function LeadsPage() {
   const [companiesClientTag, setCompaniesClientTag] = useState<string>("");
   const [companiesCSVOpen, setCompaniesCSVOpen] = useState(false);
 
+  // --- Companies selection ---
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
+
+  // --- People enrichment ---
+  const [enriching, setEnriching] = useState(false);
+  const [enrichResult, setEnrichResult] = useState<{ enriched_count: number; credits_consumed: number; message: string } | null>(null);
+
+  // --- Find People dialog ---
+  const [findPeopleCompany, setFindPeopleCompany] = useState<Company | null>(null);
+  const [findPeopleOpen, setFindPeopleOpen] = useState(false);
+
   // Load data and industries on mount
   useEffect(() => {
     loadPeople();
@@ -65,10 +77,14 @@ export default function LeadsPage() {
     loadCompaniesIndustries();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Clear selection when people data changes
+  // Clear selection when data changes
   useEffect(() => {
     setSelectedPeopleIds(new Set());
   }, [people]);
+
+  useEffect(() => {
+    setSelectedCompanyIds(new Set());
+  }, [companies]);
 
   // --- People ---
   const loadPeopleIndustries = useCallback(async () => {
@@ -168,6 +184,45 @@ export default function LeadsPage() {
     setLastCreatedListId(listId);
     setCreateListOpen(false);
     setAddToCampaignOpen(true);
+  };
+
+  const handleBulkEnrich = async () => {
+    if (selectedPeopleIds.size === 0) return;
+    setEnriching(true);
+    setEnrichResult(null);
+    try {
+      const result = await api.bulkEnrichPeople(Array.from(selectedPeopleIds));
+      setEnrichResult(result);
+      setSelectedPeopleIds(new Set());
+      loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag);
+    } catch (err) {
+      console.error("Bulk enrich failed:", err);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  // --- Companies selection ---
+  const handleToggleCompanySelect = (id: number) => {
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleCompanySelectAll = () => {
+    if (companies.every((c) => selectedCompanyIds.has(c.id))) {
+      setSelectedCompanyIds(new Set());
+    } else {
+      setSelectedCompanyIds(new Set(companies.map((c) => c.id)));
+    }
+  };
+
+  const handleFindPeople = (company: Company) => {
+    setFindPeopleCompany(company);
+    setFindPeopleOpen(true);
   };
 
   // --- Companies ---
@@ -372,7 +427,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* Selection Toolbar */}
+      {/* People Selection Toolbar */}
       {activeTab === "people" && selectedPeopleIds.size > 0 && (
         <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20 mb-4">
           <span className="text-sm font-medium">
@@ -390,8 +445,55 @@ export default function LeadsPage() {
           </Button>
           <Button
             size="sm"
+            variant="secondary"
+            className="gap-1.5"
+            disabled={enriching}
+            onClick={handleBulkEnrich}
+          >
+            {enriching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {enriching ? "Enriching..." : `Enrich (${selectedPeopleIds.size})`}
+          </Button>
+          <Button
+            size="sm"
             variant="outline"
             onClick={() => setSelectedPeopleIds(new Set())}
+          >
+            Clear selection
+          </Button>
+        </div>
+      )}
+
+      {/* Enrich result banner */}
+      {enrichResult && (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200 mb-4 text-sm">
+          <Sparkles className="h-4 w-4 text-blue-600" />
+          <span>{enrichResult.message}</span>
+          <Button size="sm" variant="ghost" className="ml-auto h-6 text-xs" onClick={() => setEnrichResult(null)}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
+      {/* Companies Selection Toolbar */}
+      {activeTab === "companies" && selectedCompanyIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20 mb-4">
+          <span className="text-sm font-medium">
+            {selectedCompanyIds.size} selected
+          </span>
+          <div className="h-4 w-px bg-border" />
+          <Button
+            size="sm"
+            variant="default"
+            className="gap-1.5"
+            onClick={() => setCreateListOpen(true)}
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+            Create List
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSelectedCompanyIds(new Set())}
           >
             Clear selection
           </Button>
@@ -439,8 +541,12 @@ export default function LeadsPage() {
         <CompaniesTable
           companies={companies}
           loading={companiesLoading}
+          selectedIds={selectedCompanyIds}
+          onToggleSelect={handleToggleCompanySelect}
+          onToggleSelectAll={handleToggleCompanySelectAll}
           onDelete={handleDeleteCompany}
           onPeopleClick={handlePeopleClick}
+          onFindPeople={handleFindPeople}
           onRefresh={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
         />
       )}
@@ -468,8 +574,9 @@ export default function LeadsPage() {
       <CreateListDialog
         open={createListOpen}
         onOpenChange={setCreateListOpen}
-        selectedPersonIds={Array.from(selectedPeopleIds)}
-        defaultClientTag={peopleClientTag}
+        selectedPersonIds={activeTab === "people" ? Array.from(selectedPeopleIds) : []}
+        selectedCompanyIds={activeTab === "companies" ? Array.from(selectedCompanyIds) : []}
+        defaultClientTag={activeTab === "people" ? peopleClientTag : companiesClientTag}
         onListCreated={handleListCreated}
       />
 
@@ -477,6 +584,13 @@ export default function LeadsPage() {
         open={addToCampaignOpen}
         onOpenChange={setAddToCampaignOpen}
         leadListId={lastCreatedListId}
+      />
+
+      <FindPeopleDialog
+        open={findPeopleOpen}
+        onOpenChange={setFindPeopleOpen}
+        company={findPeopleCompany}
+        onImported={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag)}
       />
     </div>
   );

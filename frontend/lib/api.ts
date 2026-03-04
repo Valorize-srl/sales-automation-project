@@ -498,6 +498,10 @@ class ApiClient {
     return response.blob();
   }
 
+  async findPeopleAtCompany(companyId: number, params?: { titles?: string[]; seniorities?: string[]; per_page?: number }): Promise<{ company_id: number; company_name: string; results: Record<string, unknown>[]; total: number }> {
+    return this.post(`/companies/${companyId}/find-people`, params || {});
+  }
+
   async bulkTagCompanies(company_ids: number[], tags_to_add?: string[], tags_to_remove?: string[]): Promise<{ companies_tagged: number; message: string }> {
     return this.post("/companies/bulk-tag", { company_ids, tags_to_add, tags_to_remove });
   }

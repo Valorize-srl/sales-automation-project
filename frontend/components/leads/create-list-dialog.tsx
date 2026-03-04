@@ -19,6 +19,7 @@ interface CreateListDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedPersonIds: number[];
+  selectedCompanyIds?: number[];
   defaultClientTag?: string;
   onListCreated: (listId: number) => void;
 }
@@ -27,6 +28,7 @@ export function CreateListDialog({
   open,
   onOpenChange,
   selectedPersonIds,
+  selectedCompanyIds = [],
   defaultClientTag,
   onListCreated,
 }: CreateListDialogProps) {
@@ -48,7 +50,8 @@ export function CreateListDialog({
       const result = await api.createLeadList({
         name: listName.trim(),
         client_tag: clientTag.trim() || undefined,
-        person_ids: selectedPersonIds,
+        person_ids: selectedPersonIds.length > 0 ? selectedPersonIds : undefined,
+        company_ids: selectedCompanyIds.length > 0 ? selectedCompanyIds : undefined,
       });
       onListCreated(result.id);
       // Reset form
@@ -70,8 +73,11 @@ export function CreateListDialog({
             Create Lead List
           </DialogTitle>
           <DialogDescription>
-            Create a new list with {selectedPersonIds.length} selected{" "}
-            {selectedPersonIds.length === 1 ? "person" : "people"}.
+            Create a new list with{" "}
+            {selectedPersonIds.length > 0 && `${selectedPersonIds.length} ${selectedPersonIds.length === 1 ? "person" : "people"}`}
+            {selectedPersonIds.length > 0 && selectedCompanyIds.length > 0 && " and "}
+            {selectedCompanyIds.length > 0 && `${selectedCompanyIds.length} ${selectedCompanyIds.length === 1 ? "company" : "companies"}`}
+            .
           </DialogDescription>
         </DialogHeader>
 
@@ -107,9 +113,14 @@ export function CreateListDialog({
 
           <div className="rounded-md bg-muted/50 p-3 text-sm">
             <p className="text-muted-foreground">
-              <strong>{selectedPersonIds.length}</strong>{" "}
-              {selectedPersonIds.length === 1 ? "person" : "people"} will be
-              added to this list.
+              {selectedPersonIds.length > 0 && (
+                <><strong>{selectedPersonIds.length}</strong> {selectedPersonIds.length === 1 ? "person" : "people"}</>
+              )}
+              {selectedPersonIds.length > 0 && selectedCompanyIds.length > 0 && " and "}
+              {selectedCompanyIds.length > 0 && (
+                <><strong>{selectedCompanyIds.length}</strong> {selectedCompanyIds.length === 1 ? "company" : "companies"}</>
+              )}
+              {" "}will be added to this list.
             </p>
           </div>
 
