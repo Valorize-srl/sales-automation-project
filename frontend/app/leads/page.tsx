@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Upload, Search, X, ListPlus, Send, Sparkles, Loader2, Filter } from "lucide-react";
+import { Upload, Search, X, ListPlus, Send, Sparkles, Loader2, Filter, Trash2, Download, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -22,11 +22,12 @@ import { api } from "@/lib/api";
 import {
   Person,
   Company,
+  LeadList,
   PersonListResponse,
   CompanyListResponse,
 } from "@/types";
 
-type Tab = "people" | "companies";
+type Tab = "people" | "companies" | "lists";
 
 export default function LeadsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("people");
@@ -69,6 +70,11 @@ export default function LeadsPage() {
   const [findPeopleCompany, setFindPeopleCompany] = useState<Company | null>(null);
   const [findPeopleOpen, setFindPeopleOpen] = useState(false);
 
+  // --- Lists state ---
+  const [lists, setLists] = useState<LeadList[]>([]);
+  const [listsLoading, setListsLoading] = useState(false);
+  const [addListToCampaignListId, setAddListToCampaignListId] = useState<number | null>(null);
+
   // --- Presence filters ---
   type PresenceFilters = Record<string, boolean | undefined>;
   const [peoplePresence, setPeoplePresence] = useState<PresenceFilters>({});
@@ -85,6 +91,7 @@ export default function LeadsPage() {
   useEffect(() => {
     loadPeople();
     loadCompanies();
+    loadLists();
     loadPeopleIndustries();
     loadCompaniesIndustries();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -198,8 +205,10 @@ export default function LeadsPage() {
 
   const handleListCreated = (listId: number) => {
     setLastCreatedListId(listId);
+    setAddListToCampaignListId(listId);
     setCreateListOpen(false);
     setAddToCampaignOpen(true);
+    loadLists();
   };
 
   const handleBulkEnrich = async () => {
@@ -258,6 +267,48 @@ export default function LeadsPage() {
     setCompaniesPresence(next);
     companiesPresenceRef.current = next;
     loadCompanies(companiesSearch, companiesIndustry, companiesClientTag);
+  };
+
+  // --- Lists ---
+  const loadLists = useCallback(async () => {
+    setListsLoading(true);
+    try {
+      const data = await api.getLeadLists();
+      setLists(data.lists);
+    } catch (err) {
+      console.error("Failed to load lists:", err);
+    } finally {
+      setListsLoading(false);
+    }
+  }, []);
+
+  const handleDeleteList = async (id: number) => {
+    if (!confirm("Delete this list?")) return;
+    try {
+      await api.deleteLeadList(id);
+      setLists((prev) => prev.filter((l) => l.id !== id));
+    } catch (err) {
+      console.error("Failed to delete list:", err);
+    }
+  };
+
+  const handleExportList = async (id: number) => {
+    try {
+      const blob = await api.exportLeadList(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lead-list-${id}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export list:", err);
+    }
+  };
+
+  const handleAddListToCampaign = (listId: number) => {
+    setAddListToCampaignListId(listId);
+    setAddToCampaignOpen(true);
   };
 
   // --- Companies ---
@@ -326,6 +377,7 @@ export default function LeadsPage() {
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: "people", label: "People", count: people.length },
     { key: "companies", label: "Companies", count: companies.length },
+    { key: "lists", label: "Lists", count: lists.length },
   ];
 
   return (
@@ -337,6 +389,7 @@ export default function LeadsPage() {
           <p className="text-sm text-muted-foreground">
             {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}${peopleClientTag ? ` \u00b7 tag: ${peopleClientTag}` : ""}`}
             {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}${companiesClientTag ? ` \u00b7 tag: ${companiesClientTag}` : ""}`}
+            {activeTab === "lists" && `${lists.length} lead lists`}
           </p>
         </div>
 
@@ -669,6 +722,73 @@ export default function LeadsPage() {
         />
       )}
 
+      {activeTab === "lists" && (
+        listsLoading ? (
+          <p className="text-muted-foreground py-8 text-center">Loading...</p>
+        ) : lists.length === 0 ? (
+          <div className="text-center py-12">
+            <List className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+            <p className="text-muted-foreground">
+              No lists yet. Select people or companies and click &ldquo;Create List&rdquo;.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-md border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Name</th>
+                  <th className="px-4 py-2 text-left font-medium">Client/Project</th>
+                  <th className="px-4 py-2 text-center font-medium">People</th>
+                  <th className="px-4 py-2 text-center font-medium">Companies</th>
+                  <th className="px-4 py-2 text-left font-medium">Created</th>
+                  <th className="px-4 py-2 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lists.map((list) => (
+                  <tr key={list.id} className="border-t">
+                    <td className="px-4 py-2 font-medium">{list.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{list.client_tag || "—"}</td>
+                    <td className="px-4 py-2 text-center">{list.people_count}</td>
+                    <td className="px-4 py-2 text-center">{list.companies_count}</td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {new Date(list.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-2 text-right space-x-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 h-7 text-xs"
+                        onClick={() => handleAddListToCampaign(list.id)}
+                      >
+                        <Send className="h-3 w-3" /> Add to Campaign
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 h-7 text-xs"
+                        onClick={() => handleExportList(list.id)}
+                      >
+                        <Download className="h-3 w-3" /> Export
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                        onClick={() => handleDeleteList(list.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
       {/* Dialogs */}
       <PeopleCSVDialog
         open={peopleCSVOpen}
@@ -701,7 +821,7 @@ export default function LeadsPage() {
       <AddListToCampaignDialog
         open={addToCampaignOpen}
         onOpenChange={setAddToCampaignOpen}
-        leadListId={lastCreatedListId}
+        leadListId={addListToCampaignListId}
       />
 
       <FindPeopleDialog
