@@ -807,8 +807,11 @@ export interface AddListToCampaignResponse {
   lead_list_id: number;
   lead_list_name: string;
   people_in_list: number;
+  valid_leads?: number;
   pushed_to_instantly: number;
   errors: number;
+  skipped_invalid?: number;
+  error_details?: string[];
   message: string;
 }
 

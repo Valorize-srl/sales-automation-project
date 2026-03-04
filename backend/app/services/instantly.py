@@ -40,13 +40,14 @@ class InstantlyService:
         *,
         json: Optional[dict] = None,
         params: Optional[dict] = None,
+        timeout: float = 30.0,
     ) -> dict[str, Any]:
         """Generic request wrapper with error handling."""
         url = f"{self.base_url}{path}"
         headers: dict[str, str] = {"Authorization": f"Bearer {self.api_key}"}
         if json is not None:
             headers["Content-Type"] = "application/json"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.request(
                 method, url,
                 headers=headers,
@@ -168,7 +169,7 @@ class InstantlyService:
             "campaign_id": campaign_id,
             "leads": leads,
         }
-        return await self._request("POST", "/leads/batch", json=payload)
+        return await self._request("POST", "/leads/batch", json=payload, timeout=120.0)
 
     async def list_leads(
         self,

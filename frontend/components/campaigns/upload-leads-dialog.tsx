@@ -183,19 +183,33 @@ export function UploadLeadsDialog({
               </div>
             )}
             {listResult && (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-2xl font-bold text-green-600">
-                    {listResult.pushed_to_instantly}
-                  </p>
-                  <p className="text-muted-foreground">Pushed</p>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">
+                      {listResult.pushed_to_instantly}
+                    </p>
+                    <p className="text-muted-foreground">Pushed</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-red-600">
+                      {listResult.errors}
+                    </p>
+                    <p className="text-muted-foreground">Errors</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-red-600">
-                    {listResult.errors}
+                {listResult.skipped_invalid ? (
+                  <p className="text-xs text-muted-foreground">
+                    {listResult.skipped_invalid} email non valide saltate
                   </p>
-                  <p className="text-muted-foreground">Errors</p>
-                </div>
+                ) : null}
+                {listResult.error_details && listResult.error_details.length > 0 && (
+                  <div className="text-xs text-red-600 bg-red-50 rounded p-2 max-h-[100px] overflow-y-auto">
+                    {listResult.error_details.map((d, i) => (
+                      <p key={i}>{d}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <Button onClick={() => onOpenChange(false)} className="mt-4">

@@ -636,16 +636,26 @@ async def add_list_to_campaign(
     companies = companies_result.scalars().all()
 
     # Build leads for Instantly from both people and companies
+    import re
+    email_regex = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
     instantly_leads = []
+    skipped_invalid = 0
+    seen_global = set()
+
     for person in people:
         if not person.email:
             continue
+        email = person.email.strip().lower()
+        if not email_regex.match(email) or email in seen_global:
+            skipped_invalid += 1
+            continue
+        seen_global.add(email)
         instantly_leads.append({
-            "email": person.email,
+            "email": email,
             "first_name": person.first_name or "",
             "last_name": person.last_name or "",
             "company_name": person.company_name or "",
-            "personalization": "",
         })
 
     for company in companies:
@@ -656,27 +666,33 @@ async def add_list_to_campaign(
         if company.generic_emails:
             try:
                 parsed = json.loads(company.generic_emails) if isinstance(company.generic_emails, str) else []
-                company_emails.extend(parsed)
+                if isinstance(parsed, list):
+                    company_emails.extend(parsed)
             except (json.JSONDecodeError, TypeError):
                 pass
-        # Deduplicate
-        seen_emails = set()
-        for email in company_emails:
-            if email and email not in seen_emails:
-                seen_emails.add(email)
-                instantly_leads.append({
-                    "email": email,
-                    "first_name": "",
-                    "last_name": "",
-                    "company_name": company.name or "",
-                    "personalization": "",
-                })
+        for raw_email in company_emails:
+            if not raw_email or not isinstance(raw_email, str):
+                continue
+            email = raw_email.strip().lower()
+            if not email_regex.match(email) or email in seen_global:
+                skipped_invalid += 1
+                continue
+            seen_global.add(email)
+            instantly_leads.append({
+                "email": email,
+                "first_name": "",
+                "last_name": "",
+                "company_name": company.name or "",
+            })
 
-    # Push to Instantly
+    logger.info(f"Prepared {len(instantly_leads)} valid leads for Instantly (skipped {skipped_invalid} invalid/duplicate)")
+
+    # Push to Instantly in smaller batches
     pushed = 0
     errors_count = 0
+    error_details = []
     if instantly_leads:
-        batch_size = 1000
+        batch_size = 100
         for i in range(0, len(instantly_leads), batch_size):
             batch = instantly_leads[i:i + batch_size]
             try:
@@ -685,8 +701,15 @@ async def add_list_to_campaign(
                 )
                 pushed += len(batch)
             except InstantlyAPIError as e:
-                logger.error(f"Failed to push lead batch to Instantly (status={e.status_code}): {e.detail}")
+                logger.error(f"Failed to push lead batch {i//batch_size + 1} to Instantly (status={e.status_code}): {e.detail}")
                 errors_count += len(batch)
+                if len(error_details) < 3:
+                    error_details.append(f"Batch {i//batch_size + 1}: {e.status_code} - {e.detail[:200]}")
+            except Exception as e:
+                logger.error(f"Unexpected error pushing batch {i//batch_size + 1}: {e}")
+                errors_count += len(batch)
+                if len(error_details) < 3:
+                    error_details.append(f"Batch {i//batch_size + 1}: {str(e)[:200]}")
 
     # Create or update association record
     if existing_assoc:
@@ -702,14 +725,23 @@ async def add_list_to_campaign(
         db.add(assoc)
     await db.commit()
 
+    message = f"Pushed {pushed} leads to Instantly."
+    if skipped_invalid:
+        message += f" Skipped {skipped_invalid} invalid/duplicate emails."
+    if error_details:
+        message += f" Errors: {'; '.join(error_details)}"
+
     return {
         "campaign_id": campaign_id,
         "lead_list_id": lead_list_id,
         "lead_list_name": lead_list.name,
         "people_in_list": len(people) + len(companies),
+        "valid_leads": len(instantly_leads),
         "pushed_to_instantly": pushed,
         "errors": errors_count,
-        "message": f"Added list '{lead_list.name}' to campaign. Pushed {pushed} leads to Instantly.",
+        "skipped_invalid": skipped_invalid,
+        "error_details": error_details,
+        "message": message,
     }
 
 
