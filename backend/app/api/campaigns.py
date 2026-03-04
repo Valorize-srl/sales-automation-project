@@ -614,15 +614,14 @@ async def add_list_to_campaign(
     if not lead_list:
         raise HTTPException(404, "Lead list not found")
 
-    # Check if already associated
-    existing = await db.execute(
+    # Check if already associated (allow re-push, update record)
+    existing_result = await db.execute(
         select(CampaignLeadList).where(
             CampaignLeadList.campaign_id == campaign_id,
             CampaignLeadList.lead_list_id == lead_list_id,
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(400, "Lead list is already associated with this campaign")
+    existing_assoc = existing_result.scalar_one_or_none()
 
     # Get all people in this list
     people_result = await db.execute(
@@ -689,14 +688,18 @@ async def add_list_to_campaign(
                 logger.error(f"Failed to push lead batch to Instantly: {e.detail}")
                 errors_count += len(batch)
 
-    # Create association record
-    assoc = CampaignLeadList(
-        campaign_id=campaign_id,
-        lead_list_id=lead_list_id,
-        pushed_to_instantly=pushed > 0,
-        pushed_count=pushed,
-    )
-    db.add(assoc)
+    # Create or update association record
+    if existing_assoc:
+        existing_assoc.pushed_to_instantly = pushed > 0
+        existing_assoc.pushed_count = (existing_assoc.pushed_count or 0) + pushed
+    else:
+        assoc = CampaignLeadList(
+            campaign_id=campaign_id,
+            lead_list_id=lead_list_id,
+            pushed_to_instantly=pushed > 0,
+            pushed_count=pushed,
+        )
+        db.add(assoc)
     await db.commit()
 
     return {
