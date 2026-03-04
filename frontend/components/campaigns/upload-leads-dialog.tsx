@@ -198,6 +198,13 @@ export function UploadLeadsDialog({
                     <p className="text-muted-foreground">Errors</p>
                   </div>
                 </div>
+                {listResult.instantly_lead_count != null && (
+                  <div className="text-sm bg-blue-50 rounded-md p-3 border border-blue-200">
+                    <p className="font-medium text-blue-800">
+                      Verifica Instantly: {listResult.instantly_lead_count} lead totali nella campagna
+                    </p>
+                  </div>
+                )}
                 {listResult.skipped_invalid ? (
                   <p className="text-xs text-muted-foreground">
                     {listResult.skipped_invalid} email non valide saltate

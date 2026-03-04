@@ -725,9 +725,32 @@ async def add_list_to_campaign(
         db.add(assoc)
     await db.commit()
 
+    # Verify by counting leads on Instantly campaign
+    instantly_lead_count = None
+    try:
+        count = 0
+        starting_after = None
+        while True:
+            data = await instantly_service.list_leads(
+                campaign_id=campaign.instantly_campaign_id,
+                limit=100,
+                starting_after=starting_after,
+            )
+            items = data.get("items", [])
+            count += len(items)
+            pagination = data.get("pagination", {})
+            starting_after = pagination.get("next_starting_after")
+            if not starting_after or not items:
+                break
+        instantly_lead_count = count
+    except Exception:
+        pass  # Non-critical, just for verification
+
     message = f"Pushed {pushed} leads to Instantly."
     if skipped_invalid:
         message += f" Skipped {skipped_invalid} invalid/duplicate emails."
+    if instantly_lead_count is not None:
+        message += f" Total leads in campaign on Instantly: {instantly_lead_count}."
     if error_details:
         message += f" Errors: {'; '.join(error_details)}"
 
@@ -741,6 +764,7 @@ async def add_list_to_campaign(
         "errors": errors_count,
         "skipped_invalid": skipped_invalid,
         "error_details": error_details,
+        "instantly_lead_count": instantly_lead_count,
         "message": message,
     }
 

@@ -812,6 +812,7 @@ export interface AddListToCampaignResponse {
   errors: number;
   skipped_invalid?: number;
   error_details?: string[];
+  instantly_lead_count?: number;
   message: string;
 }
 
