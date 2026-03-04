@@ -3,7 +3,6 @@
 import { useRef, useState } from "react";
 import { Upload, Loader2, ArrowRight, ArrowLeft, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -55,14 +54,13 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; duplicates_skipped: number; errors: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [manualIndustry, setManualIndustry] = useState("");
-  const [manualClientTag, setManualClientTag] = useState("");
+  const [manualDefaults, setManualDefaults] = useState<Record<string, string>>({});
 
   const reset = () => {
     setStep(1); setFile(null); setUploading(false);
     setUploadData(null); setMapping(EMPTY_MAPPING);
     setImporting(false); setImportResult(null); setError(null);
-    setManualIndustry(""); setManualClientTag("");
+    setManualDefaults({});
   };
 
   const handleOpenChange = (open: boolean) => {
@@ -91,13 +89,15 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
     setImporting(true);
     setError(null);
     try {
+      const defaults = Object.fromEntries(
+        Object.entries(manualDefaults).filter(([, v]) => v.trim())
+      );
       const result = await api.post<{ imported: number; duplicates_skipped: number; errors: number }>(
         "/people/csv/import",
         {
           mapping,
           rows: uploadData.rows,
-          industry: manualIndustry.trim() || undefined,
-          client_tag: manualClientTag.trim() || undefined,
+          defaults: Object.keys(defaults).length > 0 ? defaults : undefined,
         }
       );
       setImportResult(result);
@@ -155,32 +155,57 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
 
         {step === 2 && uploadData && (
           <div className="space-y-3 pt-2">
-            <p className="text-sm text-muted-foreground">{uploadData.total_rows} rows found. Map CSV columns to fields:</p>
-            <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-              {PERSON_FIELDS.map(({ key, label, required }) => (
-                <div key={key} className="grid grid-cols-3 items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {label}{required && <span className="text-destructive ml-1">*</span>}
-                  </span>
-                  <Select
-                    value={mapping[key] ?? "__none__"}
-                    onValueChange={(v) => setMapping((m) => ({ ...m, [key]: v === "__none__" ? null : v }))}
-                  >
-                    <SelectTrigger className="col-span-1 text-xs h-8">
-                      <SelectValue placeholder="— skip —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">— skip —</SelectItem>
-                      {headerOptions.map((h) => (
-                        <SelectItem key={h} value={h}>{h}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {mapping[key] ? (uploadData.preview_rows[0]?.[mapping[key]!] ?? "") : ""}
-                  </span>
-                </div>
-              ))}
+            <p className="text-sm text-muted-foreground">
+              {uploadData.total_rows} rows found. Map CSV columns to fields, or type a default value for unmapped fields.
+            </p>
+            <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+              {PERSON_FIELDS.map(({ key, label, required }) => {
+                const isMapped = !!mapping[key];
+                return (
+                  <div key={key} className="grid grid-cols-3 items-center gap-2">
+                    <span className="text-sm font-medium">
+                      {label}{required && <span className="text-destructive ml-1">*</span>}
+                    </span>
+                    <Select
+                      value={mapping[key] ?? "__none__"}
+                      onValueChange={(v) => setMapping((m) => ({ ...m, [key]: v === "__none__" ? null : v }))}
+                    >
+                      <SelectTrigger className="col-span-1 text-xs h-8">
+                        <SelectValue placeholder="— skip —" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— skip —</SelectItem>
+                        {headerOptions.map((h) => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {isMapped ? (
+                      <span className="text-xs text-muted-foreground truncate">
+                        {uploadData.preview_rows[0]?.[mapping[key]!] ?? ""}
+                      </span>
+                    ) : !required ? (
+                      <Input
+                        placeholder={`Default ${label.toLowerCase()}...`}
+                        value={manualDefaults[key] || ""}
+                        onChange={(e) => setManualDefaults((d) => ({ ...d, [key]: e.target.value }))}
+                        className="h-8 text-xs"
+                      />
+                    ) : null}
+                  </div>
+                );
+              })}
+              {/* Client / Project tag — always manual */}
+              <div className="grid grid-cols-3 items-center gap-2 pt-1 border-t">
+                <span className="text-sm font-medium">Client / Project</span>
+                <span className="text-xs text-muted-foreground italic">manual only</span>
+                <Input
+                  placeholder="e.g. Acme Corp"
+                  value={manualDefaults["client_tag"] || ""}
+                  onChange={(e) => setManualDefaults((d) => ({ ...d, client_tag: e.target.value }))}
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex justify-between pt-1">
@@ -194,65 +219,53 @@ export function PeopleCSVDialog({ open, onOpenChange, onImportComplete }: People
           </div>
         )}
 
-        {step === 3 && uploadData && (
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">Preview of first 5 rows ({uploadData.total_rows} total):</p>
-            <div className="overflow-x-auto rounded border">
-              <table className="text-xs w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    {PERSON_FIELDS.filter((f) => mapping[f.key]).map((f) => (
-                      <th key={f.key} className="px-2 py-1 text-left font-medium">{f.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {uploadData.preview_rows.map((row, i) => (
-                    <tr key={i} className="border-t">
-                      {PERSON_FIELDS.filter((f) => mapping[f.key]).map((f) => (
-                        <td key={f.key} className="px-2 py-1 truncate max-w-[120px]">
-                          {row[mapping[f.key]!] || "—"}
-                        </td>
+        {step === 3 && uploadData && (() => {
+          const visibleFields = PERSON_FIELDS.filter((f) => mapping[f.key] || manualDefaults[f.key]?.trim());
+          const hasClientTag = !!manualDefaults["client_tag"]?.trim();
+          return (
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">Preview of first 5 rows ({uploadData.total_rows} total):</p>
+              <div className="overflow-x-auto rounded border">
+                <table className="text-xs w-full">
+                  <thead className="bg-muted">
+                    <tr>
+                      {visibleFields.map((f) => (
+                        <th key={f.key} className="px-2 py-1 text-left font-medium">{f.label}</th>
                       ))}
+                      {hasClientTag && <th className="px-2 py-1 text-left font-medium">Client</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="manual-industry" className="text-xs">Industry (applied to all rows without one)</Label>
-                <Input
-                  id="manual-industry"
-                  placeholder="e.g. SaaS, Finance..."
-                  value={manualIndustry}
-                  onChange={(e) => setManualIndustry(e.target.value)}
-                  className="h-8 text-sm"
-                />
+                  </thead>
+                  <tbody>
+                    {uploadData.preview_rows.map((row, i) => (
+                      <tr key={i} className="border-t">
+                        {visibleFields.map((f) => (
+                          <td key={f.key} className="px-2 py-1 truncate max-w-[120px]">
+                            {mapping[f.key]
+                              ? (row[mapping[f.key]!] || manualDefaults[f.key]?.trim() || "—")
+                              : (manualDefaults[f.key]?.trim() || "—")}
+                          </td>
+                        ))}
+                        {hasClientTag && (
+                          <td className="px-2 py-1 truncate max-w-[120px]">{manualDefaults["client_tag"]}</td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="manual-client" className="text-xs">Client / Project (applied to all rows)</Label>
-                <Input
-                  id="manual-client"
-                  placeholder="e.g. Acme Corp"
-                  value={manualClientTag}
-                  onChange={(e) => setManualClientTag(e.target.value)}
-                  className="h-8 text-sm"
-                />
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setStep(2)} className="gap-1">
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </Button>
+                <Button onClick={handleImport} disabled={importing} className="gap-1">
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {importing ? "Importing..." : `Import ${uploadData.total_rows} People`}
+                </Button>
               </div>
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(2)} className="gap-1">
-                <ArrowLeft className="h-4 w-4" /> Back
-              </Button>
-              <Button onClick={handleImport} disabled={importing} className="gap-1">
-                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                {importing ? "Importing..." : `Import ${uploadData.total_rows} People`}
-              </Button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {step === 4 && importResult && (
           <div className="space-y-4 pt-2 text-center">

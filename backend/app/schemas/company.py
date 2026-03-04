@@ -78,6 +78,7 @@ class CompanyCSVUploadResponse(BaseModel):
 class CompanyCSVImportRequest(BaseModel):
     mapping: CompanyCSVMapping
     rows: list[dict]
+    defaults: Optional[dict[str, str]] = None
 
 
 class CompanyCSVImportResponse(BaseModel):

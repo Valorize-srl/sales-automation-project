@@ -274,6 +274,16 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
     existing_result = await db.execute(select(Person.email))
     existing_emails = {row[0].lower() for row in existing_result.all()}
 
+    # Merge defaults: new "defaults" dict takes priority, fallback to old fields
+    defs = dict(data.defaults or {})
+    if data.industry and "industry" not in defs:
+        defs["industry"] = data.industry
+    if data.client_tag and "client_tag" not in defs:
+        defs["client_tag"] = data.client_tag
+
+    def _val(row: dict, mapping_col: Optional[str], field: str) -> Optional[str]:
+        return _clean(row, mapping_col) or defs.get(field)
+
     for row in data.rows:
         try:
             email = _clean(row, data.mapping.email)
@@ -285,15 +295,15 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
                 duplicates_skipped += 1
                 continue
 
-            first_name = _clean(row, data.mapping.first_name) or ""
-            last_name = _clean(row, data.mapping.last_name) or ""
+            first_name = _val(row, data.mapping.first_name, "first_name") or ""
+            last_name = _val(row, data.mapping.last_name, "last_name") or ""
 
             # Split full name if needed
             if not last_name and " " in first_name:
                 parts = first_name.split(" ", 1)
                 first_name, last_name = parts[0], parts[1]
 
-            company_name = _clean(row, data.mapping.company_name)
+            company_name = _val(row, data.mapping.company_name, "company_name")
             company_id = await _find_matching_company(db, company_name, email)
 
             person = Person(
@@ -302,11 +312,11 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
                 email=email,
                 company_id=company_id,
                 company_name=company_name,
-                linkedin_url=_clean(row, data.mapping.linkedin_url),
-                phone=_clean(row, data.mapping.phone),
-                industry=_clean(row, data.mapping.industry) or data.industry,
-                location=_clean(row, data.mapping.location),
-                client_tag=data.client_tag,
+                linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
+                phone=_val(row, data.mapping.phone, "phone"),
+                industry=_val(row, data.mapping.industry, "industry"),
+                location=_val(row, data.mapping.location, "location"),
+                client_tag=defs.get("client_tag"),
             )
             db.add(person)
             existing_emails.add(email)

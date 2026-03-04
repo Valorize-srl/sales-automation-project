@@ -244,6 +244,11 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
     existing_result = await db.execute(select(sa_func.lower(Company.name)))
     existing_names = {row[0] for row in existing_result.all()}
 
+    defs = dict(data.defaults or {})
+
+    def _val(row: dict, mapping_col, field: str):
+        return _clean(row, mapping_col) or defs.get(field)
+
     for row in data.rows:
         try:
             name = _clean(row, data.mapping.name)
@@ -254,17 +259,17 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                 duplicates_skipped += 1
                 continue
 
-            email = _clean(row, data.mapping.email)
+            email = _val(row, data.mapping.email, "email")
             company = Company(
                 name=name,
                 email=email,
                 email_domain=_extract_domain(email),
-                phone=_clean(row, data.mapping.phone),
-                linkedin_url=_clean(row, data.mapping.linkedin_url),
-                industry=_clean(row, data.mapping.industry),
-                location=_clean(row, data.mapping.location),
-                signals=_clean(row, data.mapping.signals),
-                website=_clean(row, data.mapping.website),
+                phone=_val(row, data.mapping.phone, "phone"),
+                linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
+                industry=_val(row, data.mapping.industry, "industry"),
+                location=_val(row, data.mapping.location, "location"),
+                signals=_val(row, data.mapping.signals, "signals"),
+                website=_val(row, data.mapping.website, "website"),
             )
             db.add(company)
             existing_names.add(name.lower())

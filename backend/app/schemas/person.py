@@ -76,6 +76,8 @@ class PersonCSVUploadResponse(BaseModel):
 class PersonCSVImportRequest(BaseModel):
     mapping: PersonCSVMapping
     rows: list[dict]
+    defaults: Optional[dict[str, str]] = None
+    # Backward compat
     industry: Optional[str] = None
     client_tag: Optional[str] = None
 
