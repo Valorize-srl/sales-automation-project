@@ -164,12 +164,13 @@ class InstantlyService:
     async def add_leads_to_campaign(
         self, campaign_id: str, leads: list[dict]
     ) -> dict:
-        """Bulk add leads to a campaign."""
+        """Bulk add up to 1000 leads to a campaign."""
         payload = {
             "campaign_id": campaign_id,
             "leads": leads,
+            "skip_if_in_campaign": True,
         }
-        return await self._request("POST", "/leads/batch", json=payload, timeout=120.0)
+        return await self._request("POST", "/leads/add", json=payload, timeout=120.0)
 
     async def list_leads(
         self,
