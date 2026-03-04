@@ -650,15 +650,28 @@ async def add_list_to_campaign(
         })
 
     for company in companies:
-        if not company.email:
-            continue
-        instantly_leads.append({
-            "email": company.email,
-            "first_name": "",
-            "last_name": "",
-            "company_name": company.name or "",
-            "personalization": "",
-        })
+        # Collect all available emails: primary email + generic_emails
+        company_emails = []
+        if company.email:
+            company_emails.append(company.email)
+        if company.generic_emails:
+            try:
+                parsed = json.loads(company.generic_emails) if isinstance(company.generic_emails, str) else []
+                company_emails.extend(parsed)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Deduplicate
+        seen_emails = set()
+        for email in company_emails:
+            if email and email not in seen_emails:
+                seen_emails.add(email)
+                instantly_leads.append({
+                    "email": email,
+                    "first_name": "",
+                    "last_name": "",
+                    "company_name": company.name or "",
+                    "personalization": "",
+                })
 
     # Push to Instantly
     pushed = 0
