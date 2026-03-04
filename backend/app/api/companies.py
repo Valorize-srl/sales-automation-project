@@ -281,12 +281,33 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
 
     await db.flush()
 
-    # After import, link existing unmatched people to newly created companies
-    new_companies_result = await db.execute(
-        select(Company).order_by(Company.created_at.desc()).limit(imported)
-    )
-    for company in new_companies_result.scalars().all():
-        await _link_people_to_company(db, company)
+    # After import, batch-link unmatched people to new companies (2 queries instead of N*2)
+    if imported > 0:
+        new_companies_result = await db.execute(
+            select(Company).order_by(Company.created_at.desc()).limit(imported)
+        )
+        new_companies = list(new_companies_result.scalars().all())
+
+        unmatched_result = await db.execute(
+            select(Person).where(Person.company_id.is_(None))
+        )
+        unmatched_people = list(unmatched_result.scalars().all())
+
+        if unmatched_people:
+            name_map: dict[str, int] = {}
+            domain_map: dict[str, int] = {}
+            for c in new_companies:
+                name_map[c.name.lower()] = c.id
+                if c.email_domain:
+                    domain_map[c.email_domain.lower()] = c.id
+
+            for person in unmatched_people:
+                if person.company_name and person.company_name.lower() in name_map:
+                    person.company_id = name_map[person.company_name.lower()]
+                elif person.email and "@" in person.email:
+                    domain = person.email.split("@")[-1].lower()
+                    if domain in domain_map:
+                        person.company_id = domain_map[domain]
 
     return CompanyCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
 
