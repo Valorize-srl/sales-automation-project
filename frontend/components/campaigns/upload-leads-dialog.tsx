@@ -217,6 +217,19 @@ export function UploadLeadsDialog({
                     ))}
                   </div>
                 )}
+                {/* Debug info */}
+                <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 space-y-1">
+                  <p>Instantly Campaign ID: {(listResult as any).instantly_campaign_id || "N/A"}</p>
+                  <p>Valid leads: {(listResult as any).valid_leads || 0}</p>
+                  {(listResult as any).api_responses?.length > 0 && (
+                    <details>
+                      <summary className="cursor-pointer">API Response</summary>
+                      <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all">
+                        {JSON.stringify((listResult as any).api_responses[0], null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
               </div>
             )}
             <Button onClick={() => onOpenChange(false)} className="mt-4">

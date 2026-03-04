@@ -691,14 +691,19 @@ async def add_list_to_campaign(
     pushed = 0
     errors_count = 0
     error_details = []
+    logger.info(f"Pushing to Instantly campaign_id: {campaign.instantly_campaign_id}")
+    api_responses = []
     if instantly_leads:
         batch_size = 100
         for i in range(0, len(instantly_leads), batch_size):
             batch = instantly_leads[i:i + batch_size]
             try:
-                await instantly_service.add_leads_to_campaign(
+                resp = await instantly_service.add_leads_to_campaign(
                     campaign.instantly_campaign_id, batch
                 )
+                logger.info(f"Batch {i//batch_size + 1} response: {resp}")
+                if len(api_responses) < 2:
+                    api_responses.append(resp)
                 pushed += len(batch)
             except InstantlyAPIError as e:
                 logger.error(f"Failed to push lead batch {i//batch_size + 1} to Instantly (status={e.status_code}): {e.detail}")
@@ -758,6 +763,7 @@ async def add_list_to_campaign(
         "campaign_id": campaign_id,
         "lead_list_id": lead_list_id,
         "lead_list_name": lead_list.name,
+        "instantly_campaign_id": campaign.instantly_campaign_id,
         "people_in_list": len(people) + len(companies),
         "valid_leads": len(instantly_leads),
         "pushed_to_instantly": pushed,
@@ -765,6 +771,7 @@ async def add_list_to_campaign(
         "skipped_invalid": skipped_invalid,
         "error_details": error_details,
         "instantly_lead_count": instantly_lead_count,
+        "api_responses": api_responses,
         "message": message,
     }
 
