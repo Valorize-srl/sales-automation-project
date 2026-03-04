@@ -281,8 +281,19 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
     if data.client_tag and "client_tag" not in defs:
         defs["client_tag"] = data.client_tag
 
+    # Column max lengths (from model)
+    LIMITS = {"first_name": 100, "last_name": 100, "email": 255, "company_name": 255,
+              "linkedin_url": 500, "phone": 50, "industry": 255, "location": 255, "client_tag": 200}
+
     def _val(row: dict, mapping_col: Optional[str], field: str) -> Optional[str]:
-        return _clean(row, mapping_col) or defs.get(field)
+        limit = LIMITS.get(field, 0)
+        v = _clean(row, mapping_col)
+        if v:
+            return v[:limit] if limit and len(v) > limit else v
+        d = defs.get(field)
+        if d:
+            return d[:limit] if limit and len(d) > limit else d
+        return None
 
     for row in data.rows:
         try:
@@ -290,7 +301,7 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
             if not email:
                 errors += 1
                 continue
-            email = email.lower()
+            email = email.lower()[:255]
             if email in existing_emails:
                 duplicates_skipped += 1
                 continue
@@ -307,8 +318,8 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
             company_id = await _find_matching_company(db, company_name, email)
 
             person = Person(
-                first_name=first_name or "Unknown",
-                last_name=last_name or "Unknown",
+                first_name=(first_name or "Unknown")[:100],
+                last_name=(last_name or "Unknown")[:100],
                 email=email,
                 company_id=company_id,
                 company_name=company_name,
@@ -316,11 +327,14 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
                 phone=_val(row, data.mapping.phone, "phone"),
                 industry=_val(row, data.mapping.industry, "industry"),
                 location=_val(row, data.mapping.location, "location"),
-                client_tag=defs.get("client_tag"),
+                client_tag=_val(row, None, "client_tag"),
             )
             db.add(person)
             existing_emails.add(email)
             imported += 1
+
+            if imported % 500 == 0:
+                await db.flush()
 
         except Exception:
             errors += 1

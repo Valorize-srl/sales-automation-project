@@ -236,80 +236,107 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
     if not data.mapping.name:
         raise HTTPException(400, "Company name column mapping is required")
 
+    logger.info("CSV import started: %d rows, mapping=%s, defaults=%s", len(data.rows), data.mapping, data.defaults)
+
     imported = 0
     duplicates_skipped = 0
     errors = 0
 
-    # Fetch existing company names for deduplication
-    existing_result = await db.execute(select(sa_func.lower(Company.name)))
-    existing_names = {row[0] for row in existing_result.all()}
+    try:
+        # Fetch existing company names for deduplication
+        existing_result = await db.execute(select(sa_func.lower(Company.name)))
+        existing_names = {row[0] for row in existing_result.all()}
 
-    defs = dict(data.defaults or {})
+        defs = dict(data.defaults or {})
 
-    def _val(row: dict, mapping_col, field: str):
-        return _clean(row, mapping_col) or defs.get(field)
+        # Column max lengths (from model)
+        LIMITS = {"name": 255, "email": 255, "phone": 50, "linkedin_url": 500,
+                  "industry": 255, "location": 255, "website": 500}
 
-    for row in data.rows:
-        try:
-            name = _clean(row, data.mapping.name)
-            if not name:
+        def _val(row: dict, mapping_col, field: str):
+            limit = LIMITS.get(field, 0)
+            v = _clean(row, mapping_col, limit)
+            if v:
+                return v
+            d = defs.get(field)
+            if d and limit and len(d) > limit:
+                return d[:limit]
+            return d
+
+        for row in data.rows:
+            try:
+                name = _clean(row, data.mapping.name, 255)
+                if not name:
+                    errors += 1
+                    continue
+                if name.lower() in existing_names:
+                    duplicates_skipped += 1
+                    continue
+
+                email = _val(row, data.mapping.email, "email")
+                company = Company(
+                    name=name,
+                    email=email,
+                    email_domain=_extract_domain(email),
+                    phone=_val(row, data.mapping.phone, "phone"),
+                    linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
+                    industry=_val(row, data.mapping.industry, "industry"),
+                    location=_val(row, data.mapping.location, "location"),
+                    signals=_val(row, data.mapping.signals, "signals"),
+                    website=_val(row, data.mapping.website, "website"),
+                )
+                db.add(company)
+                existing_names.add(name.lower())
+                imported += 1
+
+                # Flush in batches to avoid huge transaction
+                if imported % 500 == 0:
+                    await db.flush()
+                    logger.info("CSV import progress: %d imported so far", imported)
+
+            except Exception as row_err:
+                logger.warning("CSV import row error: %s", row_err)
                 errors += 1
                 continue
-            if name.lower() in existing_names:
-                duplicates_skipped += 1
-                continue
 
-            email = _val(row, data.mapping.email, "email")
-            company = Company(
-                name=name,
-                email=email,
-                email_domain=_extract_domain(email),
-                phone=_val(row, data.mapping.phone, "phone"),
-                linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
-                industry=_val(row, data.mapping.industry, "industry"),
-                location=_val(row, data.mapping.location, "location"),
-                signals=_val(row, data.mapping.signals, "signals"),
-                website=_val(row, data.mapping.website, "website"),
+        await db.flush()
+        logger.info("CSV import flush done: imported=%d, duplicates=%d, errors=%d", imported, duplicates_skipped, errors)
+
+        # After import, batch-link unmatched people to new companies
+        if imported > 0:
+            new_companies_result = await db.execute(
+                select(Company).order_by(Company.created_at.desc()).limit(imported)
             )
-            db.add(company)
-            existing_names.add(name.lower())
-            imported += 1
+            new_companies = list(new_companies_result.scalars().all())
 
-        except Exception:
-            errors += 1
-            continue
+            unmatched_result = await db.execute(
+                select(Person).where(Person.company_id.is_(None))
+            )
+            unmatched_people = list(unmatched_result.scalars().all())
 
-    await db.flush()
+            if unmatched_people:
+                name_map: dict[str, int] = {}
+                domain_map: dict[str, int] = {}
+                for c in new_companies:
+                    name_map[c.name.lower()] = c.id
+                    if c.email_domain:
+                        domain_map[c.email_domain.lower()] = c.id
 
-    # After import, batch-link unmatched people to new companies (2 queries instead of N*2)
-    if imported > 0:
-        new_companies_result = await db.execute(
-            select(Company).order_by(Company.created_at.desc()).limit(imported)
-        )
-        new_companies = list(new_companies_result.scalars().all())
+                for person in unmatched_people:
+                    if person.company_name and person.company_name.lower() in name_map:
+                        person.company_id = name_map[person.company_name.lower()]
+                    elif person.email and "@" in person.email:
+                        domain = person.email.split("@")[-1].lower()
+                        if domain in domain_map:
+                            person.company_id = domain_map[domain]
 
-        unmatched_result = await db.execute(
-            select(Person).where(Person.company_id.is_(None))
-        )
-        unmatched_people = list(unmatched_result.scalars().all())
+            logger.info("CSV import: linked people to companies")
 
-        if unmatched_people:
-            name_map: dict[str, int] = {}
-            domain_map: dict[str, int] = {}
-            for c in new_companies:
-                name_map[c.name.lower()] = c.id
-                if c.email_domain:
-                    domain_map[c.email_domain.lower()] = c.id
+        return CompanyCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
 
-            for person in unmatched_people:
-                if person.company_name and person.company_name.lower() in name_map:
-                    person.company_id = name_map[person.company_name.lower()]
-                elif person.email and "@" in person.email:
-                    domain = person.email.split("@")[-1].lower()
-                    if domain in domain_map:
-                        person.company_id = domain_map[domain]
-
-    return CompanyCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
+    except Exception as e:
+        logger.exception("CSV import failed: %s", e)
+        raise HTTPException(500, f"Import failed: {str(e)}")
 
 
 @router.post("/{company_id}/enrich", response_model=EnrichmentResult)
@@ -404,14 +431,18 @@ async def _link_people_to_company(db: AsyncSession, company: Company) -> None:
             person.company_id = company.id
 
 
-def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
+def _clean(row: dict, column_name: Optional[str], max_len: int = 0) -> Optional[str]:
     if not column_name:
         return None
     val = row.get(column_name)
     if not val:
         return None
     val = str(val).strip()
-    return val or None
+    if not val:
+        return None
+    if max_len and len(val) > max_len:
+        val = val[:max_len]
+    return val
 
 
 # ==============================================================================
