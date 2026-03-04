@@ -17,6 +17,7 @@ from app.models.icp import ICP
 from app.models.lead import Lead
 from app.models.lead_list import LeadList
 from app.models.person import Person
+from app.models.company import Company
 from app.models.campaign_lead_list import CampaignLeadList
 from app.models.ai_agent_campaign import AIAgentCampaign
 from app.models.ai_agent import AIAgent
@@ -629,22 +630,40 @@ async def add_list_to_campaign(
     )
     people = people_result.scalars().all()
 
+    # Get all companies in this list (companies with email can also be pushed)
+    companies_result = await db.execute(
+        select(Company).where(Company.list_id == lead_list_id)
+    )
+    companies = companies_result.scalars().all()
+
+    # Build leads for Instantly from both people and companies
+    instantly_leads = []
+    for person in people:
+        if not person.email:
+            continue
+        instantly_leads.append({
+            "email": person.email,
+            "first_name": person.first_name or "",
+            "last_name": person.last_name or "",
+            "company_name": person.company_name or "",
+            "personalization": "",
+        })
+
+    for company in companies:
+        if not company.email:
+            continue
+        instantly_leads.append({
+            "email": company.email,
+            "first_name": "",
+            "last_name": "",
+            "company_name": company.name or "",
+            "personalization": "",
+        })
+
     # Push to Instantly
     pushed = 0
     errors_count = 0
-    if people:
-        instantly_leads = []
-        for person in people:
-            if not person.email:
-                continue
-            instantly_leads.append({
-                "email": person.email,
-                "first_name": person.first_name or "",
-                "last_name": person.last_name or "",
-                "company_name": person.company_name or "",
-                "personalization": "",
-            })
-
+    if instantly_leads:
         batch_size = 1000
         for i in range(0, len(instantly_leads), batch_size):
             batch = instantly_leads[i:i + batch_size]
@@ -671,7 +690,7 @@ async def add_list_to_campaign(
         "campaign_id": campaign_id,
         "lead_list_id": lead_list_id,
         "lead_list_name": lead_list.name,
-        "people_in_list": len(people),
+        "people_in_list": len(people) + len(companies),
         "pushed_to_instantly": pushed,
         "errors": errors_count,
         "message": f"Added list '{lead_list.name}' to campaign. Pushed {pushed} leads to Instantly.",
