@@ -161,13 +161,12 @@ class InstantlyService:
     # --- Lead Methods ---
 
     async def add_leads_to_campaign(
-        self, campaign_id: str, leads: list[dict], skip_if_in_campaign: bool = True
+        self, campaign_id: str, leads: list[dict]
     ) -> dict:
-        """Bulk add leads to a campaign. Skips duplicates by default."""
+        """Bulk add leads to a campaign."""
         payload = {
             "campaign_id": campaign_id,
             "leads": leads,
-            "skip_if_in_campaign": skip_if_in_campaign,
         }
         return await self._request("POST", "/leads/batch", json=payload)
 

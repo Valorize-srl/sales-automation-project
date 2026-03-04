@@ -685,7 +685,7 @@ async def add_list_to_campaign(
                 )
                 pushed += len(batch)
             except InstantlyAPIError as e:
-                logger.error(f"Failed to push lead batch to Instantly: {e.detail}")
+                logger.error(f"Failed to push lead batch to Instantly (status={e.status_code}): {e.detail}")
                 errors_count += len(batch)
 
     # Create or update association record
