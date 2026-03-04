@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select, func as sa_func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -125,9 +125,12 @@ async def list_people(
     company_id: Optional[int] = Query(None),
     industry: Optional[str] = Query(None),
     client_tag: Optional[str] = Query(None),
+    has_email: Optional[bool] = Query(None),
+    has_phone: Optional[bool] = Query(None),
+    has_linkedin: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List people with optional search, company, industry and client_tag filters."""
+    """List people with optional search, company, industry, client_tag and presence filters."""
     query = select(Person).order_by(Person.last_name.asc(), Person.first_name.asc())
     if search:
         query = query.where(
@@ -140,6 +143,19 @@ async def list_people(
         query = query.where(Person.industry == industry)
     if client_tag is not None:
         query = query.where(Person.client_tag.ilike(f"%{client_tag}%"))
+    # Presence filters
+    if has_email is True:
+        query = query.where(Person.email.isnot(None), Person.email != "")
+    elif has_email is False:
+        query = query.where(or_(Person.email.is_(None), Person.email == ""))
+    if has_phone is True:
+        query = query.where(Person.phone.isnot(None), Person.phone != "")
+    elif has_phone is False:
+        query = query.where(or_(Person.phone.is_(None), Person.phone == ""))
+    if has_linkedin is True:
+        query = query.where(Person.linkedin_url.isnot(None), Person.linkedin_url != "")
+    elif has_linkedin is False:
+        query = query.where(or_(Person.linkedin_url.is_(None), Person.linkedin_url == ""))
     result = await db.execute(query)
     people = result.scalars().all()
     return PersonListResponse(people=people, total=len(people))

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Upload, Search, X, ListPlus, Send, Sparkles, Loader2 } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Upload, Search, X, ListPlus, Send, Sparkles, Loader2, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -69,6 +69,18 @@ export default function LeadsPage() {
   const [findPeopleCompany, setFindPeopleCompany] = useState<Company | null>(null);
   const [findPeopleOpen, setFindPeopleOpen] = useState(false);
 
+  // --- Presence filters ---
+  type PresenceFilters = Record<string, boolean | undefined>;
+  const [peoplePresence, setPeoplePresence] = useState<PresenceFilters>({});
+  const [companiesPresence, setCompaniesPresence] = useState<PresenceFilters>({});
+  const peoplePresenceRef = useRef<PresenceFilters>({});
+  const companiesPresenceRef = useRef<PresenceFilters>({});
+  peoplePresenceRef.current = peoplePresence;
+  companiesPresenceRef.current = companiesPresence;
+
+  const peoplePresenceCount = Object.values(peoplePresence).filter((v) => v !== undefined).length;
+  const companiesPresenceCount = Object.values(companiesPresence).filter((v) => v !== undefined).length;
+
   // Load data and industries on mount
   useEffect(() => {
     loadPeople();
@@ -104,6 +116,10 @@ export default function LeadsPage() {
       if (companyId != null) params.set("company_id", String(companyId));
       if (industry) params.set("industry", industry);
       if (clientTag) params.set("client_tag", clientTag);
+      // Presence filters from ref
+      for (const [k, v] of Object.entries(peoplePresenceRef.current)) {
+        if (v !== undefined) params.set(k, String(v));
+      }
       const qs = params.toString();
       const data = await api.get<PersonListResponse>(`/people${qs ? `?${qs}` : ""}`);
       setPeople(data.people);
@@ -225,6 +241,25 @@ export default function LeadsPage() {
     setFindPeopleOpen(true);
   };
 
+  // --- Presence filter handlers ---
+  const handlePeoplePresenceChange = (key: string, val: boolean | undefined) => {
+    const next = { ...peoplePresence };
+    if (val === undefined) delete next[key];
+    else next[key] = val;
+    setPeoplePresence(next);
+    peoplePresenceRef.current = next;
+    loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag);
+  };
+
+  const handleCompaniesPresenceChange = (key: string, val: boolean | undefined) => {
+    const next = { ...companiesPresence };
+    if (val === undefined) delete next[key];
+    else next[key] = val;
+    setCompaniesPresence(next);
+    companiesPresenceRef.current = next;
+    loadCompanies(companiesSearch, companiesIndustry, companiesClientTag);
+  };
+
   // --- Companies ---
   const loadCompaniesIndustries = useCallback(async () => {
     try {
@@ -242,6 +277,10 @@ export default function LeadsPage() {
       if (search) params.set("search", search);
       if (industry) params.set("industry", industry);
       if (clientTag) params.set("client_tag", clientTag);
+      // Presence filters from ref
+      for (const [k, v] of Object.entries(companiesPresenceRef.current)) {
+        if (v !== undefined) params.set(k, String(v));
+      }
       const qs = params.toString();
       const data = await api.get<CompanyListResponse>(`/companies${qs ? `?${qs}` : ""}`);
       setCompanies(data.companies);
@@ -426,6 +465,85 @@ export default function LeadsPage() {
           )}
         </div>
       </div>
+
+      {/* Presence Filter Row - People */}
+      {activeTab === "people" && (
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <Filter className="h-3 w-3" /> Filters:
+          </span>
+          {[
+            { key: "has_email", label: "Email" },
+            { key: "has_phone", label: "Phone" },
+            { key: "has_linkedin", label: "LinkedIn" },
+          ].map(({ key, label }) => (
+            <Select
+              key={key}
+              value={peoplePresence[key] === true ? "has" : peoplePresence[key] === false ? "missing" : "any"}
+              onValueChange={(v) => handlePeoplePresenceChange(key, v === "has" ? true : v === "missing" ? false : undefined)}
+            >
+              <SelectTrigger className="w-[120px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{label}: Any</SelectItem>
+                <SelectItem value="has">{label}: Has</SelectItem>
+                <SelectItem value="missing">{label}: Missing</SelectItem>
+              </SelectContent>
+            </Select>
+          ))}
+          {peoplePresenceCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => { setPeoplePresence({}); peoplePresenceRef.current = {}; loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag); }}
+            >
+              <X className="h-3 w-3" /> Clear filters
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Presence Filter Row - Companies */}
+      {activeTab === "companies" && (
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <Filter className="h-3 w-3" /> Filters:
+          </span>
+          {[
+            { key: "has_email", label: "Email" },
+            { key: "has_phone", label: "Phone" },
+            { key: "has_linkedin", label: "LinkedIn" },
+            { key: "has_website", label: "Website" },
+          ].map(({ key, label }) => (
+            <Select
+              key={key}
+              value={companiesPresence[key] === true ? "has" : companiesPresence[key] === false ? "missing" : "any"}
+              onValueChange={(v) => handleCompaniesPresenceChange(key, v === "has" ? true : v === "missing" ? false : undefined)}
+            >
+              <SelectTrigger className="w-[130px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">{label}: Any</SelectItem>
+                <SelectItem value="has">{label}: Has</SelectItem>
+                <SelectItem value="missing">{label}: Missing</SelectItem>
+              </SelectContent>
+            </Select>
+          ))}
+          {companiesPresenceCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => { setCompaniesPresence({}); companiesPresenceRef.current = {}; loadCompanies(companiesSearch, companiesIndustry, companiesClientTag); }}
+            >
+              <X className="h-3 w-3" /> Clear filters
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* People Selection Toolbar */}
       {activeTab === "people" && selectedPeopleIds.size > 0 && (

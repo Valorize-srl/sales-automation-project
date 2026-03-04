@@ -3,7 +3,7 @@ from typing import Optional
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from sqlalchemy import select, func as sa_func
+from sqlalchemy import select, func as sa_func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -119,14 +119,38 @@ async def get_industries(db: AsyncSession = Depends(get_db)):
 async def list_companies(
     search: Optional[str] = Query(None),
     industry: Optional[str] = Query(None),
+    client_tag: Optional[str] = Query(None),
+    has_email: Optional[bool] = Query(None),
+    has_phone: Optional[bool] = Query(None),
+    has_linkedin: Optional[bool] = Query(None),
+    has_website: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List companies with optional search and industry filter."""
+    """List companies with optional search, industry, client_tag and presence filters."""
     query = select(Company).order_by(Company.name.asc())
     if search:
         query = query.where(Company.name.ilike(f"%{search}%"))
     if industry is not None:
         query = query.where(Company.industry == industry)
+    if client_tag is not None:
+        query = query.where(Company.client_tag.ilike(f"%{client_tag}%"))
+    # Presence filters
+    if has_email is True:
+        query = query.where(Company.email.isnot(None), Company.email != "")
+    elif has_email is False:
+        query = query.where(or_(Company.email.is_(None), Company.email == ""))
+    if has_phone is True:
+        query = query.where(Company.phone.isnot(None), Company.phone != "")
+    elif has_phone is False:
+        query = query.where(or_(Company.phone.is_(None), Company.phone == ""))
+    if has_linkedin is True:
+        query = query.where(Company.linkedin_url.isnot(None), Company.linkedin_url != "")
+    elif has_linkedin is False:
+        query = query.where(or_(Company.linkedin_url.is_(None), Company.linkedin_url == ""))
+    if has_website is True:
+        query = query.where(Company.website.isnot(None), Company.website != "")
+    elif has_website is False:
+        query = query.where(or_(Company.website.is_(None), Company.website == ""))
     result = await db.execute(query)
     companies = result.scalars().all()
 
