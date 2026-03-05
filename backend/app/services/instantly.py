@@ -54,6 +54,7 @@ class InstantlyService:
                 json=json,
                 params=params,
             )
+        logger.info(f"Instantly API {method} {path} -> status={response.status_code} body={response.text[:500]}")
         if response.status_code >= 400:
             detail = response.text
             try:
@@ -62,8 +63,10 @@ class InstantlyService:
                 pass
             raise InstantlyAPIError(response.status_code, detail)
         if not response.text.strip():
-            return {}
-        return response.json()
+            return {"_status_code": response.status_code}
+        result = response.json()
+        result["_status_code"] = response.status_code
+        return result
 
     # --- Campaign Methods ---
 
@@ -168,7 +171,6 @@ class InstantlyService:
         payload = {
             "campaign_id": campaign_id,
             "leads": leads,
-            "skip_if_in_campaign": True,
         }
         return await self._request("POST", "/leads/add", json=payload, timeout=120.0)
 

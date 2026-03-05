@@ -198,10 +198,10 @@ export function UploadLeadsDialog({
                     <p className="text-muted-foreground">Errors</p>
                   </div>
                 </div>
-                {listResult.instantly_lead_count != null && (
-                  <div className="text-sm bg-blue-50 rounded-md p-3 border border-blue-200">
-                    <p className="font-medium text-blue-800">
-                      Verifica Instantly: {listResult.instantly_lead_count} lead totali nella campagna
+                {listResult.pushed_to_instantly > 0 && (
+                  <div className="text-sm bg-amber-50 rounded-md p-3 border border-amber-200">
+                    <p className="font-medium text-amber-800">
+                      Le lead possono impiegare fino a 5 minuti per apparire su Instantly.
                     </p>
                   </div>
                 )}
@@ -222,12 +222,12 @@ export function UploadLeadsDialog({
                   <p>Instantly Campaign ID: {(listResult as any).instantly_campaign_id || "N/A"}</p>
                   <p>Valid leads: {(listResult as any).valid_leads || 0}</p>
                   {(listResult as any).api_responses?.length > 0 && (
-                    <details>
-                      <summary className="cursor-pointer">API Response</summary>
-                      <pre className="mt-1 text-[10px] whitespace-pre-wrap break-all">
+                    <div className="mt-1">
+                      <p className="font-medium mb-1">API Response (HTTP {(listResult as any).api_responses[0]?._status_code || "?"}):</p>
+                      <pre className="text-[10px] whitespace-pre-wrap break-all bg-white rounded p-1 border max-h-[120px] overflow-y-auto">
                         {JSON.stringify((listResult as any).api_responses[0], null, 2)}
                       </pre>
-                    </details>
+                    </div>
                   )}
                 </div>
               </div>
