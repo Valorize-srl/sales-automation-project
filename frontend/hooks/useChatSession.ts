@@ -39,6 +39,13 @@ interface ChatSessionContext {
   apolloSearching: boolean;
 }
 
+export interface ImportCompleteData {
+  target: string;
+  imported: number;
+  duplicates_skipped: number;
+  errors: number;
+}
+
 interface UseChatSessionReturn {
   context: ChatSessionContext | null;
   sendMessage: (message: string, fileContent?: string, mode?: string) => Promise<void>;
@@ -46,6 +53,7 @@ interface UseChatSessionReturn {
   createNewSession: (request?: CreateSessionRequest) => Promise<string>;
   error: Error | null;
   onApolloResultsCallback: React.MutableRefObject<((data: ApolloResultsData) => void) | null>;
+  onImportCompleteCallback: React.MutableRefObject<((data: ImportCompleteData) => void) | null>;
 }
 
 export function useChatSession(initialSessionUuid?: string): UseChatSessionReturn {
@@ -53,6 +61,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
   const [error, setError] = useState<Error | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const onApolloResultsCallback = useRef<((data: ApolloResultsData) => void) | null>(null);
+  const onImportCompleteCallback = useRef<((data: ImportCompleteData) => void) | null>(null);
 
   const loadSession = useCallback(async (sessionUuid: string) => {
     try {
@@ -272,6 +281,9 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
               // Call external callback (used by prospecting page)
               onApolloResultsCallback.current?.(data);
             },
+            onImportComplete: (data) => {
+              onImportCompleteCallback.current?.(data);
+            },
           }
         );
       } catch (err) {
@@ -311,5 +323,6 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
     createNewSession,
     error,
     onApolloResultsCallback,
+    onImportCompleteCallback,
   };
 }

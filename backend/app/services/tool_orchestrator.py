@@ -178,6 +178,32 @@ UPDATE_ICP_DRAFT_TOOL = {
     }
 }
 
+IMPORT_LEADS_TOOL = {
+    "name": "import_leads",
+    "description": "Import leads from the last Apollo search into the database (People or Companies). "
+                   "Before calling this, ask the user: 1) Import as people or companies? "
+                   "2) Which client/project tag? 3) Which industry to assign?",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "target": {
+                "type": "string",
+                "enum": ["people", "companies"],
+                "description": "Import as people or companies"
+            },
+            "client_tag": {
+                "type": "string",
+                "description": "Client/project tag for cost tracking"
+            },
+            "industry": {
+                "type": "string",
+                "description": "Industry to assign to imported leads"
+            },
+        },
+        "required": ["target", "client_tag"]
+    }
+}
+
 ALL_TOOLS = [
     SAVE_ICP_TOOL,
     SEARCH_APOLLO_TOOL,
@@ -185,6 +211,7 @@ ALL_TOOLS = [
     VERIFY_EMAILS_TOOL,
     GET_SESSION_CONTEXT_TOOL,
     UPDATE_ICP_DRAFT_TOOL,
+    IMPORT_LEADS_TOOL,
 ]
 
 PROSPECTING_TOOLS = [
@@ -192,6 +219,7 @@ PROSPECTING_TOOLS = [
     SEARCH_APOLLO_TOOL,
     GET_SESSION_CONTEXT_TOOL,
     UPDATE_ICP_DRAFT_TOOL,
+    IMPORT_LEADS_TOOL,
 ]
 
 
@@ -210,6 +238,7 @@ class ToolOrchestrator:
         self.session_service = ChatSessionService(db)
         self.tools = PROSPECTING_TOOLS if tools_mode == "prospecting" else ALL_TOOLS
         self._pending_apollo_results: Optional[dict] = None
+        self._pending_import_result: Optional[dict] = None
 
     async def execute_and_continue(
         self,
@@ -312,6 +341,11 @@ class ToolOrchestrator:
                         yield f"data: {json.dumps({'type': 'apollo_results', 'data': self._pending_apollo_results})}\n\n"
                         self._pending_apollo_results = None
 
+                    # Emit import_complete SSE event if import_leads was executed
+                    if tool_use.name == "import_leads" and self._pending_import_result:
+                        yield f"data: {json.dumps({'type': 'import_complete', 'data': self._pending_import_result})}\n\n"
+                        self._pending_import_result = None
+
                 except Exception as e:
                     # Tool execution failed
                     tool_results.append({
@@ -376,6 +410,8 @@ class ToolOrchestrator:
                 result = await self._get_session_context(tool_input)
             elif tool_name == "update_icp_draft":
                 result = await self._update_icp_draft(tool_input)
+            elif tool_name == "import_leads":
+                result = await self._import_leads(tool_input)
             else:
                 raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -544,13 +580,14 @@ class ToolOrchestrator:
                 "search_params": tool_input,
             }
 
-            # Update session metadata
+            # Update session metadata (include full results for import_leads tool)
             await self.session_service.update_session_metadata(self.session_id, {
                 "last_apollo_search": {
                     "type": search_type,
                     "count": total,
                     "returned": len(results),
                     "params": tool_input,
+                    "results": results,
                 }
             })
 
@@ -703,4 +740,118 @@ class ToolOrchestrator:
         return {
             "summary": "ICP draft updated",
             "current_draft": session.current_icp_draft
+        }
+
+    async def _import_leads(self, tool_input: dict) -> dict:
+        """Import leads from last Apollo search into People or Companies."""
+        from app.models.person import Person
+        from app.models.company import Company
+
+        session = await self.db.get(ChatSession, self.session_id)
+        if not session:
+            return {"error": "Session not found", "summary": "Session not found"}
+
+        last_search = (session.session_metadata or {}).get("last_apollo_search", {})
+        results = last_search.get("results", [])
+        if not results:
+            return {"error": "No search results to import", "summary": "Nessun risultato da importare. Esegui prima una ricerca."}
+
+        target = tool_input["target"]
+        client_tag = tool_input.get("client_tag")
+        industry = tool_input.get("industry")
+        search_type = last_search.get("type", "people")
+
+        imported = 0
+        duplicates_skipped = 0
+        errors = 0
+
+        if target == "people":
+            existing_result = await self.db.execute(select(Person.email).where(Person.email.isnot(None)))
+            existing_emails = {r[0].lower() for r in existing_result.all() if r[0]}
+
+            for item in results:
+                try:
+                    email = (item.get("email") or "").strip().lower() or None
+                    first_name = (item.get("first_name") or item.get("name", "")).strip() or "Unknown"
+                    last_name = (item.get("last_name") or "").strip() or ""
+
+                    if email and email in existing_emails:
+                        duplicates_skipped += 1
+                        continue
+
+                    person = Person(
+                        first_name=first_name,
+                        last_name=last_name,
+                        email=email or f"noemail_{imported}@apollo.import",
+                        phone=item.get("phone"),
+                        company_name=item.get("company") or item.get("company_name"),
+                        linkedin_url=item.get("linkedin_url"),
+                        industry=industry or item.get("industry"),
+                        location=item.get("location"),
+                        client_tag=client_tag,
+                    )
+                    self.db.add(person)
+                    if email:
+                        existing_emails.add(email)
+                    imported += 1
+                except Exception:
+                    errors += 1
+
+        else:  # companies
+            from sqlalchemy import func as sa_func
+            existing_result = await self.db.execute(select(sa_func.lower(Company.name)))
+            existing_names = {r[0] for r in existing_result.all() if r[0]}
+
+            for item in results:
+                try:
+                    name = (item.get("name") or "").strip()
+                    if not name:
+                        errors += 1
+                        continue
+                    if name.lower() in existing_names:
+                        duplicates_skipped += 1
+                        continue
+
+                    website = item.get("website")
+                    domain = None
+                    if website:
+                        domain = website.lower().replace("https://", "").replace("http://", "").split("/")[0] or None
+
+                    company = Company(
+                        name=name,
+                        email=item.get("email"),
+                        phone=item.get("phone"),
+                        email_domain=domain,
+                        linkedin_url=item.get("linkedin_url"),
+                        industry=industry or item.get("industry"),
+                        location=item.get("location"),
+                        website=website,
+                        client_tag=client_tag,
+                    )
+                    self.db.add(company)
+                    existing_names.add(name.lower())
+                    imported += 1
+                except Exception:
+                    errors += 1
+
+        await self.db.commit()
+
+        summary = f"Importati {imported} {target}"
+        if duplicates_skipped:
+            summary += f", {duplicates_skipped} duplicati saltati"
+        if errors:
+            summary += f", {errors} errori"
+
+        self._pending_import_result = {
+            "target": target,
+            "imported": imported,
+            "duplicates_skipped": duplicates_skipped,
+            "errors": errors,
+        }
+
+        return {
+            "summary": summary,
+            "imported": imported,
+            "duplicates_skipped": duplicates_skipped,
+            "errors": errors,
         }

@@ -11,49 +11,49 @@ from app.services.tool_orchestrator import ToolOrchestrator
 from app.models.chat_session import ChatSession
 
 
-# Prospecting-mode system prompt (no enrich, search-focused)
-PROSPECTING_SYSTEM_PROMPT = """You are an AI sales assistant helping refine Apollo.io lead searches through conversation.
+# Prospecting-mode system prompt - chat-first flow
+PROSPECTING_SYSTEM_PROMPT = """Sei un assistente AI per la ricerca di lead B2B. Guidi l'utente attraverso un flusso conversazionale per trovare e importare lead.
 
-**Personality:**
-- Proactive and analytical
-- Suggest specific filter refinements
-- Speak naturally in the user's language (Italian/English)
-- Concise but insightful
+**Flusso:**
 
-**Capabilities:**
+1. **DEFINISCI L'ICP** - Chiedi all'utente cosa sta cercando:
+   - Settore/industry (es. "vino", "tech", "moda")
+   - Ruolo/job title (es. "CEO", "Marketing Manager")
+   - Zona geografica (es. "Italia", "Toscana", "Milano")
+   - Dimensione azienda (es. "1-10", "11-50", "51-200")
+   - Usa `update_icp_draft` per salvare man mano i dettagli.
 
-1. **Search Apollo** - Use `search_apollo` to search for people or companies:
-   - Analyze results and suggest refinements (different titles, seniorities, locations, keywords)
-   - Remember previous search parameters and modify incrementally
-   - After every search, summarize key findings and suggest next steps
+2. **CONFERMA E CERCA** - Quando hai abbastanza info, riepiloga i criteri e chiedi conferma.
+   Se confermato, cerca su Apollo con `search_apollo` usando i parametri giusti.
+   - Scegli automaticamente `search_type` ("people" o "companies") in base a cosa cerca l'utente.
+   - Se l'utente cerca persone per ruolo → people. Se cerca aziende per settore → companies.
 
-2. **ICP Management** - Help define/update Ideal Customer Profile:
-   - Use `update_icp_draft` to build incrementally as the search evolves
-   - Use `save_icp` when the user is satisfied
+3. **ANALIZZA RISULTATI** - Dopo la ricerca:
+   - Riassumi cosa hai trovato (numero risultati, top ruoli, top aziende/settori)
+   - Suggerisci raffinamenti se necessario
+   - I risultati completi appaiono automaticamente nel pannello a destra
 
-3. **Session Context** - Use `get_session_context` to recall previous searches
+4. **IMPORTA** - Quando l'utente e' soddisfatto dei risultati, chiedi:
+   - "Vuoi importare come People o Companies?"
+   - "Quale client/progetto tag vuoi assegnare?" (es. nome cliente)
+   - "Quale industry assegnare?" (opzionale)
+   Poi usa `import_leads` con target, client_tag e industry.
 
-**IMPORTANT RESTRICTIONS:**
-- You can ONLY search. You CANNOT enrich leads or download emails.
-- NEVER suggest enriching through this chat. Enrichment is done manually by the user from the results table.
-- Focus exclusively on helping refine search criteria to find the best leads.
+5. **SALVA ICP** - Se l'utente vuole salvare i criteri per il futuro, usa `save_icp`.
 
-**Behavior:**
-- After each search, analyze the results summary and proactively suggest refinements
-- Example: "I found 450 results. Most are SEO Managers. Want me to narrow down to only C-suite or Directors?"
-- Remember the user's previous filters and modify incrementally (don't start from scratch)
-- When the user says "filter by X", keep all existing filters and add/modify only what they asked
+**Regole:**
+- Parla SEMPRE in italiano
+- Sii conciso ma proattivo - suggerisci i prossimi passi
+- Quando l'utente dice "filtra per X", mantieni i filtri precedenti e modifica solo quello richiesto
+- NON suggerire di arricchire le lead dalla chat - l'enrichment si fa manualmente dalla tabella risultati
+- Usa `get_session_context` se hai bisogno di ricordare ricerche precedenti
 
-**Example Flow:**
-User: "Cerca SEO specialist in Italia"
-You: [call search_apollo with person_titles=["SEO Specialist"], person_locations=["Italy"]]
-     "Ho trovato 230 risultati. La maggior parte lavora in agenzie digitali (45%) e e-commerce (30%).
-      Vuoi che filtri per seniority specifica o aggiunga keyword aziendali?"
-
-User: "Solo manager e director"
-You: [call search_apollo with same filters + person_seniorities=["manager","director"]]
-     "Perfetto, ora abbiamo 85 risultati. 60% Manager, 40% Director.
-      Vuoi salvare questi criteri come ICP?"
+**Esempio:**
+Utente: "Cerco responsabili marketing di aziende vinicole in Toscana"
+Tu: [call update_icp_draft] → "Perfetto! Cerco responsabili marketing nel settore vinicolo in Toscana. Confermi? Vuoi specificare una dimensione aziendale?"
+Utente: "Si, aziende piccole, da 1 a 50 dipendenti"
+Tu: [call search_apollo con person_titles=["Marketing Manager","Head of Marketing"], person_locations=["Tuscany, Italy"], organization_keywords=["wine","winery"], organization_sizes=["1,10","11,50"]]
+     "Ho trovato 85 risultati! 45 Marketing Manager e 40 Head of Marketing, principalmente in cantine tra Chianti e Montalcino. I risultati sono visibili nel pannello a destra. Vuoi raffinare la ricerca o importare queste lead?"
 """
 
 
@@ -173,6 +173,8 @@ class ConversationalChatService:
         tools_mode = "prospecting" if mode == "prospecting" else "all"
         orchestrator = ToolOrchestrator(self.db, session.id, tools_mode=tools_mode)
 
+        accumulated_text = ""
+
         try:
             async for event in orchestrator.execute_and_continue(
                 messages=messages,
@@ -181,21 +183,24 @@ class ConversationalChatService:
             ):
                 yield event
 
-                # Capture usage event to save token costs to session
+                # Capture streamed text and usage events
                 if event.startswith("data: "):
                     try:
                         data = json.loads(event[6:].strip())
-                        if data.get("type") == "usage":
+                        if data.get("type") == "text":
+                            accumulated_text += data.get("content", "")
+                        elif data.get("type") == "usage":
                             input_tokens = data.get("input_tokens", 0)
                             output_tokens = data.get("output_tokens", 0)
                             if input_tokens > 0 or output_tokens > 0:
                                 await self.session_service.add_message(
                                     session_id=session.id,
                                     role="assistant",
-                                    content="[streamed response]",
+                                    content=accumulated_text or "[no response]",
                                     input_tokens=input_tokens,
                                     output_tokens=output_tokens,
                                 )
+                                accumulated_text = ""
                     except (json.JSONDecodeError, KeyError):
                         pass
 

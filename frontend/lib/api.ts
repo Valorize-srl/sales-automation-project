@@ -312,6 +312,7 @@ class ApiClient {
     options?: {
       mode?: string;
       onApolloResults?: (data: { results: Record<string, unknown>[]; total: number; search_type: string; returned: number; search_params: Record<string, unknown> }) => void;
+      onImportComplete?: (data: { target: string; imported: number; duplicates_skipped: number; errors: number }) => void;
     }
   ): Promise<void> {
     const url = `${this.baseUrl}/api/chat/sessions/${sessionUuid}/stream`;
@@ -357,6 +358,8 @@ class ApiClient {
               onToolComplete(data.tool, data.summary);
             } else if (data.type === "apollo_results") {
               options?.onApolloResults?.(data.data);
+            } else if (data.type === "import_complete") {
+              options?.onImportComplete?.(data.data);
             } else if (data.type === "done") {
               onDone();
             } else if (data.type === "error") {
