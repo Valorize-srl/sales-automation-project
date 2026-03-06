@@ -164,46 +164,46 @@ class ConversationalChatService:
         Yields:
             SSE events: text chunks, tool progress, completion
         """
-        # Get or create session
-        session = await self.session_service.get_session(session_uuid)
-        if not session:
-            # Create new session if doesn't exist
-            session = await self.session_service.create_session()
-
-        # Add user message to DB
-        message_metadata = {}
-        if file_content:
-            message_metadata["has_file_attachment"] = True
-
-        await self.session_service.add_message(
-            session_id=session.id,
-            role="user",
-            content=user_message,
-            message_metadata=message_metadata if message_metadata else None
-        )
-
-        # Build conversation context (last 20 messages)
-        messages = await self.session_service.get_conversation_context(
-            session_id=session.id,
-            max_messages=20
-        )
-
-        # Add file content to last user message if present
-        if file_content and messages:
-            last_message = messages[-1]
-            if last_message["role"] == "user":
-                last_message["content"] += f"\n\nUploaded document:\n{file_content}"
-
-        # Build dynamic system prompt with session context
-        system_prompt = await self._build_system_prompt(session, mode=mode)
-
-        # Initialize tool orchestrator and stream with multi-turn orchestration
-        tools_mode = "prospecting" if mode == "prospecting" else "all"
-        orchestrator = ToolOrchestrator(self.db, session.id, tools_mode=tools_mode)
-
-        accumulated_text = ""
-
         try:
+            # Get or create session
+            session = await self.session_service.get_session(session_uuid)
+            if not session:
+                # Create new session if doesn't exist
+                session = await self.session_service.create_session()
+
+            # Add user message to DB
+            message_metadata = {}
+            if file_content:
+                message_metadata["has_file_attachment"] = True
+
+            await self.session_service.add_message(
+                session_id=session.id,
+                role="user",
+                content=user_message,
+                message_metadata=message_metadata if message_metadata else None
+            )
+
+            # Build conversation context (last 20 messages)
+            messages = await self.session_service.get_conversation_context(
+                session_id=session.id,
+                max_messages=20
+            )
+
+            # Add file content to last user message if present
+            if file_content and messages:
+                last_message = messages[-1]
+                if last_message["role"] == "user":
+                    last_message["content"] += f"\n\nUploaded document:\n{file_content}"
+
+            # Build dynamic system prompt with session context
+            system_prompt = await self._build_system_prompt(session, mode=mode)
+
+            # Initialize tool orchestrator and stream with multi-turn orchestration
+            tools_mode = "prospecting" if mode == "prospecting" else "all"
+            orchestrator = ToolOrchestrator(self.db, session.id, tools_mode=tools_mode)
+
+            accumulated_text = ""
+
             async for event in orchestrator.execute_and_continue(
                 messages=messages,
                 system_prompt=system_prompt,
@@ -233,13 +233,14 @@ class ConversationalChatService:
                         pass
 
         except Exception as e:
-            # Yield error event
+            # Yield error event — always followed by done so frontend clears loading
             error_event = {
                 "type": "error",
                 "error": str(e),
-                "message": "An error occurred during conversation processing"
+                "message": f"Error: {str(e)}"
             }
             yield f"data: {json.dumps(error_event)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     async def _build_system_prompt(self, session: ChatSession, mode: str = "default") -> str:
         """

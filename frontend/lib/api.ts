@@ -348,6 +348,8 @@ class ApiClient {
       const decoder = new TextDecoder();
       let buffer = "";
 
+      let doneReceived = false;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -386,14 +388,22 @@ class ApiClient {
             } else if (data.type === "csv_ready") {
               options?.onCsvReady?.(data.data);
             } else if (data.type === "done") {
+              doneReceived = true;
               onDone();
             } else if (data.type === "error") {
-              onError(new Error(data.message || data.error));
+              doneReceived = true;
+              onError(new Error(data.message || data.error || "Unknown error"));
             }
           } catch (err) {
             console.error("Failed to parse SSE event:", line, err);
           }
         }
+      }
+
+      // Safety: if stream ended without done/error event, clear loading state
+      if (!doneReceived) {
+        console.warn("SSE stream ended without done/error event");
+        onDone();
       }
     } catch (err) {
       onError(err instanceof Error ? err : new Error(String(err)));

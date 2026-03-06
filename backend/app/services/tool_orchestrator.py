@@ -91,7 +91,9 @@ class ToolOrchestrator:
                             tool_uses.append(block)
 
             except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+                logger.error(f"Anthropic API error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'message': str(e)})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 break
 
             # No tools? Done
@@ -141,7 +143,8 @@ class ToolOrchestrator:
 
         if iteration >= max_iterations:
             yield f"data: {json.dumps({'type': 'usage', 'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens})}\n\n"
-            yield f"data: {json.dumps({'type': 'error', 'content': 'Max iterations reached'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Max iterations reached', 'message': 'Max iterations reached'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     async def execute_tool(
         self,
