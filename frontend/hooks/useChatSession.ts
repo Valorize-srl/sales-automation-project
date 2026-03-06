@@ -46,6 +46,13 @@ export interface ImportCompleteData {
   errors: number;
 }
 
+export interface CsvReadyData {
+  filename: string;
+  rows: number;
+  columns: string[];
+  content_base64: string;
+}
+
 interface UseChatSessionReturn {
   context: ChatSessionContext | null;
   sendMessage: (message: string, fileContent?: string, mode?: string) => Promise<void>;
@@ -54,6 +61,7 @@ interface UseChatSessionReturn {
   error: Error | null;
   onApolloResultsCallback: React.MutableRefObject<((data: ApolloResultsData) => void) | null>;
   onImportCompleteCallback: React.MutableRefObject<((data: ImportCompleteData) => void) | null>;
+  onCsvReadyCallback: React.MutableRefObject<((data: CsvReadyData) => void) | null>;
 }
 
 export function useChatSession(initialSessionUuid?: string): UseChatSessionReturn {
@@ -62,6 +70,7 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
   const abortControllerRef = useRef<AbortController | null>(null);
   const onApolloResultsCallback = useRef<((data: ApolloResultsData) => void) | null>(null);
   const onImportCompleteCallback = useRef<((data: ImportCompleteData) => void) | null>(null);
+  const onCsvReadyCallback = useRef<((data: CsvReadyData) => void) | null>(null);
 
   const loadSession = useCallback(async (sessionUuid: string) => {
     try {
@@ -74,12 +83,13 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
       const messages = data.messages as ChatMessageModel[];
       const summary = data.summary as SessionSummary;
 
-      // Extract last search results from session metadata
-      const lastSearchResults = session.session_metadata?.last_apollo_search
+      // Extract last search results from session metadata (check both keys)
+      const rawSearch = session.session_metadata?.last_search || session.session_metadata?.last_apollo_search;
+      const lastSearchResults = rawSearch
         ? {
-            type: (session.session_metadata.last_apollo_search as Record<string, unknown>).type as string,
-            count: (session.session_metadata.last_apollo_search as Record<string, unknown>).count as number,
-            company_ids: (session.session_metadata.last_apollo_search as Record<string, unknown>).company_ids as number[],
+            type: (rawSearch as Record<string, unknown>).type as string,
+            count: (rawSearch as Record<string, unknown>).count as number,
+            company_ids: ((rawSearch as Record<string, unknown>).company_ids as number[]) || [],
           }
         : null;
 
@@ -214,12 +224,13 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
           },
           // onToolStart
           (tool: string, input: Record<string, unknown>) => {
+            const isSearch = tool.startsWith("search_") || tool === "scrape_websites";
             setContext((prev) =>
               prev
                 ? {
                     ...prev,
                     currentToolExecution: { tool, input },
-                    apolloSearching: tool === "search_apollo" ? true : prev.apolloSearching,
+                    apolloSearching: isSearch ? true : prev.apolloSearching,
                   }
                 : null
             );
@@ -227,12 +238,13 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
           // onToolComplete
           (tool: string, summary: Record<string, unknown>) => {
             console.log(`Tool ${tool} completed:`, summary);
+            const isSearch = tool.startsWith("search_") || tool === "scrape_websites";
             setContext((prev) =>
               prev
                 ? {
                     ...prev,
                     currentToolExecution: null,
-                    apolloSearching: tool === "search_apollo" ? false : prev.apolloSearching,
+                    apolloSearching: isSearch ? false : prev.apolloSearching,
                   }
                 : null
             );
@@ -284,6 +296,9 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
             onImportComplete: (data) => {
               onImportCompleteCallback.current?.(data);
             },
+            onCsvReady: (data) => {
+              onCsvReadyCallback.current?.(data);
+            },
           }
         );
       } catch (err) {
@@ -324,5 +339,6 @@ export function useChatSession(initialSessionUuid?: string): UseChatSessionRetur
     error,
     onApolloResultsCallback,
     onImportCompleteCallback,
+    onCsvReadyCallback,
   };
 }

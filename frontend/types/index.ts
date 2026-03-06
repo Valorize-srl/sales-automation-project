@@ -467,6 +467,7 @@ export interface UsageStats {
   cost_breakdown: {
     apollo_usd: number;
     claude_usd: number;
+    by_tool?: Record<string, number>;
   };
   searches_by_day: Array<{
     date: string;
@@ -517,6 +518,23 @@ export interface Setting {
   value: string;
   description: string | null;
   updated_at: string;
+}
+
+export interface ProspectingTool {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+  when_to_use: string | null;
+  cost_info: string | null;
+  sectors_strong: string[] | null;
+  sectors_weak: string[] | null;
+  apify_actor_id: string | null;
+  output_type: string | null;
+  is_enabled: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string | null;
 }
 
 export interface ApolloSearchRequest {

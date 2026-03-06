@@ -11,49 +11,77 @@ from app.services.tool_orchestrator import ToolOrchestrator
 from app.models.chat_session import ChatSession
 
 
-# Prospecting-mode system prompt - chat-first flow
-PROSPECTING_SYSTEM_PROMPT = """Sei un assistente AI per la ricerca di lead B2B. Guidi l'utente attraverso un flusso conversazionale per trovare e importare lead.
+# Prospecting-mode system prompt - autonomous 5-step AI agent
+PROSPECTING_SYSTEM_PROMPT = """Sei un agente AI autonomo per la ricerca di lead B2B. Ricevi un input sintetico dall'utente e parti SUBITO con il framework di ricerca senza chiedere conferme preliminari.
 
-**Flusso:**
+## FRAMEWORK DI RICERCA (5 Step)
 
-1. **DEFINISCI L'ICP** - Chiedi all'utente cosa sta cercando:
-   - Settore/industry (es. "vino", "tech", "moda")
-   - Ruolo/job title (es. "CEO", "Marketing Manager")
-   - Zona geografica (es. "Italia", "Toscana", "Milano")
-   - Dimensione azienda (es. "1-10", "11-50", "51-200")
-   - Usa `update_icp_draft` per salvare man mano i dettagli.
+### Step 1: IDENTIFICA TARGET
+Trova circa 10 aziende target con questi dati per ciascuna:
+- **Anagrafica**: Ragione sociale, Brand name, Citta, Provincia, CAP
+- **Economici**: Fatturato stimato, Numero dipendenti, Anno fondazione
+- **Contatto diretto**: Telefono, Email generica, Sito web
+- **Digitale**: Profilo LinkedIn aziendale, Rating Google, Numero recensioni
+- **Classificazione**: Settore, Sottocategoria
 
-2. **CONFERMA E CERCA** - Quando hai abbastanza info, riepiloga i criteri e chiedi conferma.
-   Se confermato, cerca su Apollo con `search_apollo` usando i parametri giusti.
-   - Scegli automaticamente `search_type` ("people" o "companies") in base a cosa cerca l'utente.
-   - Se l'utente cerca persone per ruolo → people. Se cerca aziende per settore → companies.
+### Step 2: IDENTIFICA DECISION MAKER
+Per ogni azienda target, trova 1-2 decision maker:
+- Nome completo, Ruolo/Titolo
+- Profilo LinkedIn personale
+- Email diretta (se disponibile)
+- Attivita recente su LinkedIn (post, articoli, commenti)
 
-3. **ANALIZZA RISULTATI** - Dopo la ricerca:
-   - Riassumi cosa hai trovato (numero risultati, top ruoli, top aziende/settori)
-   - Suggerisci raffinamenti se necessario
-   - I risultati completi appaiono automaticamente nel pannello a destra
+### Step 3: BUYING SIGNALS
+Raccogli segnali di acquisto per ogni azienda:
+- **Finanziari**: Crescita fatturato, nuovi investimenti, round di finanziamento
+- **Commerciali**: Lancio nuovi prodotti, espansione geografica, nuove partnership
+- **Acquisizione clienti**: Campagne attive, presenza in fiere, webinar recenti
+- **Espansione**: Apertura nuove sedi, assunzioni in corso, nuovi ruoli aperti
+- **Urgenza**: Problemi pubblici, cambio management, scadenze normative
 
-4. **IMPORTA** - Quando l'utente e' soddisfatto dei risultati, chiedi:
-   - "Vuoi importare come People o Companies?"
-   - "Quale client/progetto tag vuoi assegnare?" (es. nome cliente)
-   - "Quale industry assegnare?" (opzionale)
-   Poi usa `import_leads` con target, client_tag e industry.
+### Step 4: PRIORITIZZA
+Classifica ogni target:
+- 🔴 **Alta priorita** — Segnali forti e urgenti, fit perfetto con offerta
+- 🟠 **Media priorita** — Buon fit, segnali presenti ma non urgenti
+- 🟡 **Bassa priorita** — Fit parziale, da monitorare
+- ❌ **Escludi** — Non in target, segnali negativi
 
-5. **SALVA ICP** - Se l'utente vuole salvare i criteri per il futuro, usa `save_icp`.
+### Step 5: OUTPUT
+Genera un CSV con colonne: Rank, Brand, Ragione_Sociale, Citta, Provincia, Tel, Email, Sito, Fatturato, Dipendenti, DM_Nome, DM_Ruolo, DM_LinkedIn, Buying_Signals, Priorita, Angolo_Outreach.
 
-**Regole:**
+Poi scrivi schede dettagliate per i target 🔴 e 🟠 con:
+- Riassunto azienda, perche e' in target
+- Decision maker e come contattarlo
+- Buying signals specifici
+- Angolo di outreach personalizzato
+
+## REGOLE
 - Parla SEMPRE in italiano
-- Sii conciso ma proattivo - suggerisci i prossimi passi
-- Quando l'utente dice "filtra per X", mantieni i filtri precedenti e modifica solo quello richiesto
-- NON suggerire di arricchire le lead dalla chat - l'enrichment si fa manualmente dalla tabella risultati
-- Usa `get_session_context` se hai bisogno di ricordare ricerche precedenti
+- Parti SUBITO, non chiedere conferma preliminare
+- Usa i tool disponibili per raccogliere dati reali — NON inventare dati
+- Se non trovi un dato, segna "N/D" e vai avanti
+- Aggrega dati da piu fonti (Google Maps + LinkedIn + siti web)
+- L'enrichment con tool esterni e' una scelta dell'utente DOPO l'aggregazione — non proporlo
+- Usa `generate_csv` alla fine per creare il CSV scaricabile
+- Usa `import_leads` solo se l'utente lo chiede esplicitamente
 
-**Esempio:**
-Utente: "Cerco responsabili marketing di aziende vinicole in Toscana"
-Tu: [call update_icp_draft] → "Perfetto! Cerco responsabili marketing nel settore vinicolo in Toscana. Confermi? Vuoi specificare una dimensione aziendale?"
-Utente: "Si, aziende piccole, da 1 a 50 dipendenti"
-Tu: [call search_apollo con person_titles=["Marketing Manager","Head of Marketing"], person_locations=["Tuscany, Italy"], organization_keywords=["wine","winery"], organization_sizes=["1,10","11,50"]]
-     "Ho trovato 85 risultati! 45 Marketing Manager e 40 Head of Marketing, principalmente in cantine tra Chianti e Montalcino. I risultati sono visibili nel pannello a destra. Vuoi raffinare la ricerca o importare queste lead?"
+## STRATEGIA TOOL
+1. Parti con `search_google_maps` per trovare le aziende nella zona
+2. Usa `scrape_websites` per estrarre email e telefoni dai siti trovati
+3. Usa `search_linkedin_companies` per arricchire con dati LinkedIn aziendali
+4. Usa `search_linkedin_people` per trovare i decision maker
+5. Aggrega tutto e genera il CSV con `generate_csv`
+
+## ESEMPIO
+Input utente: "trova agenzie SEO Milano, propongo servizi white label"
+→ Parti subito:
+  1. search_google_maps("agenzie SEO", "Milano")
+  2. scrape_websites(source=last_search) → email, telefoni
+  3. search_linkedin_companies(nomi delle top 10)
+  4. search_linkedin_people("CEO", company=X, location="Milano") per ogni azienda
+  5. Analisi buying signals dai dati raccolti
+  6. generate_csv con tutti i dati aggregati
+  7. Schede dettagliate per target prioritari
 """
 
 
@@ -167,7 +195,7 @@ class ConversationalChatService:
                 last_message["content"] += f"\n\nUploaded document:\n{file_content}"
 
         # Build dynamic system prompt with session context
-        system_prompt = self._build_system_prompt(session, mode=mode)
+        system_prompt = await self._build_system_prompt(session, mode=mode)
 
         # Initialize tool orchestrator and stream with multi-turn orchestration
         tools_mode = "prospecting" if mode == "prospecting" else "all"
@@ -179,7 +207,7 @@ class ConversationalChatService:
             async for event in orchestrator.execute_and_continue(
                 messages=messages,
                 system_prompt=system_prompt,
-                max_iterations=5
+                max_iterations=10
             ):
                 yield event
 
@@ -213,18 +241,39 @@ class ConversationalChatService:
             }
             yield f"data: {json.dumps(error_event)}\n\n"
 
-    def _build_system_prompt(self, session: ChatSession, mode: str = "default") -> str:
+    async def _build_system_prompt(self, session: ChatSession, mode: str = "default") -> str:
         """
         Build context-aware system prompt with session metadata.
-
-        Args:
-            session: ChatSession instance
-            mode: "default" or "prospecting"
-
-        Returns:
-            System prompt string with context
+        In prospecting mode, injects tool cards from DB.
         """
         prompt = PROSPECTING_SYSTEM_PROMPT if mode == "prospecting" else CONVERSATIONAL_SYSTEM_PROMPT
+
+        # In prospecting mode, inject tool cards from DB
+        if mode == "prospecting":
+            from sqlalchemy import select as sa_select
+            from app.models.prospecting_tool import ProspectingTool
+
+            result = await self.db.execute(
+                sa_select(ProspectingTool)
+                .where(ProspectingTool.is_enabled == True)
+                .order_by(ProspectingTool.sort_order)
+            )
+            tools = result.scalars().all()
+
+            if tools:
+                prompt += "\n\n## STRUMENTI DISPONIBILI\n"
+                prompt += "Usa questi tool per raccogliere dati reali. Scegli in base al settore target.\n"
+                for tool in tools:
+                    prompt += f"\n### {tool.display_name}\n"
+                    prompt += f"- Tool: `{tool.name}`\n"
+                    if tool.when_to_use:
+                        prompt += f"- Quando usare: {tool.when_to_use}\n"
+                    if tool.cost_info:
+                        prompt += f"- Costo: {tool.cost_info}\n"
+                    if tool.sectors_strong:
+                        prompt += f"- Forte per: {', '.join(tool.sectors_strong)}\n"
+                    if tool.sectors_weak:
+                        prompt += f"- Debole per: {', '.join(tool.sectors_weak)}\n"
 
         # Add current ICP draft if exists
         if session.current_icp_draft:
@@ -233,21 +282,15 @@ class ConversationalChatService:
             prompt += "\n\nYou can reference or update this draft using `update_icp_draft` tool."
 
         # Add last search context if exists
-        if session.session_metadata and session.session_metadata.get("last_apollo_search"):
-            search = session.session_metadata["last_apollo_search"]
-            prompt += f"\n\n**Last Search Results:**"
-            prompt += f"\n- Type: {search.get('type', 'unknown')}"
-            prompt += f"\n- Count: {search.get('count', 0)} results found"
+        last_search = None
+        if session.session_metadata:
+            last_search = session.session_metadata.get("last_search") or session.session_metadata.get("last_apollo_search")
 
-            # Include company IDs for enrichment
-            if search.get("company_ids"):
-                company_ids = search["company_ids"]
-                if len(company_ids) > 10:
-                    prompt += f"\n- Company IDs available: {company_ids[:10]}... (total: {len(company_ids)})"
-                else:
-                    prompt += f"\n- Company IDs available: {company_ids}"
-
-                prompt += f"\n\nWhen user asks to 'enrich' or 'find contacts', use these company_ids with `enrich_companies` tool."
+        if last_search:
+            source = last_search.get("source", "unknown")
+            prompt += f"\n\n**Ultima ricerca ({source}):**"
+            prompt += f"\n- Tipo: {last_search.get('type', 'unknown')}"
+            prompt += f"\n- Risultati: {last_search.get('count', 0)}"
 
         # Add last enrichment context if exists
         if session.session_metadata and session.session_metadata.get("last_enrichment"):

@@ -54,6 +54,12 @@ async def get_usage_stats(
     total_apollo_credits = sum(s.apollo_credits_consumed for s in searches)
     total_apollo_cost = sum(s.cost_apollo_usd for s in searches)
 
+    # Per-tool cost breakdown
+    cost_by_tool: dict[str, float] = {}
+    for s in searches:
+        tool_type = s.search_type or "unknown"
+        cost_by_tool[tool_type] = cost_by_tool.get(tool_type, 0) + s.cost_total_usd
+
     # Get Claude token costs from ChatSession (includes all chat tokens, not just search-related)
     session_query = select(ChatSession).where(
         ChatSession.created_at >= start_dt,
@@ -99,6 +105,7 @@ async def get_usage_stats(
         cost_breakdown={
             "apollo_usd": round(total_apollo_cost, 4),
             "claude_usd": round(total_claude_cost, 4),
+            "by_tool": {k: round(v, 4) for k, v in sorted(cost_by_tool.items(), key=lambda x: -x[1])},
         },
         searches_by_day=searches_by_day_list,
     )

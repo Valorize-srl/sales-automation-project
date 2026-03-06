@@ -245,6 +245,16 @@ class ApiClient {
     return this.put(`/settings/${key}`, { value });
   }
 
+  // === Prospecting Tools ===
+
+  async getProspectingTools(): Promise<{ tools: import("@/types").ProspectingTool[]; total: number }> {
+    return this.get("/prospecting-tools");
+  }
+
+  async updateProspectingTool(id: number, data: Partial<import("@/types").ProspectingTool>): Promise<import("@/types").ProspectingTool> {
+    return this.put(`/prospecting-tools/${id}`, data);
+  }
+
   // === Company Enrichment ===
 
   async enrichCompany(companyId: number): Promise<import("@/types").EnrichmentResult> {
@@ -312,7 +322,9 @@ class ApiClient {
     options?: {
       mode?: string;
       onApolloResults?: (data: { results: Record<string, unknown>[]; total: number; search_type: string; returned: number; search_params: Record<string, unknown> }) => void;
+      onSearchResults?: (data: { source: string; results: Record<string, unknown>[]; total: number; returned: number; search_type?: string; search_params?: Record<string, unknown> }) => void;
       onImportComplete?: (data: { target: string; imported: number; duplicates_skipped: number; errors: number }) => void;
+      onCsvReady?: (data: { filename: string; rows: number; columns: string[]; content_base64: string }) => void;
     }
   ): Promise<void> {
     const url = `${this.baseUrl}/api/chat/sessions/${sessionUuid}/stream`;
@@ -358,8 +370,21 @@ class ApiClient {
               onToolComplete(data.tool, data.summary);
             } else if (data.type === "apollo_results") {
               options?.onApolloResults?.(data.data);
+            } else if (data.type === "search_results") {
+              // New generalized search results (Google Maps, LinkedIn, etc.)
+              options?.onSearchResults?.(data.data);
+              // Also forward to onApolloResults for backward compat with results panel
+              options?.onApolloResults?.({
+                results: data.data.results,
+                total: data.data.total,
+                returned: data.data.returned,
+                search_type: data.data.search_type || data.data.source || "companies",
+                search_params: data.data.search_params || {},
+              });
             } else if (data.type === "import_complete") {
               options?.onImportComplete?.(data.data);
+            } else if (data.type === "csv_ready") {
+              options?.onCsvReady?.(data.data);
             } else if (data.type === "done") {
               onDone();
             } else if (data.type === "error") {

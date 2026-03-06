@@ -1,22 +1,49 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Search, Loader2, Plus, MessageSquare, Table2 } from "lucide-react";
+import { Search, Loader2, Plus, MessageSquare, Table2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ApolloPreviewCard } from "@/components/chat/apollo-preview-card";
-import { useChatSession, ApolloResultsData } from "@/hooks/useChatSession";
+import { useChatSession, ApolloResultsData, CsvReadyData } from "@/hooks/useChatSession";
 import { ApolloSearchResponse } from "@/types";
 
+const TOOL_LABELS: Record<string, string> = {
+  search_apollo: "Ricerca su Apollo...",
+  search_google_maps: "Ricerca su Google Maps...",
+  scrape_websites: "Estrazione contatti dai siti web...",
+  search_linkedin_companies: "Ricerca aziende su LinkedIn...",
+  search_linkedin_people: "Ricerca decision maker su LinkedIn...",
+  update_icp_draft: "Aggiornamento ICP...",
+  save_icp: "Salvataggio ICP...",
+  import_leads: "Importazione lead...",
+  generate_csv: "Generazione CSV...",
+  get_session_context: "Recupero contesto...",
+};
+
+function downloadBase64Csv(filename: string, base64: string) {
+  const raw = atob(base64);
+  const blob = new Blob([raw], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ProspectingPage() {
-  const { context, sendMessage, createNewSession, error, onApolloResultsCallback } =
+  const { context, sendMessage, createNewSession, error, onApolloResultsCallback, onCsvReadyCallback } =
     useChatSession();
 
   // Results panel state
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
   const [showResults, setShowResults] = useState(false);
+
+  // CSV state
+  const [csvData, setCsvData] = useState<CsvReadyData | null>(null);
 
   // Chat state
   const [chatInput, setChatInput] = useState("");
@@ -51,6 +78,13 @@ export default function ProspectingPage() {
     };
   }, [onApolloResultsCallback]);
 
+  // Wire up CSV ready callback
+  useEffect(() => {
+    onCsvReadyCallback.current = (data: CsvReadyData) => {
+      setCsvData(data);
+    };
+  }, [onCsvReadyCallback]);
+
   // Chat send handler
   const handleChatSend = async () => {
     const trimmed = chatInput.trim();
@@ -68,6 +102,7 @@ export default function ProspectingPage() {
   const handleNewSession = async () => {
     setApolloResults(null);
     setShowResults(false);
+    setCsvData(null);
     await createNewSession({ title: "Prospecting Session" });
   };
 
@@ -89,10 +124,21 @@ export default function ProspectingPage() {
             Prospecting
           </h1>
           <p className="text-sm text-muted-foreground">
-            Parla con l&apos;AI per trovare lead
+            Agente AI autonomo per ricerca lead B2B
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {csvData && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => downloadBase64Csv(csvData.filename, csvData.content_base64)}
+              className="gap-1.5"
+            >
+              <Download className="h-4 w-4" />
+              CSV ({csvData.rows} righe)
+            </Button>
+          )}
           {apolloResults && (
             <Button
               variant={showResults ? "default" : "outline"}
@@ -118,7 +164,7 @@ export default function ProspectingPage() {
           {/* Chat Header */}
           <div className="flex items-center gap-2 px-4 py-3 border-b">
             <MessageSquare className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">AI Prospecting Assistant</span>
+            <span className="text-sm font-medium">AI Prospecting Agent</span>
             {context?.isStreaming && (
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
             )}
@@ -130,15 +176,15 @@ export default function ProspectingPage() {
               <div className="flex items-center justify-center h-full min-h-[300px]">
                 <div className="text-center text-muted-foreground px-6 max-w-md">
                   <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p className="text-base font-medium mb-2">Ciao! Dimmi che tipo di lead stai cercando</p>
+                  <p className="text-base font-medium mb-2">Descrivi chi vuoi trovare</p>
                   <p className="text-sm mb-4">
-                    Descrivimi il tuo cliente ideale e ti aiuto a trovare le lead giuste su Apollo.
+                    L&apos;agente cerca automaticamente su Google Maps, LinkedIn e siti web, poi genera un CSV con i risultati.
                   </p>
                   <div className="text-xs space-y-1.5 text-left bg-muted/50 rounded-lg p-3">
                     <p className="font-medium mb-1">Esempi:</p>
-                    <p>&bull; &ldquo;Cerco CEO di aziende vinicole in Toscana&rdquo;</p>
-                    <p>&bull; &ldquo;Trova marketing manager nel settore tech a Milano&rdquo;</p>
-                    <p>&bull; &ldquo;Aziende di e-commerce con 50-200 dipendenti in Italia&rdquo;</p>
+                    <p>&bull; &ldquo;Trova agenzie SEO a Milano, propongo servizi white label&rdquo;</p>
+                    <p>&bull; &ldquo;Cerco ristoranti stellati in Toscana per proporre forniture vino&rdquo;</p>
+                    <p>&bull; &ldquo;Studi commercialisti a Roma con almeno 10 dipendenti&rdquo;</p>
                   </div>
                 </div>
               </div>
@@ -159,15 +205,7 @@ export default function ProspectingPage() {
               <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/50 rounded-lg my-2">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 <span>
-                  {context.currentToolExecution.tool === "search_apollo"
-                    ? "Ricerca su Apollo in corso..."
-                    : context.currentToolExecution.tool === "update_icp_draft"
-                    ? "Aggiornamento ICP..."
-                    : context.currentToolExecution.tool === "save_icp"
-                    ? "Salvataggio ICP..."
-                    : context.currentToolExecution.tool === "import_leads"
-                    ? "Importazione lead..."
-                    : `${context.currentToolExecution.tool}...`}
+                  {TOOL_LABELS[context.currentToolExecution.tool] || `${context.currentToolExecution.tool}...`}
                 </span>
               </div>
             )}

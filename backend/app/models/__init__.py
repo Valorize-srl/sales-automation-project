@@ -15,6 +15,7 @@ from app.models.lead_list import LeadList
 from app.models.signal_tracking import SignalTracking
 from app.models.ai_agent_campaign import AIAgentCampaign
 from app.models.campaign_lead_list import CampaignLeadList
+from app.models.prospecting_tool import ProspectingTool
 
 __all__ = [
     "ICP",
@@ -34,4 +35,5 @@ __all__ = [
     "SignalTracking",
     "AIAgentCampaign",
     "CampaignLeadList",
+    "ProspectingTool",
 ]
