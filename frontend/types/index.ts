@@ -905,3 +905,32 @@ export interface DailyAnalyticsEntry {
   replies: number;
   bounces: number;
 }
+
+// === Detail Dialog Types ===
+
+export interface CampaignSummary {
+  id: number;
+  name: string;
+  status: string;
+  total_sent: number;
+  total_opened: number;
+  total_replied: number;
+}
+
+export interface PersonSummary {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  linkedin_url: string | null;
+  title: string | null;
+  location: string | null;
+  converted_at: string | null;
+}
+
+export interface CompanyDetailResponse {
+  company: Company;
+  people: PersonSummary[];
+  campaigns: CampaignSummary[];
+}

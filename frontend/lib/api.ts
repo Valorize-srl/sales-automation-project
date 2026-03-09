@@ -773,6 +773,18 @@ class ApiClient {
     await this.delete(`/companies/${companyId}`);
   }
 
+  async getCompanyDetail(companyId: number): Promise<import("@/types").CompanyDetailResponse> {
+    return this.get(`/companies/${companyId}/detail`);
+  }
+
+  async getCompanyCampaigns(companyId: number): Promise<{ campaigns: import("@/types").CampaignSummary[] }> {
+    return this.get(`/companies/${companyId}/campaigns`);
+  }
+
+  async getPersonCampaigns(personId: number): Promise<{ campaigns: import("@/types").CampaignSummary[] }> {
+    return this.get(`/people/${personId}/campaigns`);
+  }
+
   async getCompanyIndustries(): Promise<string[]> {
     return this.get("/companies/industries");
   }

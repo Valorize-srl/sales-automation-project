@@ -23,6 +23,7 @@ interface PeopleTableProps {
   onDelete: (id: number) => void;
   onCompanyClick: (companyId: number) => void;
   onEdit: (person: Person) => void;
+  onPersonClick?: (person: Person) => void;
   onToggleConverted: (person: Person) => void;
 }
 
@@ -36,6 +37,7 @@ export function PeopleTable({
   onCompanyClick,
   onEdit,
   onToggleConverted,
+  onPersonClick,
 }: PeopleTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
@@ -95,7 +97,7 @@ export function PeopleTable({
               <TableCell className="font-medium">
                 <button
                   className="text-primary hover:underline text-left"
-                  onClick={() => onEdit(person)}
+                  onClick={() => (onPersonClick ?? onEdit)(person)}
                 >
                   {person.first_name} {person.last_name}
                 </button>

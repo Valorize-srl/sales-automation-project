@@ -26,9 +26,10 @@ interface CompaniesTableProps {
   onPeopleClick: (companyId: number) => void;
   onFindPeople?: (company: Company) => void;
   onRefresh?: () => void;
+  onCompanyClick?: (company: Company) => void;
 }
 
-export function CompaniesTable({ companies, loading, selectedIds, onToggleSelect, onToggleSelectAll, onDelete, onPeopleClick, onFindPeople, onRefresh }: CompaniesTableProps) {
+export function CompaniesTable({ companies, loading, selectedIds, onToggleSelect, onToggleSelectAll, onDelete, onPeopleClick, onFindPeople, onRefresh, onCompanyClick }: CompaniesTableProps) {
   if (loading) {
     return <p className="text-muted-foreground py-8 text-center">Loading...</p>;
   }
@@ -80,7 +81,14 @@ export function CompaniesTable({ companies, loading, selectedIds, onToggleSelect
                   />
                 </TableCell>
               )}
-              <TableCell className="font-medium">{company.name}</TableCell>
+              <TableCell className="font-medium">
+                <button
+                  className="text-primary hover:underline text-left"
+                  onClick={() => onCompanyClick?.(company)}
+                >
+                  {company.name}
+                </button>
+              </TableCell>
               <TableCell className="text-sm">
                 <EmailListDisplay
                   primaryEmail={company.email}

@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 from app.db.database import get_db
 from app.models.company import Company
 from app.models.person import Person
+from app.models.campaign import Campaign
+from app.models.campaign_lead_list import CampaignLeadList
 from app.schemas.company import (
     CompanyCreate,
     CompanyResponse,
@@ -201,6 +203,68 @@ async def get_company(company_id: int, db: AsyncSession = Depends(get_db)):
     )
     count = count_result.scalar() or 0
     return _company_to_response(company, count)
+
+
+@router.get("/{company_id}/detail")
+async def get_company_detail(company_id: int, db: AsyncSession = Depends(get_db)):
+    """Get full company detail including people and campaigns."""
+    result = await db.execute(
+        select(Company).options(selectinload(Company.people)).where(Company.id == company_id)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    # Get campaigns via list_id → CampaignLeadList → Campaign
+    campaigns = []
+    if company.list_id:
+        camp_result = await db.execute(
+            select(Campaign).join(CampaignLeadList, Campaign.id == CampaignLeadList.campaign_id)
+            .where(CampaignLeadList.lead_list_id == company.list_id, Campaign.deleted_at.is_(None))
+        )
+        campaigns = [
+            {"id": c.id, "name": c.name, "status": c.status.value, "total_sent": c.total_sent, "total_opened": c.total_opened, "total_replied": c.total_replied}
+            for c in camp_result.scalars().all()
+        ]
+
+    resp = CompanyResponse.model_validate(company)
+    resp.people_count = len(company.people)
+
+    people_list = [
+        {
+            "id": p.id, "first_name": p.first_name, "last_name": p.last_name,
+            "email": p.email, "phone": p.phone, "linkedin_url": p.linkedin_url,
+            "title": getattr(p, "title", None), "location": p.location,
+            "converted_at": p.converted_at.isoformat() if p.converted_at else None,
+        }
+        for p in company.people
+    ]
+
+    return {
+        "company": resp.model_dump(),
+        "people": people_list,
+        "campaigns": campaigns,
+    }
+
+
+@router.get("/{company_id}/campaigns")
+async def get_company_campaigns(company_id: int, db: AsyncSession = Depends(get_db)):
+    """Get campaigns associated with a company via its lead lists."""
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+    if not company.list_id:
+        return {"campaigns": []}
+
+    result = await db.execute(
+        select(Campaign).join(CampaignLeadList, Campaign.id == CampaignLeadList.campaign_id)
+        .where(CampaignLeadList.lead_list_id == company.list_id, Campaign.deleted_at.is_(None))
+    )
+    campaigns = [
+        {"id": c.id, "name": c.name, "status": c.status.value, "total_sent": c.total_sent, "total_opened": c.total_opened, "total_replied": c.total_replied}
+        for c in result.scalars().all()
+    ]
+    return {"campaigns": campaigns}
 
 
 @router.post("", response_model=CompanyResponse, status_code=201)

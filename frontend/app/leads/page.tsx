@@ -15,6 +15,8 @@ import { CompaniesTable } from "@/components/leads/companies-table";
 import { PeopleCSVDialog } from "@/components/leads/people-csv-dialog";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
 import { EditPersonDialog } from "@/components/leads/edit-person-dialog";
+import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
+import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { CreateListDialog } from "@/components/leads/create-list-dialog";
 import { AddListToCampaignDialog } from "@/components/leads/add-list-to-campaign-dialog";
 import { FindPeopleDialog } from "@/components/leads/find-people-dialog";
@@ -65,6 +67,12 @@ export default function LeadsPage() {
   // --- People enrichment ---
   const [enriching, setEnriching] = useState(false);
   const [enrichResult, setEnrichResult] = useState<{ enriched_count: number; credits_consumed: number; message: string } | null>(null);
+
+  // --- Detail dialogs ---
+  const [detailCompany, setDetailCompany] = useState<Company | null>(null);
+  const [companyDetailOpen, setCompanyDetailOpen] = useState(false);
+  const [detailPerson, setDetailPerson] = useState<Person | null>(null);
+  const [personDetailOpen, setPersonDetailOpen] = useState(false);
 
   // --- Find People dialog ---
   const [findPeopleCompany, setFindPeopleCompany] = useState<Company | null>(null);
@@ -242,6 +250,34 @@ export default function LeadsPage() {
       setSelectedCompanyIds(new Set());
     } else {
       setSelectedCompanyIds(new Set(companies.map((c) => c.id)));
+    }
+  };
+
+  const handleCompanyDetailClick = (company: Company) => {
+    setDetailCompany(company);
+    setCompanyDetailOpen(true);
+  };
+
+  const handlePersonDetailClick = (person: Person) => {
+    setDetailPerson(person);
+    setPersonDetailOpen(true);
+  };
+
+  const handleDetailPersonCompanyClick = (companyId: number) => {
+    setPersonDetailOpen(false);
+    const company = companies.find((c) => c.id === companyId);
+    if (company) {
+      setDetailCompany(company);
+      setCompanyDetailOpen(true);
+    }
+  };
+
+  const handleDetailCompanyPersonClick = (personId: number) => {
+    setCompanyDetailOpen(false);
+    const person = people.find((p) => p.id === personId);
+    if (person) {
+      setDetailPerson(person);
+      setPersonDetailOpen(true);
     }
   };
 
@@ -705,6 +741,7 @@ export default function LeadsPage() {
           onCompanyClick={handlePeopleCompanyClick}
           onEdit={handleEditPerson}
           onToggleConverted={handleToggleConverted}
+          onPersonClick={handlePersonDetailClick}
         />
       )}
 
@@ -719,6 +756,7 @@ export default function LeadsPage() {
           onPeopleClick={handlePeopleClick}
           onFindPeople={handleFindPeople}
           onRefresh={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
+          onCompanyClick={handleCompanyDetailClick}
         />
       )}
 
@@ -829,6 +867,21 @@ export default function LeadsPage() {
         onOpenChange={setFindPeopleOpen}
         company={findPeopleCompany}
         onImported={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag)}
+      />
+
+      <CompanyDetailDialog
+        company={detailCompany}
+        open={companyDetailOpen}
+        onOpenChange={setCompanyDetailOpen}
+        onPersonClick={handleDetailCompanyPersonClick}
+      />
+
+      <PersonDetailDialog
+        person={detailPerson}
+        open={personDetailOpen}
+        onOpenChange={setPersonDetailOpen}
+        onCompanyClick={handleDetailPersonCompanyClick}
+        onEdit={handleEditPerson}
       />
     </div>
   );

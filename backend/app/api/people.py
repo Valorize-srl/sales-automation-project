@@ -13,6 +13,8 @@ from app.config import settings
 from app.db.database import get_db
 from app.models.company import Company
 from app.models.person import Person
+from app.models.campaign import Campaign
+from app.models.campaign_lead_list import CampaignLeadList
 from app.schemas.person import (
     PersonCreate,
     PersonUpdate,
@@ -169,6 +171,26 @@ async def get_person(person_id: int, db: AsyncSession = Depends(get_db)):
     if not person:
         raise HTTPException(404, "Person not found")
     return person
+
+
+@router.get("/{person_id}/campaigns")
+async def get_person_campaigns(person_id: int, db: AsyncSession = Depends(get_db)):
+    """Get campaigns associated with a person via their lead list."""
+    person = await db.get(Person, person_id)
+    if not person:
+        raise HTTPException(404, "Person not found")
+    if not person.list_id:
+        return {"campaigns": []}
+
+    result = await db.execute(
+        select(Campaign).join(CampaignLeadList, Campaign.id == CampaignLeadList.campaign_id)
+        .where(CampaignLeadList.lead_list_id == person.list_id, Campaign.deleted_at.is_(None))
+    )
+    campaigns = [
+        {"id": c.id, "name": c.name, "status": c.status.value, "total_sent": c.total_sent, "total_opened": c.total_opened, "total_replied": c.total_replied}
+        for c in result.scalars().all()
+    ]
+    return {"campaigns": campaigns}
 
 
 @router.post("", response_model=PersonResponse, status_code=201)
