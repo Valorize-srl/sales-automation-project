@@ -91,7 +91,12 @@ def _merge_email(company: Company, new_email: str) -> bool:
         return False  # Already present
 
     existing.append(new_email)
-    company.generic_emails = json.dumps(existing)
+    new_value = json.dumps(existing)
+    # Safety: skip if would exceed old VARCHAR(1000) before migration runs
+    if len(new_value) > 950:
+        existing.pop()
+        return False
+    company.generic_emails = new_value
     return True
 
 
