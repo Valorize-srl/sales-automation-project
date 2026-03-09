@@ -24,6 +24,7 @@ class Company(Base):
     signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # AI Agents integration
     list_id: Mapped[Optional[int]] = mapped_column(

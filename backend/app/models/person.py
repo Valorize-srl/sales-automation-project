@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from typing import Optional
-from sqlalchemy import String, DateTime, ForeignKey, JSON
+from sqlalchemy import String, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -27,7 +27,9 @@ class Person(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # AI Agents integration
     list_id: Mapped[Optional[int]] = mapped_column(

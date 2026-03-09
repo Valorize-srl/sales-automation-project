@@ -874,6 +874,7 @@ export default function LeadsPage() {
         open={companyDetailOpen}
         onOpenChange={setCompanyDetailOpen}
         onPersonClick={handleDetailCompanyPersonClick}
+        onUpdated={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
       />
 
       <PersonDetailDialog
@@ -881,7 +882,7 @@ export default function LeadsPage() {
         open={personDetailOpen}
         onOpenChange={setPersonDetailOpen}
         onCompanyClick={handleDetailPersonCompanyClick}
-        onEdit={handleEditPerson}
+        onUpdated={() => loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag)}
       />
     </div>
   );

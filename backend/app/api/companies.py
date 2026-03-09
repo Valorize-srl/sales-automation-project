@@ -14,6 +14,7 @@ from app.models.campaign import Campaign
 from app.models.campaign_lead_list import CampaignLeadList
 from app.schemas.company import (
     CompanyCreate,
+    CompanyUpdate,
     CompanyResponse,
     CompanyListResponse,
     CompanyCSVMapping,
@@ -280,6 +281,31 @@ async def create_company(data: CompanyCreate, db: AsyncSession = Depends(get_db)
     await _link_people_to_company(db, company)
     await db.refresh(company)
     return _company_to_response(company)
+
+
+@router.put("/{company_id}", response_model=CompanyResponse)
+async def update_company(company_id: int, data: CompanyUpdate, db: AsyncSession = Depends(get_db)):
+    """Update a company's fields."""
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    updates = data.model_dump(exclude_unset=True)
+
+    if "email" in updates:
+        updates["email_domain"] = _extract_domain(updates["email"])
+
+    for field, value in updates.items():
+        setattr(company, field, value)
+
+    await db.flush()
+    await db.refresh(company)
+    count_result = await db.execute(
+        select(sa_func.count(Person.id)).where(Person.company_id == company_id)
+    )
+    count = count_result.scalar() or 0
+    return _company_to_response(company, count)
 
 
 @router.delete("/{company_id}", status_code=204)

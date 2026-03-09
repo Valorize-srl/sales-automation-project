@@ -34,9 +34,11 @@ class PersonUpdate(BaseModel):
     company_name: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
+    title: Optional[str] = None
     industry: Optional[str] = None
     location: Optional[str] = None
     client_tag: Optional[str] = None
+    notes: Optional[str] = None
     converted: Optional[bool] = None
 
 
@@ -51,9 +53,11 @@ class PersonResponse(BaseModel):
     email: str
     linkedin_url: Optional[str]
     phone: Optional[str]
+    title: Optional[str] = None
     industry: Optional[str]
     location: Optional[str]
     client_tag: Optional[str] = None
+    notes: Optional[str] = None
     tags: Optional[list[str]] = None
     converted_at: Optional[datetime] = None
     created_at: datetime

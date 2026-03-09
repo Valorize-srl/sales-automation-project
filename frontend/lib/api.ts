@@ -773,6 +773,10 @@ class ApiClient {
     await this.delete(`/companies/${companyId}`);
   }
 
+  async updateCompany(companyId: number, data: import("@/types").CompanyUpdate): Promise<import("@/types").Company> {
+    return this.put(`/companies/${companyId}`, data);
+  }
+
   async getCompanyDetail(companyId: number): Promise<import("@/types").CompanyDetailResponse> {
     return this.get(`/companies/${companyId}/detail`);
   }

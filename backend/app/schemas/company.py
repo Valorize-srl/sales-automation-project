@@ -25,6 +25,20 @@ class CompanyCreate(BaseModel):
     location: Optional[str] = None
     signals: Optional[str] = None
     website: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    industry: Optional[str] = None
+    location: Optional[str] = None
+    signals: Optional[str] = None
+    website: Optional[str] = None
+    client_tag: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class CompanyResponse(BaseModel):
@@ -41,6 +55,7 @@ class CompanyResponse(BaseModel):
     signals: Optional[str]
     website: Optional[str]
     client_tag: Optional[str] = None
+    notes: Optional[str] = None
     # Enrichment fields
     generic_emails: Optional[list[str]] = None
     enrichment_source: Optional[str] = None

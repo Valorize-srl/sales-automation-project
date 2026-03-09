@@ -102,9 +102,11 @@ export interface Person {
   email: string;
   linkedin_url: string | null;
   phone: string | null;
+  title: string | null;
   industry: string | null;
   location: string | null;
   client_tag: string | null;
+  notes: string | null;
   tags: string[] | null;
   converted_at: string | null;
   created_at: string;
@@ -117,10 +119,25 @@ export interface PersonUpdate {
   company_name?: string;
   linkedin_url?: string;
   phone?: string;
+  title?: string;
   industry?: string;
   location?: string;
   client_tag?: string;
+  notes?: string;
   converted?: boolean;
+}
+
+export interface CompanyUpdate {
+  name?: string;
+  email?: string;
+  phone?: string;
+  linkedin_url?: string;
+  industry?: string;
+  location?: string;
+  signals?: string;
+  website?: string;
+  client_tag?: string;
+  notes?: string;
 }
 
 export interface Company {
@@ -135,6 +152,7 @@ export interface Company {
   signals: string | null;
   website: string | null;
   client_tag: string | null;
+  notes: string | null;
   // Enrichment fields
   generic_emails?: string[];
   enrichment_source?: "apollo" | "web_scrape" | "both";
