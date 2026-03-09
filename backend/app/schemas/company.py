@@ -84,6 +84,7 @@ class CompanyCSVImportRequest(BaseModel):
 class CompanyCSVImportResponse(BaseModel):
     imported: int
     duplicates_skipped: int
+    merged: int = 0
     errors: int
 
 

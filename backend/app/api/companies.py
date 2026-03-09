@@ -77,6 +77,24 @@ def _extract_domain(email: Optional[str]) -> Optional[str]:
     return email.split("@", 1)[1].lower().strip()
 
 
+def _merge_email(company: Company, new_email: str) -> bool:
+    """Add email to company's generic_emails if not already present. Returns True if merged."""
+    import json
+    existing: list[str] = json.loads(company.generic_emails) if company.generic_emails else []
+    existing_lower = {e.lower() for e in existing}
+
+    # Include the primary email in dedup check
+    if company.email:
+        existing_lower.add(company.email.lower())
+
+    if new_email.lower() in existing_lower:
+        return False  # Already present
+
+    existing.append(new_email)
+    company.generic_emails = json.dumps(existing)
+    return True
+
+
 def _company_to_response(company: Company, people_count: int = 0) -> CompanyResponse:
     resp = CompanyResponse.model_validate(company)
     resp.people_count = people_count
@@ -266,6 +284,7 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
 
     imported = 0
     duplicates_skipped = 0
+    merged = 0
     errors = 0
 
     try:
@@ -289,14 +308,33 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                 return d[:limit]
             return d
 
+        # Track companies created in this batch for merging
+        companies_by_name: dict[str, Company] = {}
+
         for row in data.rows:
             try:
                 name = _clean(row, data.mapping.name, 255)
                 if not name:
                     errors += 1
                     continue
+
                 if name.lower() in existing_names:
-                    duplicates_skipped += 1
+                    # Duplicate: try to merge email instead of skipping
+                    email = _val(row, data.mapping.email, "email")
+                    if email:
+                        company = companies_by_name.get(name.lower())
+                        if not company:
+                            # Look up in DB
+                            db_result = await db.execute(
+                                select(Company).where(sa_func.lower(Company.name) == name.lower())
+                            )
+                            company = db_result.scalar_one_or_none()
+                        if company and _merge_email(company, email):
+                            merged += 1
+                        else:
+                            duplicates_skipped += 1
+                    else:
+                        duplicates_skipped += 1
                     continue
 
                 email = _val(row, data.mapping.email, "email")
@@ -312,6 +350,7 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     website=_val(row, data.mapping.website, "website"),
                 )
                 db.add(company)
+                companies_by_name[name.lower()] = company
                 existing_names.add(name.lower())
                 imported += 1
 
@@ -326,7 +365,8 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                 continue
 
         await db.flush()
-        logger.info("CSV import flush done: imported=%d, duplicates=%d, errors=%d", imported, duplicates_skipped, errors)
+        logger.info("CSV import flush done: imported=%d, merged=%d, duplicates=%d, errors=%d",
+                     imported, merged, duplicates_skipped, errors)
 
         # After import, batch-link unmatched people to new companies
         if imported > 0:
@@ -358,7 +398,7 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
 
             logger.info("CSV import: linked people to companies")
 
-        return CompanyCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
+        return CompanyCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, merged=merged, errors=errors)
 
     except Exception as e:
         logger.exception("CSV import failed: %s", e)

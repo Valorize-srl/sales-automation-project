@@ -52,7 +52,7 @@ export function CompaniesCSVDialog({ open, onOpenChange, onImportComplete }: Com
   const [uploadData, setUploadData] = useState<CompanyCSVUploadResponse | null>(null);
   const [mapping, setMapping] = useState<CompanyCSVMapping>(EMPTY_MAPPING);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported: number; duplicates_skipped: number; errors: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; duplicates_skipped: number; merged: number; errors: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manualDefaults, setManualDefaults] = useState<Record<string, string>>({});
 
@@ -92,7 +92,7 @@ export function CompaniesCSVDialog({ open, onOpenChange, onImportComplete }: Com
       const defaults = Object.fromEntries(
         Object.entries(manualDefaults).filter(([, v]) => v.trim())
       );
-      const result = await api.post<{ imported: number; duplicates_skipped: number; errors: number }>(
+      const result = await api.post<{ imported: number; duplicates_skipped: number; merged: number; errors: number }>(
         "/companies/csv/import",
         {
           mapping,
@@ -259,8 +259,9 @@ export function CompaniesCSVDialog({ open, onOpenChange, onImportComplete }: Com
               </div>
               <p className="text-lg font-medium">Import Successful</p>
             </div>
-            <div className="grid grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-4 gap-4 text-sm">
               <div><p className="text-2xl font-bold text-green-600">{importResult.imported}</p><p className="text-muted-foreground">Imported</p></div>
+              <div><p className="text-2xl font-bold text-blue-600">{importResult.merged}</p><p className="text-muted-foreground">Merged</p></div>
               <div><p className="text-2xl font-bold text-yellow-600">{importResult.duplicates_skipped}</p><p className="text-muted-foreground">Duplicates</p></div>
               <div><p className="text-2xl font-bold text-red-600">{importResult.errors}</p><p className="text-muted-foreground">Errors</p></div>
             </div>
