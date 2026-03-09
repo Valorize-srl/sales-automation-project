@@ -35,7 +35,7 @@ class Company(Base):
     enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # Apollo enrich date
 
     # Enrichment tracking fields (web scraping)
-    generic_emails: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    generic_emails: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     enrichment_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     enrichment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
