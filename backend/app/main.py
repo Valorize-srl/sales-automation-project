@@ -35,6 +35,69 @@ async def _ensure_columns():
     logger.info("Startup: ensured DB columns exist")
 
 
+async def _ensure_prospecting_tools():
+    """Ensure prospecting_tools table exists with seed data (migration 019)."""
+    from sqlalchemy import text, create_engine, inspect
+    engine = create_engine(settings.database_url_sync, echo=False)
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+        if "prospecting_tools" not in inspector.get_table_names():
+            conn.execute(text("""
+                CREATE TABLE prospecting_tools (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(100) UNIQUE NOT NULL,
+                    display_name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    when_to_use TEXT,
+                    cost_info VARCHAR(255),
+                    sectors_strong JSON,
+                    sectors_weak JSON,
+                    apify_actor_id VARCHAR(255),
+                    output_type VARCHAR(50),
+                    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ
+                )
+            """))
+            conn.execute(text("""
+                INSERT INTO prospecting_tools (name, display_name, description, when_to_use, cost_info, sectors_strong, sectors_weak, apify_actor_id, output_type, sort_order)
+                VALUES
+                ('google_maps', 'Google Maps Scraper',
+                 'Cerca attivita locali su Google Maps. Ritorna nome, indirizzo, telefono, sito web, rating, categoria.',
+                 'Fonte PRIMARIA per trovare aziende. Usa sempre come primo step per qualsiasi settore con presenza fisica locale.',
+                 '~$2.10 per 1000 risultati',
+                 '["horeca","retail","servizi locali","studi professionali","artigianato","sanita","beauty","automotive"]',
+                 '["SaaS","startup tech","enterprise B2B","aziende solo online"]',
+                 'compass/crawler-google-places', 'companies', 1),
+                ('website_contacts', 'Website Email/Phone Extractor',
+                 'Estrae email, telefono e profili social dai siti web trovati.',
+                 'Usa DOPO Google Maps o quando hai una lista di URL senza contatti diretti.',
+                 '~$0.04 per CU (~gratis)',
+                 '["tutti i settori con sito web"]', '["aziende senza sito web"]',
+                 'anchor/email-phone-extractor', 'contacts', 2),
+                ('linkedin_companies', 'LinkedIn Company Scraper',
+                 'Scrapa profili LinkedIn aziendali: descrizione, dipendenti, settore, specialita, follower.',
+                 'Usa per arricchire i dati aziendali con info LinkedIn.',
+                 '~$0.01 per profilo',
+                 '["B2B","tech","servizi professionali","consulting","agenzie digitali"]',
+                 '["micro imprese locali","artigiani","attivita senza LinkedIn"]',
+                 'curious_coder/linkedin-company-scraper', 'companies', 3),
+                ('linkedin_people', 'LinkedIn Profile Search',
+                 'Cerca decision maker su LinkedIn per titolo, azienda, zona.',
+                 'Usa per trovare i decision maker (CEO, Direttore Commerciale, Marketing Manager, CTO).',
+                 '~$0.01 per profilo',
+                 '["tutti i settori B2B","management","C-level"]',
+                 '["micro imprese senza LinkedIn","settori poco digitalizzati"]',
+                 'harvestapi/linkedin-profile-search', 'people', 4)
+            """))
+            conn.commit()
+            logger.info("Startup: created prospecting_tools table with seed data")
+        else:
+            logger.info("Startup: prospecting_tools table already exists")
+    engine.dispose()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
@@ -42,6 +105,10 @@ async def lifespan(app: FastAPI):
         await _ensure_columns()
     except Exception as e:
         logger.error(f"Startup column check failed: {e}")
+    try:
+        await _ensure_prospecting_tools()
+    except Exception as e:
+        logger.error(f"Startup prospecting_tools check failed: {e}")
     yield
 
 

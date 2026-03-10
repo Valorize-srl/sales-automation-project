@@ -1,8 +1,11 @@
 """Conversational chat service with RAG capabilities."""
 
 import json
+import logging
 from typing import Optional, AsyncIterator
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -261,30 +264,34 @@ class ConversationalChatService:
 
         # In prospecting mode, inject tool cards from DB
         if mode == "prospecting":
-            from sqlalchemy import select as sa_select
-            from app.models.prospecting_tool import ProspectingTool
+            try:
+                from sqlalchemy import select as sa_select
+                from app.models.prospecting_tool import ProspectingTool
 
-            result = await self.db.execute(
-                sa_select(ProspectingTool)
-                .where(ProspectingTool.is_enabled == True)
-                .order_by(ProspectingTool.sort_order)
-            )
-            tools = result.scalars().all()
+                result = await self.db.execute(
+                    sa_select(ProspectingTool)
+                    .where(ProspectingTool.is_enabled == True)
+                    .order_by(ProspectingTool.sort_order)
+                )
+                tools = result.scalars().all()
 
-            if tools:
-                prompt += "\n\n## STRUMENTI DISPONIBILI\n"
-                prompt += "Usa questi tool per raccogliere dati reali. Scegli in base al settore target.\n"
-                for tool in tools:
-                    prompt += f"\n### {tool.display_name}\n"
-                    prompt += f"- Tool: `{tool.name}`\n"
-                    if tool.when_to_use:
-                        prompt += f"- Quando usare: {tool.when_to_use}\n"
-                    if tool.cost_info:
-                        prompt += f"- Costo: {tool.cost_info}\n"
-                    if tool.sectors_strong:
-                        prompt += f"- Forte per: {', '.join(tool.sectors_strong)}\n"
-                    if tool.sectors_weak:
-                        prompt += f"- Debole per: {', '.join(tool.sectors_weak)}\n"
+                if tools:
+                    prompt += "\n\n## STRUMENTI DISPONIBILI\n"
+                    prompt += "Usa questi tool per raccogliere dati reali. Scegli in base al settore target.\n"
+                    for tool in tools:
+                        prompt += f"\n### {tool.display_name}\n"
+                        prompt += f"- Tool: `{tool.name}`\n"
+                        if tool.when_to_use:
+                            prompt += f"- Quando usare: {tool.when_to_use}\n"
+                        if tool.cost_info:
+                            prompt += f"- Costo: {tool.cost_info}\n"
+                        if tool.sectors_strong:
+                            prompt += f"- Forte per: {', '.join(tool.sectors_strong)}\n"
+                        if tool.sectors_weak:
+                            prompt += f"- Debole per: {', '.join(tool.sectors_weak)}\n"
+            except Exception as e:
+                logger.warning(f"Could not load prospecting tools from DB: {e}")
+                await self.db.rollback()
 
         # Add current ICP draft if exists
         if session.current_icp_draft:
