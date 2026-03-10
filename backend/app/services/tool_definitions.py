@@ -340,14 +340,17 @@ TOOL_DEFINITIONS: dict[str, dict] = {
     "generate_csv": GENERATE_CSV_TOOL,
 }
 
-# Prospecting mode: Apify scrapers + ICP + import + CSV (no Apollo)
+# Prospecting mode: full waterfall (search + enrich + export)
 PROSPECTING_TOOL_NAMES = [
     "update_icp_draft",
     "save_icp",
+    "search_apollo",
     "search_google_maps",
     "scrape_websites",
     "search_linkedin_companies",
     "search_linkedin_people",
+    "enrich_companies",
+    "verify_emails",
     "import_leads",
     "get_session_context",
     "generate_csv",

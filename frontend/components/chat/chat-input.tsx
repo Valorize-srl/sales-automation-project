@@ -77,7 +77,7 @@ export function ChatInput({
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your ideal customer..."
+          placeholder="Descrivi chi vuoi trovare..."
           className="min-h-[44px] max-h-[120px] resize-none"
           rows={1}
           disabled={isStreaming}

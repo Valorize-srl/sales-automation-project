@@ -296,7 +296,11 @@ class ChatSessionService:
         Returns:
             List of ChatSession
         """
-        query = select(ChatSession).order_by(desc(ChatSession.updated_at))
+        query = (
+            select(ChatSession)
+            .options(selectinload(ChatSession.messages))
+            .order_by(desc(ChatSession.updated_at))
+        )
 
         if client_tag:
             query = query.where(ChatSession.client_tag == client_tag)

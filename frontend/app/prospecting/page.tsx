@@ -124,7 +124,7 @@ export default function ProspectingPage() {
             Prospecting
           </h1>
           <p className="text-sm text-muted-foreground">
-            Agente AI autonomo per ricerca lead B2B
+            Ricerca lead B2B interattiva con AI
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -178,7 +178,7 @@ export default function ProspectingPage() {
                   <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-30" />
                   <p className="text-base font-medium mb-2">Descrivi chi vuoi trovare</p>
                   <p className="text-sm mb-4">
-                    L&apos;agente cerca automaticamente su Google Maps, LinkedIn e siti web, poi genera un CSV con i risultati.
+                    L&apos;AI ti guida passo per passo: definizione ICP, ricerca aziende, decision maker, contatti ed export CSV.
                   </p>
                   <div className="text-xs space-y-1.5 text-left bg-muted/50 rounded-lg p-3">
                     <p className="font-medium mb-1">Esempi:</p>
