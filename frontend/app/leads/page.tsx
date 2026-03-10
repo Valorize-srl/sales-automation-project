@@ -20,6 +20,7 @@ import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { CreateListDialog } from "@/components/leads/create-list-dialog";
 import { AddListToCampaignDialog } from "@/components/leads/add-list-to-campaign-dialog";
 import { FindPeopleDialog } from "@/components/leads/find-people-dialog";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { api } from "@/lib/api";
 import {
   Person,
@@ -43,6 +44,9 @@ export default function LeadsPage() {
   const [peopleIndustries, setPeopleIndustries] = useState<string[]>([]);
   const [peopleClientTag, setPeopleClientTag] = useState<string>("");
   const [peopleCSVOpen, setPeopleCSVOpen] = useState(false);
+  const [peoplePage, setPeoplePage] = useState(1);
+  const [peopleTotal, setPeopleTotal] = useState(0);
+  const [peopleTotalPages, setPeopleTotalPages] = useState(1);
 
   // --- People selection ---
   const [selectedPeopleIds, setSelectedPeopleIds] = useState<Set<number>>(new Set());
@@ -60,6 +64,9 @@ export default function LeadsPage() {
   const [companiesIndustries, setCompaniesIndustries] = useState<string[]>([]);
   const [companiesClientTag, setCompaniesClientTag] = useState<string>("");
   const [companiesCSVOpen, setCompaniesCSVOpen] = useState(false);
+  const [companiesPage, setCompaniesPage] = useState(1);
+  const [companiesTotal, setCompaniesTotal] = useState(0);
+  const [companiesTotalPages, setCompaniesTotalPages] = useState(1);
 
   // --- Companies selection ---
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
@@ -123,10 +130,12 @@ export default function LeadsPage() {
     }
   }, []);
 
-  const loadPeople = useCallback(async (search?: string, companyId?: number | null, industry?: string, clientTag?: string) => {
+  const loadPeople = useCallback(async (search?: string, companyId?: number | null, industry?: string, clientTag?: string, page: number = 1) => {
     setPeopleLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", "50");
       if (search) params.set("search", search);
       if (companyId != null) params.set("company_id", String(companyId));
       if (industry) params.set("industry", industry);
@@ -138,6 +147,9 @@ export default function LeadsPage() {
       const qs = params.toString();
       const data = await api.get<PersonListResponse>(`/people${qs ? `?${qs}` : ""}`);
       setPeople(data.people);
+      setPeoplePage(data.page);
+      setPeopleTotal(data.total);
+      setPeopleTotalPages(data.total_pages);
     } catch (err) {
       console.error("Failed to load people:", err);
     } finally {
@@ -357,10 +369,12 @@ export default function LeadsPage() {
     }
   }, []);
 
-  const loadCompanies = useCallback(async (search?: string, industry?: string, clientTag?: string) => {
+  const loadCompanies = useCallback(async (search?: string, industry?: string, clientTag?: string, page: number = 1) => {
     setCompaniesLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", "50");
       if (search) params.set("search", search);
       if (industry) params.set("industry", industry);
       if (clientTag) params.set("client_tag", clientTag);
@@ -371,6 +385,9 @@ export default function LeadsPage() {
       const qs = params.toString();
       const data = await api.get<CompanyListResponse>(`/companies${qs ? `?${qs}` : ""}`);
       setCompanies(data.companies);
+      setCompaniesPage(data.page);
+      setCompaniesTotal(data.total);
+      setCompaniesTotalPages(data.total_pages);
     } catch (err) {
       console.error("Failed to load companies:", err);
     } finally {
@@ -411,8 +428,8 @@ export default function LeadsPage() {
   };
 
   const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: "people", label: "People", count: people.length },
-    { key: "companies", label: "Companies", count: companies.length },
+    { key: "people", label: "People", count: peopleTotal },
+    { key: "companies", label: "Companies", count: companiesTotal },
     { key: "lists", label: "Lists", count: lists.length },
   ];
 
@@ -423,8 +440,8 @@ export default function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold">Leads</h1>
           <p className="text-sm text-muted-foreground">
-            {activeTab === "people" && `${people.length} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}${peopleClientTag ? ` \u00b7 tag: ${peopleClientTag}` : ""}`}
-            {activeTab === "companies" && `${companies.length} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}${companiesClientTag ? ` \u00b7 tag: ${companiesClientTag}` : ""}`}
+            {activeTab === "people" && `${peopleTotal} people${filterCompanyId ? " (filtered by company)" : ""}${peopleIndustry ? ` in ${peopleIndustry}` : ""}${peopleClientTag ? ` \u00b7 tag: ${peopleClientTag}` : ""}`}
+            {activeTab === "companies" && `${companiesTotal} companies${companiesIndustry ? ` in ${companiesIndustry}` : ""}${companiesClientTag ? ` \u00b7 tag: ${companiesClientTag}` : ""}`}
             {activeTab === "lists" && `${lists.length} lead lists`}
           </p>
         </div>
@@ -731,33 +748,51 @@ export default function LeadsPage() {
 
       {/* Tab Content */}
       {activeTab === "people" && (
-        <PeopleTable
-          people={people}
-          loading={peopleLoading}
-          selectedIds={selectedPeopleIds}
-          onToggleSelect={handleToggleSelect}
-          onToggleSelectAll={handleToggleSelectAll}
-          onDelete={handleDeletePerson}
-          onCompanyClick={handlePeopleCompanyClick}
-          onEdit={handleEditPerson}
-          onToggleConverted={handleToggleConverted}
-          onPersonClick={handlePersonDetailClick}
-        />
+        <>
+          <PeopleTable
+            people={people}
+            loading={peopleLoading}
+            selectedIds={selectedPeopleIds}
+            onToggleSelect={handleToggleSelect}
+            onToggleSelectAll={handleToggleSelectAll}
+            onDelete={handleDeletePerson}
+            onCompanyClick={handlePeopleCompanyClick}
+            onEdit={handleEditPerson}
+            onToggleConverted={handleToggleConverted}
+            onPersonClick={handlePersonDetailClick}
+          />
+          <PaginationControls
+            page={peoplePage}
+            totalPages={peopleTotalPages}
+            total={peopleTotal}
+            pageSize={50}
+            onPageChange={(p) => loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag, p)}
+          />
+        </>
       )}
 
       {activeTab === "companies" && (
-        <CompaniesTable
-          companies={companies}
-          loading={companiesLoading}
-          selectedIds={selectedCompanyIds}
-          onToggleSelect={handleToggleCompanySelect}
-          onToggleSelectAll={handleToggleCompanySelectAll}
-          onDelete={handleDeleteCompany}
-          onPeopleClick={handlePeopleClick}
-          onFindPeople={handleFindPeople}
-          onRefresh={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
-          onCompanyClick={handleCompanyDetailClick}
-        />
+        <>
+          <CompaniesTable
+            companies={companies}
+            loading={companiesLoading}
+            selectedIds={selectedCompanyIds}
+            onToggleSelect={handleToggleCompanySelect}
+            onToggleSelectAll={handleToggleCompanySelectAll}
+            onDelete={handleDeleteCompany}
+            onPeopleClick={handlePeopleClick}
+            onFindPeople={handleFindPeople}
+            onRefresh={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
+            onCompanyClick={handleCompanyDetailClick}
+          />
+          <PaginationControls
+            page={companiesPage}
+            totalPages={companiesTotalPages}
+            total={companiesTotal}
+            pageSize={50}
+            onPageChange={(p) => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag, p)}
+          />
+        </>
       )}
 
       {activeTab === "lists" && (

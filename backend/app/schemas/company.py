@@ -79,6 +79,9 @@ class CompanyResponse(BaseModel):
 class CompanyListResponse(BaseModel):
     companies: list[CompanyResponse]
     total: int
+    page: int = 1
+    page_size: int = 50
+    total_pages: int = 1
 
 
 class CompanyCSVUploadResponse(BaseModel):

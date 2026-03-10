@@ -165,11 +165,17 @@ export interface Company {
 export interface PersonListResponse {
   people: Person[];
   total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface CompanyListResponse {
   companies: Company[];
   total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface PersonCSVMapping {

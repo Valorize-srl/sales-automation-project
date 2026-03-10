@@ -66,6 +66,9 @@ class PersonResponse(BaseModel):
 class PersonListResponse(BaseModel):
     people: list[PersonResponse]
     total: int
+    page: int = 1
+    page_size: int = 50
+    total_pages: int = 1
 
 
 class PersonCSVUploadResponse(BaseModel):

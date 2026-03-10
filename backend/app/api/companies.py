@@ -150,46 +150,66 @@ async def list_companies(
     has_phone: Optional[bool] = Query(None),
     has_linkedin: Optional[bool] = Query(None),
     has_website: Optional[bool] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    """List companies with optional search, industry, client_tag and presence filters."""
-    query = select(Company).order_by(Company.name.asc())
+    """List companies with optional search, industry, client_tag, presence filters and pagination."""
+    import math
+
+    base_query = select(Company)
     if search:
-        query = query.where(Company.name.ilike(f"%{search}%"))
+        base_query = base_query.where(Company.name.ilike(f"%{search}%"))
     if industry is not None:
-        query = query.where(Company.industry == industry)
+        base_query = base_query.where(Company.industry == industry)
     if client_tag is not None:
-        query = query.where(Company.client_tag.ilike(f"%{client_tag}%"))
+        base_query = base_query.where(Company.client_tag.ilike(f"%{client_tag}%"))
     # Presence filters
     if has_email is True:
-        query = query.where(Company.email.isnot(None), Company.email != "")
+        base_query = base_query.where(Company.email.isnot(None), Company.email != "")
     elif has_email is False:
-        query = query.where(or_(Company.email.is_(None), Company.email == ""))
+        base_query = base_query.where(or_(Company.email.is_(None), Company.email == ""))
     if has_phone is True:
-        query = query.where(Company.phone.isnot(None), Company.phone != "")
+        base_query = base_query.where(Company.phone.isnot(None), Company.phone != "")
     elif has_phone is False:
-        query = query.where(or_(Company.phone.is_(None), Company.phone == ""))
+        base_query = base_query.where(or_(Company.phone.is_(None), Company.phone == ""))
     if has_linkedin is True:
-        query = query.where(Company.linkedin_url.isnot(None), Company.linkedin_url != "")
+        base_query = base_query.where(Company.linkedin_url.isnot(None), Company.linkedin_url != "")
     elif has_linkedin is False:
-        query = query.where(or_(Company.linkedin_url.is_(None), Company.linkedin_url == ""))
+        base_query = base_query.where(or_(Company.linkedin_url.is_(None), Company.linkedin_url == ""))
     if has_website is True:
-        query = query.where(Company.website.isnot(None), Company.website != "")
+        base_query = base_query.where(Company.website.isnot(None), Company.website != "")
     elif has_website is False:
-        query = query.where(or_(Company.website.is_(None), Company.website == ""))
-    result = await db.execute(query)
+        base_query = base_query.where(or_(Company.website.is_(None), Company.website == ""))
+
+    # Count total matching records
+    count_query = select(sa_func.count()).select_from(base_query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+
+    # Paginated data query
+    offset = (page - 1) * page_size
+    data_query = base_query.order_by(Company.name.asc()).offset(offset).limit(page_size)
+    result = await db.execute(data_query)
     companies = result.scalars().all()
 
-    # Get people counts in one query
-    count_result = await db.execute(
-        select(Person.company_id, sa_func.count(Person.id).label("cnt"))
-        .where(Person.company_id.isnot(None))
-        .group_by(Person.company_id)
-    )
-    counts = {row.company_id: row.cnt for row in count_result.all()}
+    # Get people counts only for companies on this page
+    company_ids = [c.id for c in companies]
+    if company_ids:
+        count_result = await db.execute(
+            select(Person.company_id, sa_func.count(Person.id).label("cnt"))
+            .where(Person.company_id.in_(company_ids))
+            .group_by(Person.company_id)
+        )
+        counts = {row.company_id: row.cnt for row in count_result.all()}
+    else:
+        counts = {}
 
     items = [_company_to_response(c, counts.get(c.id, 0)) for c in companies]
-    return CompanyListResponse(companies=items, total=len(items))
+    return CompanyListResponse(
+        companies=items, total=total,
+        page=page, page_size=page_size, total_pages=total_pages
+    )
 
 
 @router.get("/{company_id}", response_model=CompanyResponse)
@@ -419,11 +439,13 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     if email:
                         company = companies_by_name.get(name.lower())
                         if not company:
-                            # Look up in DB
+                            # Look up in DB and cache for future rows
                             db_result = await db.execute(
                                 select(Company).where(sa_func.lower(Company.name) == name.lower())
                             )
                             company = db_result.scalar_one_or_none()
+                            if company:
+                                companies_by_name[name.lower()] = company
                         if company and _merge_email(company, email):
                             merged += 1
                         else:
@@ -470,18 +492,29 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
             )
             new_companies = list(new_companies_result.scalars().all())
 
-            unmatched_result = await db.execute(
-                select(Person).where(Person.company_id.is_(None))
-            )
-            unmatched_people = list(unmatched_result.scalars().all())
+            name_map: dict[str, int] = {}
+            domain_map: dict[str, int] = {}
+            for c in new_companies:
+                name_map[c.name.lower()] = c.id
+                if c.email_domain:
+                    domain_map[c.email_domain.lower()] = c.id
 
-            if unmatched_people:
-                name_map: dict[str, int] = {}
-                domain_map: dict[str, int] = {}
-                for c in new_companies:
-                    name_map[c.name.lower()] = c.id
-                    if c.email_domain:
-                        domain_map[c.email_domain.lower()] = c.id
+            # Only load unmatched people whose company_name or email domain matches new companies
+            match_filters = []
+            if name_map:
+                match_filters.append(sa_func.lower(Person.company_name).in_(list(name_map.keys())))
+            if domain_map:
+                domain_likes = [Person.email.ilike(f"%@{d}") for d in domain_map.keys()]
+                match_filters.extend(domain_likes)
+
+            if match_filters:
+                unmatched_result = await db.execute(
+                    select(Person).where(
+                        Person.company_id.is_(None),
+                        or_(*match_filters)
+                    )
+                )
+                unmatched_people = list(unmatched_result.scalars().all())
 
                 for person in unmatched_people:
                     if person.company_name and person.company_name.lower() in name_map:

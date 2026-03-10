@@ -98,6 +98,25 @@ async def _ensure_prospecting_tools():
     engine.dispose()
 
 
+async def _ensure_indexes():
+    """Ensure performance indexes exist (migration 022)."""
+    from sqlalchemy import text, create_engine
+    engine = create_engine(settings.database_url_sync, echo=False)
+    with engine.connect() as conn:
+        for stmt in [
+            "CREATE INDEX IF NOT EXISTS ix_companies_industry ON companies (industry)",
+            "CREATE INDEX IF NOT EXISTS ix_companies_client_tag ON companies (client_tag)",
+            "CREATE INDEX IF NOT EXISTS ix_companies_name_lower ON companies (LOWER(name))",
+            "CREATE INDEX IF NOT EXISTS ix_people_industry ON people (industry)",
+            "CREATE INDEX IF NOT EXISTS ix_people_client_tag ON people (client_tag)",
+            "CREATE INDEX IF NOT EXISTS ix_people_email_lower ON people (LOWER(email))",
+        ]:
+            conn.execute(text(stmt))
+        conn.commit()
+    engine.dispose()
+    logger.info("Startup: ensured DB indexes exist")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
@@ -109,6 +128,10 @@ async def lifespan(app: FastAPI):
         await _ensure_prospecting_tools()
     except Exception as e:
         logger.error(f"Startup prospecting_tools check failed: {e}")
+    try:
+        await _ensure_indexes()
+    except Exception as e:
+        logger.error(f"Startup indexes check failed: {e}")
     yield
 
 

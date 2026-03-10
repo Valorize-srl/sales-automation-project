@@ -130,37 +130,56 @@ async def list_people(
     has_email: Optional[bool] = Query(None),
     has_phone: Optional[bool] = Query(None),
     has_linkedin: Optional[bool] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    """List people with optional search, company, industry, client_tag and presence filters."""
-    query = select(Person).order_by(Person.last_name.asc(), Person.first_name.asc())
+    """List people with optional search, company, industry, client_tag, presence filters and pagination."""
+    import math
+
+    base_query = select(Person)
     if search:
-        query = query.where(
+        base_query = base_query.where(
             sa_func.concat(Person.first_name, " ", Person.last_name).ilike(f"%{search}%")
             | Person.email.ilike(f"%{search}%")
         )
     if company_id is not None:
-        query = query.where(Person.company_id == company_id)
+        base_query = base_query.where(Person.company_id == company_id)
     if industry is not None:
-        query = query.where(Person.industry == industry)
+        base_query = base_query.where(Person.industry == industry)
     if client_tag is not None:
-        query = query.where(Person.client_tag.ilike(f"%{client_tag}%"))
+        base_query = base_query.where(Person.client_tag.ilike(f"%{client_tag}%"))
     # Presence filters
     if has_email is True:
-        query = query.where(Person.email.isnot(None), Person.email != "")
+        base_query = base_query.where(Person.email.isnot(None), Person.email != "")
     elif has_email is False:
-        query = query.where(or_(Person.email.is_(None), Person.email == ""))
+        base_query = base_query.where(or_(Person.email.is_(None), Person.email == ""))
     if has_phone is True:
-        query = query.where(Person.phone.isnot(None), Person.phone != "")
+        base_query = base_query.where(Person.phone.isnot(None), Person.phone != "")
     elif has_phone is False:
-        query = query.where(or_(Person.phone.is_(None), Person.phone == ""))
+        base_query = base_query.where(or_(Person.phone.is_(None), Person.phone == ""))
     if has_linkedin is True:
-        query = query.where(Person.linkedin_url.isnot(None), Person.linkedin_url != "")
+        base_query = base_query.where(Person.linkedin_url.isnot(None), Person.linkedin_url != "")
     elif has_linkedin is False:
-        query = query.where(or_(Person.linkedin_url.is_(None), Person.linkedin_url == ""))
-    result = await db.execute(query)
+        base_query = base_query.where(or_(Person.linkedin_url.is_(None), Person.linkedin_url == ""))
+
+    # Count total matching records
+    count_query = select(sa_func.count()).select_from(base_query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+
+    # Paginated data query
+    offset = (page - 1) * page_size
+    data_query = base_query.order_by(
+        Person.last_name.asc(), Person.first_name.asc()
+    ).offset(offset).limit(page_size)
+    result = await db.execute(data_query)
     people = result.scalars().all()
-    return PersonListResponse(people=people, total=len(people))
+
+    return PersonListResponse(
+        people=people, total=total,
+        page=page, page_size=page_size, total_pages=total_pages
+    )
 
 
 @router.get("/{person_id}", response_model=PersonResponse)
@@ -312,6 +331,18 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
     existing_result = await db.execute(select(Person.email))
     existing_emails = {row[0].lower() for row in existing_result.all()}
 
+    # Pre-load company lookup maps to avoid N+1 queries
+    company_name_result = await db.execute(
+        select(Company.id, sa_func.lower(Company.name).label("name_lower"))
+    )
+    company_name_map: dict[str, int] = {row.name_lower: row.id for row in company_name_result.all()}
+
+    company_domain_result = await db.execute(
+        select(Company.id, Company.email_domain)
+        .where(Company.email_domain.isnot(None))
+    )
+    company_domain_map: dict[str, int] = {row.email_domain.lower(): row.id for row in company_domain_result.all()}
+
     # Merge defaults: new "defaults" dict takes priority, fallback to old fields
     defs = dict(data.defaults or {})
     if data.industry and "industry" not in defs:
@@ -353,7 +384,13 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
                 first_name, last_name = parts[0], parts[1]
 
             company_name = _val(row, data.mapping.company_name, "company_name")
-            company_id = await _find_matching_company(db, company_name, email)
+            # In-memory company lookup (no DB query per row)
+            company_id = None
+            if company_name:
+                company_id = company_name_map.get(company_name.lower().strip())
+            if not company_id and email and "@" in email:
+                domain = email.split("@", 1)[1].lower().strip()
+                company_id = company_domain_map.get(domain)
 
             person = Person(
                 first_name=(first_name or "Unknown")[:100],
