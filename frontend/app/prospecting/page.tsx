@@ -166,7 +166,10 @@ export default function ProspectingPage() {
             <MessageSquare className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">AI Prospecting Agent</span>
             {context?.isStreaming && (
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />
+              <div className="flex items-center gap-1.5 ml-auto">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-xs font-medium text-primary">Elaborazione...</span>
+              </div>
             )}
           </div>
 
@@ -202,11 +205,19 @@ export default function ProspectingPage() {
                 />
               ))}
             {context?.currentToolExecution && (
-              <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground bg-muted/50 rounded-lg my-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                <span>
+              <div className="flex items-center gap-3 px-4 py-3 text-sm text-primary bg-primary/5 border border-primary/20 rounded-lg my-3 animate-pulse">
+                <Loader2 className="h-5 w-5 animate-spin flex-shrink-0" />
+                <span className="font-medium">
                   {TOOL_LABELS[context.currentToolExecution.tool] || `${context.currentToolExecution.tool}...`}
                 </span>
+              </div>
+            )}
+            {context?.isStreaming && !context?.currentToolExecution &&
+              context.messages.length > 0 &&
+              context.messages[context.messages.length - 1]?.role !== "assistant" && (
+              <div className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground bg-muted/50 rounded-lg my-3">
+                <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
+                <span>L&apos;AI sta pensando...</span>
               </div>
             )}
             <div ref={bottomRef} />
