@@ -220,7 +220,7 @@ class ConversationalChatService:
             async for event in orchestrator.execute_and_continue(
                 messages=messages,
                 system_prompt=system_prompt,
-                max_iterations=10
+                max_iterations=5
             ):
                 yield event
 

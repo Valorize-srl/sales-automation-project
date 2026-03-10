@@ -59,91 +59,144 @@ class ToolOrchestrator:
         current_messages = messages.copy()
         total_input_tokens = 0
         total_output_tokens = 0
+        consecutive_tool_errors = 0
 
-        while iteration < max_iterations:
-            iteration += 1
-            tool_uses = []
-            assistant_content_blocks = []
+        try:
+            while iteration < max_iterations:
+                iteration += 1
+                tool_uses = []
+                assistant_content_blocks = []
 
-            # Stream Claude response
-            try:
-                async with self.client.messages.stream(
-                    model="claude-sonnet-4-5-20250929",
-                    max_tokens=2048,
-                    system=system_prompt,
-                    messages=current_messages,
-                    tools=self.tools,
-                ) as stream:
-                    async for event in stream:
-                        if event.type == "content_block_delta":
-                            if hasattr(event.delta, "text"):
-                                yield f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n"
+                # Keepalive comment before API call
+                yield ": keepalive\n\n"
 
-                    final_message = await stream.get_final_message()
-                    assistant_content_blocks = final_message.content
-
-                    if final_message.usage:
-                        total_input_tokens += final_message.usage.input_tokens
-                        total_output_tokens += final_message.usage.output_tokens
-
-                    for block in final_message.content:
-                        if block.type == "tool_use":
-                            tool_uses.append(block)
-
-            except Exception as e:
-                logger.error(f"Anthropic API error: {e}")
-                yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'message': str(e)})}\n\n"
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                break
-
-            # No tools? Done
-            if not tool_uses:
-                yield f"data: {json.dumps({'type': 'usage', 'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens})}\n\n"
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                break
-
-            # Execute tools
-            tool_results = []
-            for tool_use in tool_uses:
-                yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_use.name, 'input': tool_use.input})}\n\n"
-
+                # Stream Claude response
                 try:
-                    result, sse_extra = await self.execute_tool(tool_use.name, tool_use.input, tool_use.id)
+                    async with self.client.messages.stream(
+                        model="claude-sonnet-4-5-20250929",
+                        max_tokens=2048,
+                        system=system_prompt,
+                        messages=current_messages,
+                        tools=self.tools,
+                    ) as stream:
+                        async for event in stream:
+                            if event.type == "content_block_delta":
+                                if hasattr(event.delta, "text"):
+                                    yield f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n"
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use.id,
-                        "content": json.dumps(result)
-                    })
+                        final_message = await stream.get_final_message()
+                        assistant_content_blocks = final_message.content
 
-                    yield f"data: {json.dumps({'type': 'tool_complete', 'tool': tool_use.name, 'summary': result.get('summary', 'Completed')})}\n\n"
+                        if final_message.usage:
+                            total_input_tokens += final_message.usage.input_tokens
+                            total_output_tokens += final_message.usage.output_tokens
 
-                    # Emit extra SSE event if handler returned one
-                    if sse_extra:
-                        yield f"data: {json.dumps(sse_extra)}\n\n"
+                        for block in final_message.content:
+                            if block.type == "tool_use":
+                                tool_uses.append(block)
 
                 except Exception as e:
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use.id,
-                        "content": json.dumps({"error": str(e)}),
-                        "is_error": True
+                    logger.error(f"Anthropic API error: {e}")
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'message': str(e)})}\n\n"
+                    break
+
+                # No tools? Done
+                if not tool_uses:
+                    break
+
+                # Execute tools
+                tool_results = []
+                errors_this_round = 0
+                for tool_use in tool_uses:
+                    yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_use.name, 'input': tool_use.input})}\n\n"
+
+                    try:
+                        result, sse_extra = await self.execute_tool(tool_use.name, tool_use.input, tool_use.id)
+
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": json.dumps(result)
+                        })
+
+                        # Check if tool returned an error in result
+                        if result.get("error"):
+                            errors_this_round += 1
+
+                        yield f"data: {json.dumps({'type': 'tool_complete', 'tool': tool_use.name, 'summary': result.get('summary', 'Completed')})}\n\n"
+
+                        # Emit extra SSE event if handler returned one
+                        if sse_extra:
+                            yield f"data: {json.dumps(sse_extra)}\n\n"
+
+                    except Exception as e:
+                        errors_this_round += 1
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": json.dumps({"error": str(e)}),
+                            "is_error": True
+                        })
+                        yield f"data: {json.dumps({'type': 'tool_error', 'tool': tool_use.name, 'error': str(e)})}\n\n"
+
+                # Track consecutive error rounds to break early
+                if errors_this_round == len(tool_uses):
+                    consecutive_tool_errors += 1
+                else:
+                    consecutive_tool_errors = 0
+
+                # If tools keep failing, stop looping and let Claude respond with text
+                if consecutive_tool_errors >= 2:
+                    logger.warning(f"Breaking tool loop: {consecutive_tool_errors} consecutive rounds of all-tool failures")
+                    # Tell Claude all tools failed so it responds with text
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": assistant_content_blocks
                     })
-                    yield f"data: {json.dumps({'type': 'tool_error', 'tool': tool_use.name, 'error': str(e)})}\n\n"
+                    current_messages.append({
+                        "role": "user",
+                        "content": tool_results
+                    })
+                    # One final Claude call without tools to get text response
+                    try:
+                        yield ": keepalive\n\n"
+                        async with self.client.messages.stream(
+                            model="claude-sonnet-4-5-20250929",
+                            max_tokens=2048,
+                            system=system_prompt,
+                            messages=current_messages,
+                        ) as stream:
+                            async for event in stream:
+                                if event.type == "content_block_delta":
+                                    if hasattr(event.delta, "text"):
+                                        yield f"data: {json.dumps({'type': 'text', 'content': event.delta.text})}\n\n"
+                            final_message = await stream.get_final_message()
+                            if final_message.usage:
+                                total_input_tokens += final_message.usage.input_tokens
+                                total_output_tokens += final_message.usage.output_tokens
+                    except Exception as e:
+                        logger.error(f"Final text-only call failed: {e}")
+                    break
 
-            # Add assistant message + tool results to conversation
-            current_messages.append({
-                "role": "assistant",
-                "content": assistant_content_blocks
-            })
-            current_messages.append({
-                "role": "user",
-                "content": tool_results
-            })
+                # Add assistant message + tool results to conversation
+                current_messages.append({
+                    "role": "assistant",
+                    "content": assistant_content_blocks
+                })
+                current_messages.append({
+                    "role": "user",
+                    "content": tool_results
+                })
 
-        if iteration >= max_iterations:
+            if iteration >= max_iterations:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'Max iterations reached', 'message': 'Max iterations reached'})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Unexpected error in execute_and_continue: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'message': str(e)})}\n\n"
+        finally:
+            # Always emit usage + done
             yield f"data: {json.dumps({'type': 'usage', 'input_tokens': total_input_tokens, 'output_tokens': total_output_tokens})}\n\n"
-            yield f"data: {json.dumps({'type': 'error', 'error': 'Max iterations reached', 'message': 'Max iterations reached'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     async def execute_tool(
