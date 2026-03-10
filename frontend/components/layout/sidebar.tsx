@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -13,8 +14,16 @@ import {
   Bot,
   LogOut,
   Search,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -28,7 +37,7 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -39,11 +48,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-64 border-r bg-card h-screen flex flex-col">
-      <div className="p-6">
-        <h2 className="text-lg font-semibold">Miriade</h2>
-        <p className="text-xs text-muted-foreground mt-1">B2B Outreach Platform</p>
-      </div>
+    <>
       <nav className="flex-1 px-3">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -52,6 +57,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors mb-1",
                 isActive
@@ -75,6 +81,47 @@ export function Sidebar() {
         </button>
         <p className="text-xs text-muted-foreground mt-2 px-3">v0.1.0</p>
       </div>
+    </>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="hidden md:flex w-64 border-r bg-card h-screen flex-col">
+      <div className="p-6">
+        <h2 className="text-lg font-semibold">Miriade</h2>
+        <p className="text-xs text-muted-foreground mt-1">B2B Outreach Platform</p>
+      </div>
+      <SidebarContent />
     </aside>
+  );
+}
+
+export function MobileSidebar() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="md:hidden"
+        onClick={() => setOpen(true)}
+      >
+        <Menu className="h-5 w-5" />
+        <span className="sr-only">Menu</span>
+      </Button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="left" className="w-64 p-0">
+          <SheetHeader className="p-6 pb-2">
+            <SheetTitle className="text-lg font-semibold text-left">Miriade</SheetTitle>
+            <p className="text-xs text-muted-foreground text-left">B2B Outreach Platform</p>
+          </SheetHeader>
+          <div className="flex flex-col flex-1 h-[calc(100%-80px)]">
+            <SidebarContent onNavigate={() => setOpen(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

@@ -123,7 +123,7 @@ export default function RepliesAnalyticsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Replies Analytics</h1>
           <p className="text-sm text-muted-foreground">
@@ -138,7 +138,7 @@ export default function RepliesAnalyticsPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <CampaignMultiSelect
             campaigns={campaigns}
             selectedIds={selectedCampaignIds}
@@ -186,7 +186,7 @@ export default function RepliesAnalyticsPage() {
         </div>
       ) : loading ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="rounded-lg border bg-card p-5 animate-pulse">
                 <div className="h-4 w-20 bg-muted rounded mb-3" />
@@ -199,7 +199,7 @@ export default function RepliesAnalyticsPage() {
       ) : stats ? (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-muted-foreground">Total Replies</p>

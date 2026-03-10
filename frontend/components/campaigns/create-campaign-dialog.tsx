@@ -364,7 +364,7 @@ export function CreateCampaignDialog({
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label>From</Label>
                     <Input
@@ -474,7 +474,7 @@ export function CreateCampaignDialog({
               <div className="space-y-3">
                 <h4 className="font-medium text-sm">Sending Options</h4>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label>Daily Limit (per account)</Label>
                     <Input
@@ -501,7 +501,7 @@ export function CreateCampaignDialog({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"

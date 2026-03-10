@@ -200,7 +200,7 @@ function SessionChatPageContent() {
     <div className="flex gap-4 h-[calc(100vh-48px)]">
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between px-1 pb-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-1 pb-4">
           <div>
             <h1 className="text-2xl font-bold">AI Chat</h1>
             <p className="text-sm text-muted-foreground">
@@ -308,7 +308,7 @@ function SessionChatPageContent() {
       </div>
 
       {/* Session Sidebar */}
-      <div className="w-80 flex-shrink-0">
+      <div className="hidden lg:block w-80 flex-shrink-0">
         <SessionSidebar
           currentIcp={context?.currentIcp || null}
           lastSearchResults={context?.lastSearchResults || null}

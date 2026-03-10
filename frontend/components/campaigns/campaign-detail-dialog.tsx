@@ -233,7 +233,7 @@ export function CampaignDetailDialog({
         <Separator />
 
         {/* Metrics */}
-        <div className="grid grid-cols-5 gap-4 text-center">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-4 text-center">
           <div>
             <p className="text-2xl font-bold">{campaign.total_sent}</p>
             <p className="text-xs text-muted-foreground">Sent</p>

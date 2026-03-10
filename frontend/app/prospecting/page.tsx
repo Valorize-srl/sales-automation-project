@@ -117,7 +117,7 @@ export default function ProspectingPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-48px)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-1 pb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-1 pb-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Search className="h-6 w-6" />
@@ -158,9 +158,9 @@ export default function ProspectingPage() {
       </div>
 
       {/* Split View */}
-      <div className="flex-1 flex gap-4 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
         {/* LEFT PANEL: AI Chat */}
-        <div className={`flex flex-col min-h-0 border rounded-lg bg-card ${showResults && apolloResults ? "w-[60%]" : "w-full"}`}>
+        <div className={`flex flex-col min-h-0 border rounded-lg bg-card ${showResults && apolloResults ? "w-full lg:w-[60%]" : "w-full"}`}>
           {/* Chat Header */}
           <div className="flex items-center gap-2 px-4 py-3 border-b">
             <MessageSquare className="h-4 w-4 text-primary" />
@@ -228,7 +228,7 @@ export default function ProspectingPage() {
 
         {/* RIGHT PANEL: Results (only when there are results and panel is open) */}
         {showResults && apolloResults && (
-          <div className="w-[40%] flex flex-col min-h-0 border rounded-lg bg-card">
+          <div className="w-full lg:w-[40%] flex flex-col min-h-0 border rounded-lg bg-card">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <span className="text-sm font-medium">
                 Risultati ({apolloResults.returned} di {apolloResults.total})

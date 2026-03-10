@@ -240,7 +240,7 @@ export default function ResponsesPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Replies</h1>
           <p className="text-sm text-muted-foreground">
@@ -299,7 +299,7 @@ export default function ResponsesPage() {
 
       {/* Sentiment summary cards */}
       {stats && stats.total > 0 && (
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {([
             { key: "interested", label: "Interested", color: "bg-green-50 border-green-200 text-green-800" },
             { key: "positive", label: "Positive", color: "bg-blue-50 border-blue-200 text-blue-800" },

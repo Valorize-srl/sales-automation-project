@@ -169,7 +169,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
@@ -182,7 +182,7 @@ export default function DashboardPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg border bg-card p-1">
             <Calendar className="h-4 w-4 text-muted-foreground ml-2" />
             {DATE_RANGE_PRESETS.map((opt) => (

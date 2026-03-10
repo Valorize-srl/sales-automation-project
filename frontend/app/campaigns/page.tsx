@@ -254,7 +254,7 @@ export default function CampaignsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Campaigns</h1>
           <p className="text-sm text-muted-foreground">
@@ -269,8 +269,8 @@ export default function CampaignsPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative w-[200px]">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full sm:w-[200px]">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search campaigns..."
@@ -280,7 +280,7 @@ export default function CampaignsPage() {
             />
           </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-full sm:w-[140px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -294,7 +294,7 @@ export default function CampaignsPage() {
             </SelectContent>
           </Select>
           <Select value={filterIcpId} onValueChange={setFilterIcpId}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Filter by ICP" />
             </SelectTrigger>
             <SelectContent>
