@@ -19,9 +19,29 @@ ALLOWED_ORIGINS = [
 ]
 
 
+async def _ensure_columns():
+    """Ensure new columns exist in the database (belt-and-suspenders for migration 021)."""
+    from sqlalchemy import text, create_engine
+    engine = create_engine(settings.database_url_sync, echo=False)
+    with engine.connect() as conn:
+        for stmt in [
+            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS notes TEXT",
+            "ALTER TABLE people ADD COLUMN IF NOT EXISTS title VARCHAR(255)",
+            "ALTER TABLE people ADD COLUMN IF NOT EXISTS notes TEXT",
+        ]:
+            conn.execute(text(stmt))
+        conn.commit()
+    engine.dispose()
+    logger.info("Startup: ensured DB columns exist")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown events."""
+    try:
+        await _ensure_columns()
+    except Exception as e:
+        logger.error(f"Startup column check failed: {e}")
     yield
 
 
