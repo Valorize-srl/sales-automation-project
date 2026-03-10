@@ -444,7 +444,7 @@ async def send_reply(
             "subject": f"Re: {resp.subject}" if resp.subject else "Re: ",
             "body": {
                 "text": reply_text,
-                "html": f"<p>{reply_text}</p>",
+                "html": f"<div>{reply_text.replace(chr(10), '<br>')}</div>",
             },
         }
         result = await instantly_service.reply_to_email(reply_data)
