@@ -16,7 +16,6 @@ from app.schemas.pipeline import (
     PipelineFirstLineEdit,
 )
 from app.services.pipeline_service import PipelineService
-from app.workers.pipeline_tasks import run_pipeline_task
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,8 +39,12 @@ async def start_pipeline_run(
         )
         await db.commit()
 
-        # Trigger Celery task
-        run_pipeline_task.delay(run.id)
+        # Trigger Celery task (lazy import to avoid startup failures)
+        try:
+            from app.workers.pipeline_tasks import run_pipeline_task
+            run_pipeline_task.delay(run.id)
+        except Exception as exc:
+            logger.warning(f"Celery task dispatch failed (will run manually): {exc}")
         logger.info(f"Pipeline run started: {run.run_id}")
 
         return run
