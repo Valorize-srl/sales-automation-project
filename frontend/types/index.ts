@@ -958,3 +958,94 @@ export interface CompanyDetailResponse {
   people: PersonSummary[];
   campaigns: CampaignSummary[];
 }
+
+// === Pipeline System ===
+
+export type PipelineRunStatus = "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+
+export type PipelineLeadStatus =
+  | "raw" | "filtered" | "linkedin_searched" | "dm_searched"
+  | "email_found" | "email_verified" | "signals_collected"
+  | "scored" | "approved" | "sent"
+  | "discarded_invalid_email" | "discarded_manual" | "review_postponed";
+
+export interface PipelineRun {
+  id: number;
+  run_id: string;
+  client_tag: string;
+  ai_agent_id: number | null;
+  icp_snapshot: Record<string, any> | null;
+  status: PipelineRunStatus;
+  current_step: number;
+  leads_raw_count: number;
+  leads_filtered_count: number;
+  leads_with_dm_count: number;
+  leads_with_email_count: number;
+  leads_verified_count: number;
+  leads_scored_count: number;
+  leads_score_a: number;
+  leads_score_b: number;
+  leads_score_c: number;
+  cost_scraping_usd: number;
+  cost_linkedin_usd: number;
+  cost_email_finding_usd: number;
+  cost_zerobounce_usd: number;
+  cost_signals_usd: number;
+  cost_claude_usd: number;
+  cost_total_usd: number;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface PipelineRunListResponse {
+  runs: PipelineRun[];
+  total: number;
+}
+
+export interface PipelineLead {
+  id: number;
+  pipeline_run_id: number;
+  ragione_sociale: string | null;
+  partita_iva: string | null;
+  codice_ateco: string | null;
+  forma_giuridica: string | null;
+  fatturato_range: string | null;
+  dipendenti_range: string | null;
+  indirizzo: string | null;
+  provincia: string | null;
+  anno_costituzione: number | null;
+  sito_web: string | null;
+  source_portal: string | null;
+  pipeline_status: PipelineLeadStatus;
+  linkedin_company_url: string | null;
+  linkedin_industry: string | null;
+  linkedin_employees_count: number | null;
+  linkedin_followers: number | null;
+  dm_first_name: string | null;
+  dm_last_name: string | null;
+  dm_job_title: string | null;
+  dm_linkedin_url: string | null;
+  email: string | null;
+  email_type: string | null;
+  email_confidence: number | null;
+  email_source: string | null;
+  icp_score: string | null;
+  score_reason: string | null;
+  approach_angle: string | null;
+  first_line_email: string | null;
+  relevant_products: string[] | null;
+  no_website: boolean;
+  exclude_flag: boolean;
+  exclude_reason: string | null;
+  client_tag: string | null;
+  created_at: string;
+}
+
+export interface PipelineLeadListResponse {
+  leads: PipelineLead[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}

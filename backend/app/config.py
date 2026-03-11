@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # Apify
     apify_api_token: str = ""
 
+    # Hunter.io (email finding)
+    hunter_api_key: str = ""
+
+    # ZeroBounce (email verification)
+    zerobounce_api_key: str = ""
+
     # Webhooks
     webhook_base_url: str = ""
 

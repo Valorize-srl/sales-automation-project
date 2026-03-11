@@ -38,6 +38,9 @@ class AIAgent(Base):
     # Example: {"linkedin_keywords": ["innovation", "digital"], "company_triggers": ["funding"], ...}
     signals_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+    # Structured ICP for waterfall pipeline
+    icp_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     # Knowledge Base for AI Replier
     knowledge_base_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Extracted text
     knowledge_base_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # "upload" | "url" | "manual"
