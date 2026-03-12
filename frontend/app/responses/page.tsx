@@ -115,7 +115,7 @@ export default function ResponsesPage() {
 
   const loadCampaigns = async () => {
     try {
-      const data = await api.get<CampaignListResponse>("/campaigns");
+      const data = await api.get<CampaignListResponse>("/campaigns?include_deleted=true");
       setCampaigns(data.campaigns);
     } catch (err) {
       console.error("Failed to load campaigns:", err);
