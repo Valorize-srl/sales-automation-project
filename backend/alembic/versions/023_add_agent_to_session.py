@@ -18,6 +18,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Check if column already exists (idempotent)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT FROM information_schema.columns "
+        "WHERE table_name = 'chat_sessions' AND column_name = 'ai_agent_id')"
+    ))
+    if result.scalar():
+        return
+
     op.add_column(
         'chat_sessions',
         sa.Column('ai_agent_id', sa.Integer(), nullable=True)

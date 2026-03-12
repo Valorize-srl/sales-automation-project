@@ -18,6 +18,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Check if table already exists (idempotent)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prospecting_tools')"
+    ))
+    if result.scalar():
+        return
+
     op.create_table(
         'prospecting_tools',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
