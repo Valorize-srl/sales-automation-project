@@ -22,7 +22,8 @@ class ChatSessionService:
     async def create_session(
         self,
         client_tag: Optional[str] = None,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        ai_agent_id: Optional[int] = None
     ) -> ChatSession:
         """
         Create new chat session with UUID.
@@ -30,6 +31,7 @@ class ChatSessionService:
         Args:
             client_tag: Optional client/project tag
             title: Optional session title
+            ai_agent_id: Optional AI Agent ID for ICP-aware prospecting
 
         Returns:
             Created ChatSession
@@ -38,6 +40,7 @@ class ChatSessionService:
             session_uuid=str(uuid.uuid4()),
             title=title,
             client_tag=client_tag,
+            ai_agent_id=ai_agent_id,
             status="active",
             session_metadata={}
         )

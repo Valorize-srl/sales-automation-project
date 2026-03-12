@@ -697,6 +697,7 @@ export interface SessionListResponse {
 export interface CreateSessionRequest {
   client_tag?: string;
   title?: string;
+  ai_agent_id?: number;
 }
 
 export interface ChatStreamRequest {

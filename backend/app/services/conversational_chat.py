@@ -20,7 +20,14 @@ PROSPECTING_SYSTEM_PROMPT = """Sei un assistente AI specializzato nella ricerca 
 ## COME LAVORARE
 
 ### Fase 1: DEFINIZIONE ICP (Ideal Customer Profile)
-Quando l'utente descrive chi vuole trovare:
+
+**Se hai un ICP pre-configurato** (sezione "ICP DEL CLIENTE" sotto):
+- Mostralo subito all'utente in formato leggibile: settore, zona, dimensione, ruoli target
+- Chiedi: "Ho gia' il profilo target configurato per questo cliente. Vuoi che lo usi come base o preferisci modificarlo?"
+- Se confermato, salta direttamente alla Fase 2 (proposta strategia)
+- Se l'utente vuole modifiche, usa `update_icp_draft` per aggiornare
+
+**Se NON hai un ICP pre-configurato:**
 - Fai 2-3 domande mirate per capire meglio il target (settore, zona, dimensione, tipo di decision maker)
 - Chiedi qual e' il servizio/prodotto che vuole proporre (serve per l'angolo di outreach)
 - Usa `update_icp_draft` per salvare i criteri man mano che emergono
@@ -30,6 +37,9 @@ Quando l'utente descrive chi vuole trovare:
 ### Fase 2: PROPOSTA STRATEGIA
 Dopo la conferma dell'ICP:
 - Proponi una strategia di ricerca spiegando QUALI tool userai e PERCHE'
+- Scegli i tool in base ai settori dell'ICP: se il settore e' horeca/retail/servizi locali → Google Maps prima. Se e' B2B/tech/enterprise → Apollo prima.
+- Se ci sono segnali configurati (sezione "SEGNALI DA CERCARE"), includili nella strategia di qualificazione
+- Rispetta il budget crediti Apollo dell'agente (sezione "BUDGET"). Se i crediti sono bassi, privilegia Google Maps e scraping siti web
 - Esempio: "Per trovare ristoranti a Milano, partirei da Google Maps che e' la fonte migliore per attivita' locali. Poi arricchisco con i siti web per trovare email e telefoni diretti. Vuoi che proceda?"
 - Aspetta il via libera dell'utente prima di usare qualsiasi tool
 
@@ -56,6 +66,7 @@ Dopo l'approvazione, esegui la ricerca a step progressivi. Dopo OGNI step, mostr
 - Usa `generate_csv` per creare il file scaricabile
 - Offri di importare nel database con `import_leads` se l'utente lo desidera
 - Se richiesto, usa `save_icp` per salvare l'ICP definito
+- Se c'e' una knowledge base del cliente (sezione "CONTESTO CLIENTE"), usala per personalizzare l'angolo di outreach e le first-line email
 
 ## REGOLE FONDAMENTALI
 1. Parla SEMPRE in italiano, in modo conciso e professionale
@@ -293,6 +304,48 @@ class ConversationalChatService:
                 logger.warning(f"Could not load prospecting tools from DB: {e}")
                 await self.db.rollback()
 
+            # Inject AI Agent context (ICP, signals, knowledge base) if bound
+            if session.ai_agent_id:
+                try:
+                    from app.models.ai_agent import AIAgent
+                    agent = await self.db.get(AIAgent, session.ai_agent_id)
+                    if agent and agent.is_active:
+                        prompt += f"\n\n## AGENTE: {agent.name}"
+                        prompt += f"\n- Cliente: {agent.client_tag}"
+
+                        # ICP config
+                        if agent.icp_config:
+                            prompt += "\n\n### ICP DEL CLIENTE (pre-configurato)"
+                            prompt += "\nQuesto cliente ha gia' un ICP definito. Usalo come base e chiedi conferma prima di procedere."
+                            for key, value in agent.icp_config.items():
+                                if value:
+                                    prompt += f"\n- **{key}**: {value}"
+
+                        # Signals config
+                        if agent.signals_config:
+                            prompt += "\n\n### SEGNALI DA CERCARE"
+                            prompt += "\nUsa questi segnali per qualificare e prioritizzare le lead."
+                            for key, value in agent.signals_config.items():
+                                if value:
+                                    if isinstance(value, list):
+                                        prompt += f"\n- **{key}**: {', '.join(str(v) for v in value)}"
+                                    else:
+                                        prompt += f"\n- **{key}**: {value}"
+
+                        # Knowledge base (truncated)
+                        if agent.knowledge_base_text:
+                            kb_text = agent.knowledge_base_text[:2000]
+                            if len(agent.knowledge_base_text) > 2000:
+                                kb_text += "\n... [troncato]"
+                            prompt += f"\n\n### CONTESTO CLIENTE\n{kb_text}"
+
+                        # Budget
+                        prompt += f"\n\n### BUDGET"
+                        prompt += f"\n- Crediti Apollo disponibili: {agent.credits_remaining}/{agent.apollo_credits_allocated}"
+                        prompt += f"\n- Crediti usati: {agent.apollo_credits_consumed} ({agent.credits_percentage_used:.0f}%)"
+                except Exception as e:
+                    logger.warning(f"Could not load AI agent context: {e}")
+
         # Add current ICP draft if exists
         if session.current_icp_draft:
             icp_draft_str = json.dumps(session.current_icp_draft, indent=2)
@@ -328,7 +381,8 @@ class ConversationalChatService:
     async def create_session(
         self,
         client_tag: Optional[str] = None,
-        title: Optional[str] = None
+        title: Optional[str] = None,
+        ai_agent_id: Optional[int] = None
     ) -> ChatSession:
         """
         Create new chat session.
@@ -336,13 +390,15 @@ class ConversationalChatService:
         Args:
             client_tag: Optional client/project tag
             title: Optional session title
+            ai_agent_id: Optional AI Agent ID for ICP-aware prospecting
 
         Returns:
             Created ChatSession
         """
         return await self.session_service.create_session(
             client_tag=client_tag,
-            title=title
+            title=title,
+            ai_agent_id=ai_agent_id
         )
 
     async def get_session(self, session_uuid: str) -> Optional[ChatSession]:

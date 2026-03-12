@@ -1,14 +1,22 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Search, Loader2, Plus, MessageSquare, Table2, Download } from "lucide-react";
+import { Search, Loader2, Plus, MessageSquare, Table2, Download, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ApolloPreviewCard } from "@/components/chat/apollo-preview-card";
 import { useChatSession, ApolloResultsData, CsvReadyData } from "@/hooks/useChatSession";
-import { ApolloSearchResponse } from "@/types";
+import { ApolloSearchResponse, AIAgent } from "@/types";
+import { api } from "@/lib/api";
 
 const TOOL_LABELS: Record<string, string> = {
   search_apollo: "Ricerca su Apollo...",
@@ -38,6 +46,11 @@ export default function ProspectingPage() {
   const { context, sendMessage, createNewSession, error, onApolloResultsCallback, onCsvReadyCallback } =
     useChatSession();
 
+  // Agent selector state
+  const [agents, setAgents] = useState<AIAgent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [agentsLoading, setAgentsLoading] = useState(true);
+
   // Results panel state
   const [apolloResults, setApolloResults] = useState<ApolloSearchResponse | null>(null);
   const [showResults, setShowResults] = useState(false);
@@ -56,6 +69,14 @@ export default function ProspectingPage() {
   useEffect(() => {
     scrollToBottom();
   }, [context?.messages, scrollToBottom]);
+
+  // Load available agents on mount
+  useEffect(() => {
+    api.getAIAgents({ is_active: true })
+      .then((data) => setAgents(data.agents || []))
+      .catch((err) => console.error("Failed to load agents:", err))
+      .finally(() => setAgentsLoading(false));
+  }, []);
 
   // Auto-create session on mount
   useEffect(() => {
@@ -103,7 +124,26 @@ export default function ProspectingPage() {
     setApolloResults(null);
     setShowResults(false);
     setCsvData(null);
-    await createNewSession({ title: "Prospecting Session" });
+    const agentId = selectedAgentId ? Number(selectedAgentId) : undefined;
+    const agentName = agents.find((a) => a.id === agentId)?.name;
+    await createNewSession({
+      title: agentName ? `Prospecting — ${agentName}` : "Prospecting Session",
+      ai_agent_id: agentId,
+    });
+  };
+
+  // Handle agent selection change — create new session with agent
+  const handleAgentChange = async (value: string) => {
+    setSelectedAgentId(value);
+    setApolloResults(null);
+    setShowResults(false);
+    setCsvData(null);
+    const agentId = value ? Number(value) : undefined;
+    const agentName = agents.find((a) => a.id === agentId)?.name;
+    await createNewSession({
+      title: agentName ? `Prospecting — ${agentName}` : "Prospecting Session",
+      ai_agent_id: agentId,
+    });
   };
 
   if (!context && !error) {
@@ -128,6 +168,22 @@ export default function ProspectingPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Agent selector */}
+          {!agentsLoading && agents.length > 0 && (
+            <Select value={selectedAgentId} onValueChange={handleAgentChange}>
+              <SelectTrigger className="w-[200px] h-9">
+                <Bot className="h-4 w-4 mr-1.5 flex-shrink-0" />
+                <SelectValue placeholder="Seleziona agente" />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={String(agent.id)}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {csvData && (
             <Button
               variant="default"
@@ -164,7 +220,11 @@ export default function ProspectingPage() {
           {/* Chat Header */}
           <div className="flex items-center gap-2 px-4 py-3 border-b">
             <MessageSquare className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">AI Prospecting Agent</span>
+            <span className="text-sm font-medium">
+              {selectedAgentId
+                ? `Prospecting — ${agents.find((a) => a.id === Number(selectedAgentId))?.name || "Agent"}`
+                : "AI Prospecting Agent"}
+            </span>
             {context?.isStreaming && (
               <div className="flex items-center gap-1.5 ml-auto">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />

@@ -47,7 +47,8 @@ async def create_chat_session(
     service = ConversationalChatService(db)
     session = await service.create_session(
         client_tag=request.client_tag,
-        title=request.title
+        title=request.title,
+        ai_agent_id=request.ai_agent_id
     )
     await db.commit()
     return session

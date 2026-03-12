@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     client_tag: Optional[str] = None
     title: Optional[str] = None
+    ai_agent_id: Optional[int] = None
 
 
 class ChatStreamRequest(BaseModel):

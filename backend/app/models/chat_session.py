@@ -30,6 +30,13 @@ class ChatSession(Base):
     # Session info
     title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
+    # Agent binding (links session to a specific AI Agent for ICP-aware prospecting)
+    ai_agent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("ai_agents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # Context tracking
     icp_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("icps.id", ondelete="SET NULL"),
@@ -96,6 +103,10 @@ class ChatSession(Base):
         "ICP",
         back_populates="chat_sessions",
         foreign_keys="[ChatSession.icp_id]"
+    )
+    ai_agent: Mapped[Optional["AIAgent"]] = relationship(
+        "AIAgent",
+        foreign_keys="[ChatSession.ai_agent_id]"
     )
 
     def __repr__(self) -> str:
