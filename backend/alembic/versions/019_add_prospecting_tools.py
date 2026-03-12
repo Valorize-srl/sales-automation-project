@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column('sectors_weak', sa.JSON(), nullable=True),
         sa.Column('apify_actor_id', sa.String(255), nullable=True),
         sa.Column('output_type', sa.String(50), nullable=True),
-        sa.Column('is_enabled', sa.Boolean(), server_default='1', nullable=False),
+        sa.Column('is_enabled', sa.Boolean(), server_default=sa.text('true'), nullable=False),
         sa.Column('sort_order', sa.Integer(), server_default='0', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
@@ -52,7 +52,7 @@ def upgrade() -> None:
             '["SaaS", "startup tech", "enterprise B2B", "aziende solo online"]',
             'compass/crawler-google-places',
             'companies',
-            1,
+            true,
             1
         ),
         (
@@ -65,7 +65,7 @@ def upgrade() -> None:
             '["aziende senza sito web"]',
             'anchor/email-phone-extractor',
             'contacts',
-            1,
+            true,
             2
         ),
         (
@@ -78,7 +78,7 @@ def upgrade() -> None:
             '["micro imprese locali", "artigiani", "attivita senza LinkedIn"]',
             'curious_coder/linkedin-company-scraper',
             'companies',
-            1,
+            true,
             3
         ),
         (
@@ -91,7 +91,7 @@ def upgrade() -> None:
             '["micro imprese senza LinkedIn", "settori poco digitalizzati"]',
             'harvestapi/linkedin-profile-search',
             'people',
-            1,
+            true,
             4
         );
     """)

@@ -5,7 +5,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, Float, Boolean, Text, DateTime, JSON
+from sqlalchemy import Integer, String, Float, Boolean, Text, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -32,7 +32,7 @@ class PipelineLead(Base):
     __tablename__ = "pipeline_leads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    pipeline_run_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    pipeline_run_id: Mapped[int] = mapped_column(Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Italian company registry
     ragione_sociale: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
