@@ -64,13 +64,6 @@ class ApiClient {
     return this.request<T>(endpoint, { method: "DELETE" });
   }
 
-  async patch<T>(endpoint: string, data?: unknown): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: "PATCH",
-      body: data ? JSON.stringify(data) : undefined,
-    });
-  }
-
   async healthCheck(): Promise<{ status: string; version: string }> {
     const response = await fetch(`${this.baseUrl}/health`);
     return response.json();
@@ -814,58 +807,6 @@ class ApiClient {
 
   async ignoreResponse(responseId: number): Promise<{ status: string; message: string }> {
     return this.post(`/responses/${responseId}/ignore`, undefined);
-  }
-
-  // ============================================================================
-  // Pipeline
-  // ============================================================================
-
-  async startPipelineRun(data: { ai_agent_id: number; client_tag: string; icp_override?: Record<string, any> }): Promise<import("@/types").PipelineRun> {
-    return this.post("/pipeline/run", data);
-  }
-
-  async getPipelineRuns(params?: { client_tag?: string; status?: string; skip?: number; limit?: number }): Promise<import("@/types").PipelineRunListResponse> {
-    const query = new URLSearchParams();
-    if (params?.client_tag) query.set("client_tag", params.client_tag);
-    if (params?.status) query.set("status", params.status);
-    if (params?.skip !== undefined) query.set("skip", String(params.skip));
-    if (params?.limit !== undefined) query.set("limit", String(params.limit));
-    const qs = query.toString();
-    return this.get(`/pipeline/runs${qs ? `?${qs}` : ""}`);
-  }
-
-  async getPipelineRun(runId: string): Promise<import("@/types").PipelineRun> {
-    return this.get(`/pipeline/runs/${runId}`);
-  }
-
-  async cancelPipelineRun(runId: string): Promise<import("@/types").PipelineRun> {
-    return this.post(`/pipeline/runs/${runId}/cancel`, undefined);
-  }
-
-  async getPipelineReviewQueue(params?: { client_tag?: string; score?: string; page?: number; page_size?: number }): Promise<import("@/types").PipelineLeadListResponse> {
-    const query = new URLSearchParams();
-    if (params?.client_tag) query.set("client_tag", params.client_tag);
-    if (params?.score) query.set("score", params.score);
-    if (params?.page !== undefined) query.set("page", String(params.page));
-    if (params?.page_size !== undefined) query.set("page_size", String(params.page_size));
-    const qs = query.toString();
-    return this.get(`/pipeline/review${qs ? `?${qs}` : ""}`);
-  }
-
-  async approvePipelineLead(leadId: number): Promise<import("@/types").PipelineLead> {
-    return this.post(`/pipeline/review/${leadId}/approve`, undefined);
-  }
-
-  async discardPipelineLead(leadId: number, reason?: string): Promise<import("@/types").PipelineLead> {
-    return this.post(`/pipeline/review/${leadId}/discard`, reason ? { reason } : undefined);
-  }
-
-  async postponePipelineLead(leadId: number): Promise<import("@/types").PipelineLead> {
-    return this.post(`/pipeline/review/${leadId}/postpone`, undefined);
-  }
-
-  async editPipelineLeadFirstLine(leadId: number, firstLine: string): Promise<import("@/types").PipelineLead> {
-    return this.patch(`/pipeline/review/${leadId}/first-line`, { first_line_email: firstLine });
   }
 }
 

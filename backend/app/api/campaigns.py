@@ -70,17 +70,15 @@ async def list_campaigns(
     icp_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None, description="Search campaigns by name"),
     status: Optional[CampaignStatus] = Query(None, description="Filter by campaign status"),
-    include_deleted: bool = Query(False, description="Include soft-deleted campaigns"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List campaigns with optional filters."""
+    """List all non-deleted campaigns with optional filters."""
     query = (
         select(Campaign)
         .options(selectinload(Campaign.icp))
+        .where(Campaign.deleted_at.is_(None))  # Exclude soft-deleted campaigns
         .order_by(Campaign.created_at.desc())
     )
-    if not include_deleted:
-        query = query.where(Campaign.deleted_at.is_(None))
     if icp_id is not None:
         query = query.where(Campaign.icp_id == icp_id)
     if search:

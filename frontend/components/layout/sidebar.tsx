@@ -15,8 +15,6 @@ import {
   LogOut,
   Search,
   Menu,
-  GitBranch,
-  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -31,8 +29,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/prospecting", label: "Prospecting", icon: Search },
   { href: "/ai-agents", label: "AI Agents", icon: Bot },
-  { href: "/pipeline", label: "Pipeline", icon: GitBranch },
-  { href: "/pipeline-review", label: "Review Queue", icon: ClipboardCheck },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
