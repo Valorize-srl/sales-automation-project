@@ -42,7 +42,9 @@ class ApifyScraperService:
         """
         async with httpx.AsyncClient(timeout=timeout + 30) as client:
             # Start the actor run and wait for it to finish
-            run_url = f"{APIFY_BASE_URL}/acts/{actor_id}/runs"
+            # Apify API uses ~ separator between username and actor name
+            api_actor_id = actor_id.replace("/", "~")
+            run_url = f"{APIFY_BASE_URL}/acts/{api_actor_id}/runs"
             params = {
                 "token": self.token,
                 "waitForFinish": timeout,
