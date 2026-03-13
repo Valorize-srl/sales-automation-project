@@ -7,6 +7,7 @@ This service:
 3. Generates a suggested reply using Claude
 4. Allows human approval before sending via Instantly
 """
+import html
 import logging
 from typing import Optional
 
@@ -265,7 +266,9 @@ Keep the tone {agent.icp_config.get('preferred_tone', 'professional and friendly
             "eaccount": sender_email,
             "subject": approved_subject,
             "body": {
-                "html": f"<div>{approved_body.replace(chr(10), '<br>')}</div>",
+                "html": "<div>{}</div>".format(
+                    html.escape(approved_body).replace("\r\n", "<br>").replace("\n", "<br>")
+                ),
                 "text": approved_body,
             },
         }

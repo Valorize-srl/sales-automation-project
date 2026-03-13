@@ -1,5 +1,6 @@
 from typing import Optional
 """Email responses API routes - fetch, generate AI reply, approve, send, delete."""
+import html
 import logging
 from datetime import datetime
 
@@ -444,7 +445,9 @@ async def send_reply(
             "subject": f"Re: {resp.subject}" if resp.subject else "Re: ",
             "body": {
                 "text": reply_text,
-                "html": f"<div>{reply_text.replace(chr(10), '<br>')}</div>",
+                "html": "<div>{}</div>".format(
+                    html.escape(reply_text).replace("\r\n", "<br>").replace("\n", "<br>")
+                ),
             },
         }
         result = await instantly_service.reply_to_email(reply_data)
