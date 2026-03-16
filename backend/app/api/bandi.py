@@ -132,13 +132,16 @@ async def analyze_bando(bando_id: int, db: AsyncSession = Depends(get_db)):
     if not bando:
         raise HTTPException(404, "Bando not found")
 
-    # Reset status to trigger re-analysis
-    bando.status = BandoStatus.NEW
-    await db.flush()
-
     from app.services.bandi_monitor import BandiMonitorService
     service = BandiMonitorService(db)
-    await service.analyze_new_bandi()
+
+    try:
+        await service.analyze_single_bando(bando)
+        await db.commit()
+    except Exception as e:
+        logger.error(f"Failed to analyze bando {bando_id}: {e}")
+        await db.rollback()
+        raise HTTPException(500, f"Analisi AI fallita: {str(e)}")
 
     await db.refresh(bando)
     return BandoOut.model_validate(bando)

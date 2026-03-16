@@ -277,6 +277,13 @@ class BandiMonitorService:
         await self.db.commit()
         return analyzed
 
+    async def analyze_single_bando(self, bando: Bando):
+        """Analyze a single bando with AI (public API for single-bando analysis)."""
+        if not settings.anthropic_api_key:
+            raise ValueError("Anthropic API key not configured")
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        await self._analyze_single(client, bando)
+
     async def _analyze_single(self, client: anthropic.AsyncAnthropic, bando: Bando):
         """Analyze a single bando with Claude."""
         description = bando.raw_description or bando.title

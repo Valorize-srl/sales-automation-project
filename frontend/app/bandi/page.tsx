@@ -180,13 +180,35 @@ export default function BandiPage() {
     }
   };
 
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+
   const handleArchive = async (bandoId: number) => {
+    setActionLoading((prev) => ({ ...prev, [`archive-${bandoId}`]: true }));
     try {
       await api.archiveBando(bandoId);
+      toast({ title: "Bando archiviato" });
       await loadBandi(true);
       await loadStats();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Archive failed:", err);
+      toast({ title: "Errore", description: err?.message || "Archiviazione fallita", variant: "destructive" });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [`archive-${bandoId}`]: false }));
+    }
+  };
+
+  const handleAnalyze = async (bandoId: number) => {
+    setActionLoading((prev) => ({ ...prev, [`analyze-${bandoId}`]: true }));
+    try {
+      await api.analyzeBando(bandoId);
+      toast({ title: "Analisi completata", description: "Il bando è stato analizzato con AI" });
+      await loadBandi(true);
+      await loadStats();
+    } catch (err: any) {
+      console.error("Analyze failed:", err);
+      toast({ title: "Errore", description: err?.message || "Analisi AI fallita", variant: "destructive" });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [`analyze-${bandoId}`]: false }));
     }
   };
 
@@ -457,9 +479,14 @@ export default function BandiPage() {
                           variant="outline"
                           size="sm"
                           className="gap-1 text-xs"
+                          disabled={!!actionLoading[`archive-${bando.id}`]}
                           onClick={() => handleArchive(bando.id)}
                         >
-                          <Archive className="h-3 w-3" />
+                          {actionLoading[`archive-${bando.id}`] ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Archive className="h-3 w-3" />
+                          )}
                           Archivia
                         </Button>
                       )}
@@ -468,12 +495,14 @@ export default function BandiPage() {
                           variant="outline"
                           size="sm"
                           className="gap-1 text-xs"
-                          onClick={async () => {
-                            await api.analyzeBando(bando.id);
-                            await loadBandi(true);
-                          }}
+                          disabled={!!actionLoading[`analyze-${bando.id}`]}
+                          onClick={() => handleAnalyze(bando.id)}
                         >
-                          <Brain className="h-3 w-3" />
+                          {actionLoading[`analyze-${bando.id}`] ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Brain className="h-3 w-3" />
+                          )}
                           Analizza con AI
                         </Button>
                       )}
