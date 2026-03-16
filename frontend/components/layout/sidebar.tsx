@@ -15,6 +15,7 @@ import {
   LogOut,
   Search,
   Menu,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ const navItems = [
   { href: "/campaigns", label: "Campaigns", icon: Mail },
   { href: "/responses", label: "Replies", icon: MessageSquareReply },
   { href: "/replies-analytics", label: "Replies Analytics", icon: PieChart },
+  { href: "/bandi", label: "Bandi", icon: Landmark },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

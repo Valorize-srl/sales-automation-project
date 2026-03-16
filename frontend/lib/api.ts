@@ -808,6 +808,49 @@ class ApiClient {
   async ignoreResponse(responseId: number): Promise<{ status: string; message: string }> {
     return this.post(`/responses/${responseId}/ignore`, undefined);
   }
+
+  // --- Bandi Monitor ---
+
+  async getBandi(params?: {
+    source?: string;
+    status?: string;
+    search?: string;
+    ateco?: string;
+    region?: string;
+    skip?: number;
+    limit?: number;
+  }): Promise<import("@/types").BandoListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    const qs = searchParams.toString();
+    return this.get(`/bandi${qs ? `?${qs}` : ""}`);
+  }
+
+  async getBandoStats(): Promise<import("@/types").BandoStats> {
+    return this.get("/bandi/stats");
+  }
+
+  async fetchBandi(): Promise<import("@/types").FetchBandiResponse> {
+    return this.post("/bandi/fetch", undefined);
+  }
+
+  async getBandoMatches(bandoId: number): Promise<{ matches: import("@/types").BandoMatch[]; total: number }> {
+    return this.get(`/bandi/${bandoId}/matches`);
+  }
+
+  async analyzeBando(bandoId: number): Promise<import("@/types").Bando> {
+    return this.post(`/bandi/${bandoId}/analyze`, undefined);
+  }
+
+  async archiveBando(bandoId: number): Promise<import("@/types").Bando> {
+    return this.post(`/bandi/${bandoId}/archive`, undefined);
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

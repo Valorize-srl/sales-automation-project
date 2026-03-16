@@ -959,3 +959,57 @@ export interface CompanyDetailResponse {
   people: PersonSummary[];
   campaigns: CampaignSummary[];
 }
+
+// --- Bandi Monitor ---
+
+export type BandoSource = "mimit" | "invitalia" | "mase" | "fasi" | "unioncamere" | "incentivi_gov";
+export type BandoStatus = "new" | "analyzed" | "expired" | "archived";
+
+export interface Bando {
+  id: number;
+  source: BandoSource;
+  source_url: string;
+  title: string;
+  raw_description: string | null;
+  published_at: string | null;
+  status: BandoStatus;
+  ai_summary: string | null;
+  target_companies: string | null;
+  ateco_codes: string[] | null;
+  deadline: string | null;
+  amount_min: number | null;
+  amount_max: number | null;
+  funding_type: string | null;
+  regions: string[] | null;
+  sectors: string[] | null;
+  fetched_at: string;
+  analyzed_at: string | null;
+  created_at: string;
+}
+
+export interface BandoListResponse {
+  bandi: Bando[];
+  total: number;
+}
+
+export interface BandoStats {
+  total: number;
+  new_count: number;
+  analyzed_count: number;
+  expiring_soon: number;
+  sources_breakdown: Record<string, number>;
+}
+
+export interface FetchBandiResponse {
+  fetched: number;
+  analyzed: number;
+  errors: number;
+  message: string;
+}
+
+export interface BandoMatch {
+  company_id: number;
+  name: string;
+  industry: string | null;
+  match_reason: string;
+}
