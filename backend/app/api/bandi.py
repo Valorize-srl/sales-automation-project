@@ -93,22 +93,36 @@ async def get_bando(bando_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/fetch", response_model=FetchBandiResponse)
 async def fetch_bandi(db: AsyncSession = Depends(get_db)):
-    """Fetch new bandi from all sources and analyze with AI."""
+    """Fetch new bandi from all sources. AI analysis runs in background."""
     from app.services.bandi_monitor import BandiMonitorService
     service = BandiMonitorService(db)
 
-    # Fetch
+    # Fetch only (fast: RSS + scraping, typically <5s)
     fetch_result = await service.fetch_all_sources()
 
-    # Analyze
-    analyzed = await service.analyze_new_bandi()
+    # Trigger AI analysis in background (slow: Claude API calls)
+    import asyncio
+    asyncio.create_task(_analyze_in_background())
 
     return FetchBandiResponse(
         fetched=fetch_result["fetched"],
-        analyzed=analyzed,
+        analyzed=0,
         errors=fetch_result["errors"],
-        message=f"Trovati {fetch_result['fetched']} nuovi bandi, {analyzed} analizzati con AI",
+        message=f"Trovati {fetch_result['fetched']} nuovi bandi. Analisi AI in corso in background.",
     )
+
+
+async def _analyze_in_background():
+    """Run AI analysis in a separate DB session (background task)."""
+    try:
+        from app.db.database import async_session_factory
+        from app.services.bandi_monitor import BandiMonitorService
+        async with async_session_factory() as db:
+            service = BandiMonitorService(db)
+            analyzed = await service.analyze_new_bandi()
+            logger.info(f"Background analysis completed: {analyzed} bandi analyzed")
+    except Exception as e:
+        logger.error(f"Background bandi analysis failed: {e}")
 
 
 @router.post("/{bando_id}/analyze", response_model=BandoOut)

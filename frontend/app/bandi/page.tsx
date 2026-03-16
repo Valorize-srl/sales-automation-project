@@ -34,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import type { Bando, BandoStats, BandoMatch } from "@/types";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -102,6 +103,8 @@ export default function BandiPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   // Matches dialog
+  const { toast } = useToast();
+
   const [matchesDialog, setMatchesDialog] = useState<{
     open: boolean;
     bandoId: number;
@@ -154,12 +157,24 @@ export default function BandiPage() {
     setFetching(true);
     try {
       const result = await api.fetchBandi();
-      alert(result.message);
+      toast({
+        title: "Bandi aggiornati",
+        description: result.message,
+      });
       await loadBandi();
       await loadStats();
+      // Reload again after 15s to pick up AI analysis results
+      setTimeout(async () => {
+        await loadBandi(true);
+        await loadStats();
+      }, 15000);
     } catch (err) {
       console.error("Fetch failed:", err);
-      alert("Errore durante il recupero dei bandi");
+      toast({
+        title: "Errore",
+        description: "Errore durante il recupero dei bandi",
+        variant: "destructive",
+      });
     } finally {
       setFetching(false);
     }
