@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 """Email responses API routes - fetch, generate AI reply, approve, send, delete."""
 import html
 import logging
@@ -110,6 +110,136 @@ async def list_responses(
 # --- Fetch Replies from Instantly ---
 
 
+async def _process_email_item(
+    email_item: dict,
+    campaign_id: int,
+    db: AsyncSession,
+    our_accounts: set[str],
+) -> str:
+    """Process a single email item from Instantly. Returns 'fetched', 'skipped', or 'skip_outbound'."""
+    instantly_id = email_item.get("id")
+    if not instantly_id:
+        return "skipped"
+
+    # Deduplication
+    existing = await db.execute(
+        select(EmailResponse.id).where(
+            EmailResponse.instantly_email_id == instantly_id
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return "skipped"
+
+    # Determine direction: if from_address_email is one of our sending accounts, it's outbound
+    from_email = email_item.get("from_address_email", "")
+    eaccount = email_item.get("eaccount", "")
+    if from_email and from_email.lower() in our_accounts:
+        return "skip_outbound"
+
+    # Match lead by sender email
+    lead_id = None
+    if from_email:
+        lead_result = await db.execute(
+            select(Lead).where(Lead.email == from_email.lower())
+        )
+        lead = lead_result.scalar_one_or_none()
+        if lead:
+            lead_id = lead.id
+
+    # Extract body text
+    body_raw = email_item.get("body", "")
+    if isinstance(body_raw, dict):
+        body_text = body_raw.get("text", "") or body_raw.get("html", "")
+    else:
+        body_text = str(body_raw)
+
+    # Parse actual email timestamp from Instantly
+    received_at = None
+    ts_raw = email_item.get("timestamp_email")
+    if ts_raw:
+        try:
+            received_at = datetime.fromisoformat(
+                ts_raw.replace("Z", "+00:00")
+            )
+        except (ValueError, AttributeError):
+            pass
+
+    # Extract sentiment from Instantly's AI interest score
+    ai_interest = email_item.get("ai_interest_value")
+    sentiment_score = None
+    sentiment_val = None
+    if ai_interest is not None:
+        try:
+            sentiment_score = float(ai_interest)
+            sentiment_val = _score_to_sentiment(sentiment_score)
+        except (ValueError, TypeError):
+            pass
+
+    # Create record
+    email_response = EmailResponse(
+        campaign_id=campaign_id,
+        lead_id=lead_id,
+        instantly_email_id=instantly_id,
+        from_email=from_email,
+        sender_email=eaccount,
+        thread_id=email_item.get("thread_id"),
+        subject=email_item.get("subject", ""),
+        message_body=body_text,
+        direction=MessageDirection.INBOUND,
+        status=ResponseStatus.PENDING,
+        received_at=received_at,
+        sentiment=sentiment_val,
+        sentiment_score=sentiment_score,
+    )
+    db.add(email_response)
+    await db.flush()
+    return "fetched"
+
+
+async def _paginated_fetch(
+    campaign_instantly_id: str,
+    campaign_id: int,
+    db: AsyncSession,
+    our_accounts: set[str],
+    email_type: Optional[str] = None,
+    lead_email: Optional[str] = None,
+) -> tuple[int, int]:
+    """Fetch emails from Instantly with pagination. Returns (fetched, skipped)."""
+    fetched = 0
+    skipped = 0
+    starting_after = None
+
+    while True:
+        kwargs: dict[str, Any] = {
+            "campaign_id": campaign_instantly_id,
+            "limit": 50,
+            "starting_after": starting_after,
+        }
+        if email_type:
+            kwargs["email_type"] = email_type
+        if lead_email:
+            kwargs["lead"] = lead_email
+        email_data = await instantly_service.list_emails(**kwargs)
+        items = email_data.get("items", [])
+        if not items:
+            break
+
+        for email_item in items:
+            result = await _process_email_item(email_item, campaign_id, db, our_accounts)
+            if result == "fetched":
+                fetched += 1
+            elif result == "skipped":
+                skipped += 1
+
+        # Cursor pagination
+        next_cursor = email_data.get("next_starting_after")
+        if not next_cursor or len(items) < 50:
+            break
+        starting_after = next_cursor
+
+    return fetched, skipped
+
+
 @router.post("/fetch", response_model=FetchRepliesResponse)
 async def fetch_replies(
     data: FetchRepliesRequest,
@@ -118,10 +248,21 @@ async def fetch_replies(
     """
     Fetch new replies from Instantly for given campaigns.
     Imports emails with sentiment from Instantly's ai_interest_value.
+    Two-pass approach:
+      1) email_type="received" for initial replies
+      2) Per-lead fetch without email_type filter for follow-up replies
     """
     fetched = 0
     skipped = 0
     errors = 0
+
+    # Collect our sending accounts to distinguish inbound vs outbound
+    acct_result = await db.execute(
+        select(EmailResponse.sender_email)
+        .where(EmailResponse.sender_email.isnot(None))
+        .distinct()
+    )
+    our_accounts = {row[0].lower() for row in acct_result.all() if row[0]}
 
     camp_result = await db.execute(
         select(Campaign).where(Campaign.id.in_(data.campaign_ids))
@@ -133,98 +274,44 @@ async def fetch_replies(
             continue
 
         try:
-            starting_after = None
-            while True:
-                email_data = await instantly_service.list_emails(
-                    campaign_id=campaign.instantly_campaign_id,
-                    email_type="received",
-                    limit=50,
-                    starting_after=starting_after,
+            # Pass 1: standard fetch of received emails
+            f, s = await _paginated_fetch(
+                campaign.instantly_campaign_id,
+                campaign.id,
+                db,
+                our_accounts,
+                email_type="received",
+            )
+            fetched += f
+            skipped += s
+
+            # Pass 2: fetch follow-up replies for leads who already replied
+            # Get distinct lead emails that have existing inbound replies for this campaign
+            lead_emails_result = await db.execute(
+                select(EmailResponse.from_email)
+                .where(
+                    EmailResponse.campaign_id == campaign.id,
+                    EmailResponse.direction == MessageDirection.INBOUND,
+                    EmailResponse.from_email.isnot(None),
                 )
-                items = email_data.get("items", [])
-                if not items:
-                    break
+                .distinct()
+            )
+            lead_emails = [row[0] for row in lead_emails_result.all() if row[0]]
 
-                for email_item in items:
-                    instantly_id = email_item.get("id")
-                    if not instantly_id:
-                        continue
-
-                    # Deduplication
-                    existing = await db.execute(
-                        select(EmailResponse.id).where(
-                            EmailResponse.instantly_email_id == instantly_id
-                        )
+            for lead_email in lead_emails:
+                try:
+                    f2, s2 = await _paginated_fetch(
+                        campaign.instantly_campaign_id,
+                        campaign.id,
+                        db,
+                        our_accounts,
+                        lead_email=lead_email,
                     )
-                    if existing.scalar_one_or_none() is not None:
-                        skipped += 1
-                        continue
-
-                    # Match lead by sender email
-                    from_email = email_item.get("from_address_email", "")
-                    lead_id = None
-                    if from_email:
-                        lead_result = await db.execute(
-                            select(Lead).where(Lead.email == from_email.lower())
-                        )
-                        lead = lead_result.scalar_one_or_none()
-                        if lead:
-                            lead_id = lead.id
-
-                    # Extract body text
-                    body_raw = email_item.get("body", "")
-                    if isinstance(body_raw, dict):
-                        body_text = body_raw.get("text", "") or body_raw.get("html", "")
-                    else:
-                        body_text = str(body_raw)
-
-                    # Parse actual email timestamp from Instantly
-                    received_at = None
-                    ts_raw = email_item.get("timestamp_email")
-                    if ts_raw:
-                        try:
-                            received_at = datetime.fromisoformat(
-                                ts_raw.replace("Z", "+00:00")
-                            )
-                        except (ValueError, AttributeError):
-                            pass
-
-                    # Extract sentiment from Instantly's AI interest score
-                    ai_interest = email_item.get("ai_interest_value")
-                    sentiment_score = None
-                    sentiment_val = None
-                    if ai_interest is not None:
-                        try:
-                            sentiment_score = float(ai_interest)
-                            sentiment_val = _score_to_sentiment(sentiment_score)
-                        except (ValueError, TypeError):
-                            pass
-
-                    # Create record
-                    email_response = EmailResponse(
-                        campaign_id=campaign.id,
-                        lead_id=lead_id,
-                        instantly_email_id=instantly_id,
-                        from_email=from_email,
-                        sender_email=email_item.get("eaccount"),
-                        thread_id=email_item.get("thread_id"),
-                        subject=email_item.get("subject", ""),
-                        message_body=body_text,
-                        direction=MessageDirection.INBOUND,
-                        status=ResponseStatus.PENDING,
-                        received_at=received_at,
-                        sentiment=sentiment_val,
-                        sentiment_score=sentiment_score,
-                    )
-                    db.add(email_response)
-                    await db.flush()
-                    fetched += 1
-
-                # Cursor pagination
-                next_cursor = email_data.get("next_starting_after")
-                if not next_cursor or len(items) < 50:
-                    break
-                starting_after = next_cursor
+                    fetched += f2
+                    skipped += s2
+                except InstantlyAPIError:
+                    # Non-critical: log but continue with other leads
+                    logger.warning(f"Failed to fetch follow-ups for lead {lead_email}")
 
         except InstantlyAPIError as e:
             logger.error(

@@ -305,16 +305,17 @@ class InstantlyService:
     async def list_emails(
         self,
         campaign_id: Optional[str] = None,
-        email_type: str = "received",
+        email_type: Optional[str] = "received",
         limit: int = 50,
         starting_after: Optional[str] = None,
         lead: Optional[str] = None,
     ) -> dict:
         """Fetch emails, paginated with cursor."""
         params: dict[str, Any] = {
-            "email_type": email_type,
             "limit": limit,
         }
+        if email_type:
+            params["email_type"] = email_type
         if campaign_id:
             params["campaign_id"] = campaign_id
         if starting_after:
