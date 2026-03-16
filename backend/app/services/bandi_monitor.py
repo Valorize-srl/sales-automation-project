@@ -284,6 +284,32 @@ class BandiMonitorService:
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         await self._analyze_single(client, bando)
 
+    def _extract_json(self, text: str) -> dict:
+        """Extract a JSON object from text, handling code fences and surrounding text."""
+        # Remove markdown code fences
+        cleaned = re.sub(r'```(?:json)?\s*', '', text)
+        cleaned = re.sub(r'```', '', cleaned).strip()
+
+        # Try direct parse first
+        try:
+            result = json.loads(cleaned)
+            if isinstance(result, dict):
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Try to find JSON object in the text
+        match = re.search(r'\{[\s\S]*\}', cleaned)
+        if match:
+            try:
+                result = json.loads(match.group())
+                if isinstance(result, dict):
+                    return result
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        raise ValueError(f"No valid JSON object found in response: {cleaned[:200]}")
+
     async def _analyze_single(self, client: anthropic.AsyncAnthropic, bando: Bando):
         """Analyze a single bando with Claude."""
         description = bando.raw_description or bando.title
@@ -299,7 +325,6 @@ class BandiMonitorService:
                     resp = await http.get(bando.source_url)
                     if resp.status_code == 200:
                         soup = BeautifulSoup(resp.text, "html.parser")
-                        # Remove scripts and styles
                         for tag in soup(["script", "style", "nav", "footer", "header"]):
                             tag.decompose()
                         page_text = soup.get_text(separator=" ", strip=True)
@@ -322,14 +347,11 @@ class BandiMonitorService:
         )
 
         raw_text = response.content[0].text.strip()
+        logger.info(f"Claude response for bando {bando.id}: {raw_text[:300]}")
 
-        # Try to parse JSON from response
         try:
-            # Remove possible markdown code fences
-            cleaned = re.sub(r'^```(?:json)?\s*', '', raw_text)
-            cleaned = re.sub(r'\s*```$', '', cleaned)
-            analysis = json.loads(cleaned)
-        except json.JSONDecodeError:
+            analysis = self._extract_json(raw_text)
+        except ValueError:
             logger.warning(f"Could not parse AI analysis for bando {bando.id}: {raw_text[:200]}")
             bando.ai_analysis_raw = {"raw_response": raw_text}
             bando.status = BandoStatus.ANALYZED
@@ -350,14 +372,22 @@ class BandiMonitorService:
         if deadline_str:
             try:
                 bando.deadline = datetime.fromisoformat(
-                    deadline_str.replace("Z", "+00:00")
+                    str(deadline_str).replace("Z", "+00:00")
                 )
             except (ValueError, AttributeError):
                 pass
 
-        # Parse amounts
-        bando.amount_min = analysis.get("amount_min")
-        bando.amount_max = analysis.get("amount_max")
+        # Parse amounts — ensure numeric types
+        try:
+            amt_min = analysis.get("amount_min")
+            bando.amount_min = float(amt_min) if amt_min is not None else None
+        except (ValueError, TypeError):
+            bando.amount_min = None
+        try:
+            amt_max = analysis.get("amount_max")
+            bando.amount_max = float(amt_max) if amt_max is not None else None
+        except (ValueError, TypeError):
+            bando.amount_max = None
 
         bando.status = BandoStatus.ANALYZED
         bando.analyzed_at = datetime.now(timezone.utc)
