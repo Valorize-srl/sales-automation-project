@@ -220,8 +220,16 @@ async def _paginated_fetch(
         if lead_email:
             kwargs["lead"] = lead_email
         email_data = await instantly_service.list_emails(**kwargs)
-        items = email_data.get("items", [])
+
+        # Try different response structures (Instantly API format varies)
+        items = (
+            email_data.get("items") or
+            email_data.get("data") or
+            email_data.get("emails") or
+            []
+        )
         if not items:
+            logger.info(f"No email items found. Response keys: {[k for k in email_data.keys() if k != '_status_code']}")
             break
 
         for email_item in items:
@@ -231,8 +239,12 @@ async def _paginated_fetch(
             elif result == "skipped":
                 skipped += 1
 
-        # Cursor pagination
-        next_cursor = email_data.get("next_starting_after")
+        # Cursor pagination — check both top-level and nested pagination object
+        pagination = email_data.get("pagination", {})
+        next_cursor = (
+            email_data.get("next_starting_after") or
+            pagination.get("next_starting_after")
+        )
         if not next_cursor or len(items) < 50:
             break
         starting_after = next_cursor
@@ -257,24 +269,42 @@ async def fetch_replies(
     errors = 0
 
     # Collect our sending accounts to distinguish inbound vs outbound
+    # 1) From existing records in DB
     acct_result = await db.execute(
         select(EmailResponse.sender_email)
         .where(EmailResponse.sender_email.isnot(None))
         .distinct()
     )
     our_accounts = {row[0].lower() for row in acct_result.all() if row[0]}
+    # 2) Also fetch accounts from Instantly API for reliable detection
+    try:
+        acct_data = await instantly_service.list_accounts(limit=100)
+        api_accounts = acct_data.get("items") or acct_data.get("data") or acct_data.get("accounts") or []
+        for acct in api_accounts:
+            email = acct.get("email", "")
+            if email:
+                our_accounts.add(email.lower())
+    except Exception as e:
+        logger.warning(f"Could not fetch Instantly accounts for outbound detection: {e}")
 
     camp_result = await db.execute(
         select(Campaign).where(Campaign.id.in_(data.campaign_ids))
     )
     campaigns = camp_result.scalars().all()
+    logger.info(
+        f"Fetch replies: {len(campaigns)} campaigns loaded, "
+        f"our_accounts={our_accounts}, "
+        f"requested_ids={data.campaign_ids}"
+    )
 
     for campaign in campaigns:
         if not campaign.instantly_campaign_id:
+            logger.warning(f"Campaign {campaign.id} ({campaign.name}) has no instantly_campaign_id, skipping")
             continue
+        logger.info(f"Fetching replies for campaign {campaign.id} ({campaign.name}), instantly_id={campaign.instantly_campaign_id}")
 
         try:
-            # Pass 1: standard fetch of received emails
+            # Pass 1: fetch received emails (replies from leads)
             f, s = await _paginated_fetch(
                 campaign.instantly_campaign_id,
                 campaign.id,
@@ -284,6 +314,20 @@ async def fetch_replies(
             )
             fetched += f
             skipped += s
+            logger.info(f"Campaign {campaign.id} pass 1 (received): fetched={f}, skipped={s}")
+
+            # If pass 1 got nothing, try without email_type filter as fallback
+            if f == 0 and s == 0:
+                logger.info(f"Campaign {campaign.id}: no results with email_type=received, trying without filter")
+                f_all, s_all = await _paginated_fetch(
+                    campaign.instantly_campaign_id,
+                    campaign.id,
+                    db,
+                    our_accounts,
+                )
+                fetched += f_all
+                skipped += s_all
+                logger.info(f"Campaign {campaign.id} fallback (all): fetched={f_all}, skipped={s_all}")
 
             # Pass 2: fetch follow-up replies for leads who already replied
             # Get distinct lead emails that have existing inbound replies for this campaign

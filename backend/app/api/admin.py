@@ -77,7 +77,7 @@ async def backfill_sender_emails(db: AsyncSession = Depends(get_db)):
                     starting_after=starting_after,
                 )
 
-                items = email_data.get("items", [])
+                items = email_data.get("items") or email_data.get("data") or email_data.get("emails") or []
 
                 for email_item in items:
                     if email_item.get("id") == resp.instantly_email_id:

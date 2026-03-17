@@ -1090,7 +1090,7 @@ async def sync_leads_from_instantly(
                 limit=100,
                 starting_after=starting_after,
             )
-            items = data.get("items", [])
+            items = data.get("items") or data.get("data") or data.get("leads") or []
             if not items:
                 break
 
