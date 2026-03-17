@@ -51,6 +51,20 @@ class ImportLeadsRequest(BaseModel):
     list_id: Optional[int] = None
 
 
+class LinkedInSearchPeopleRequest(BaseModel):
+    keywords: str = Field(..., description="Job title or role, e.g. 'CEO', 'Sales Director'")
+    company: Optional[str] = None
+    location: Optional[str] = None
+    max_results: int = Field(default=10, ge=1, le=25)
+    client_tag: Optional[str] = None
+
+
+class LinkedInSearchCompaniesRequest(BaseModel):
+    company_urls: Optional[list[str]] = None
+    company_names: Optional[list[str]] = None
+    client_tag: Optional[str] = None
+
+
 class GenerateCsvRequest(BaseModel):
     results: list[dict]
     columns: Optional[list[str]] = None

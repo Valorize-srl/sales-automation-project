@@ -19,6 +19,8 @@ from app.schemas.tools import (
     ApolloEnrichRequest,
     ApolloEnrichResponse,
     GoogleMapsSearchRequest,
+    LinkedInSearchPeopleRequest,
+    LinkedInSearchCompaniesRequest,
     ScrapeWebsitesRequest,
     ImportLeadsRequest,
     ImportLeadsResponse,
@@ -309,6 +311,123 @@ async def scrape_websites(
     cost_usd = raw.get("cost_usd", 0.0)
     await _log_search(db, "website_contacts", f"{len(urls)} URLs",
                       {"urls_count": len(urls)}, len(results), 0, cost_usd, req.client_tag)
+
+    return ToolSearchResponse(
+        results=results, total=len(results),
+        credits_used=0, cost_usd=cost_usd,
+    )
+
+
+# ── LinkedIn Search People ──────────────────────────────────────────
+
+@router.post("/linkedin/search-people", response_model=ToolSearchResponse)
+async def linkedin_search_people(
+    req: LinkedInSearchPeopleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Search LinkedIn for people/decision makers via Apify scraper."""
+    from app.services.apify_scraper import ApifyScraperService
+
+    if not app_settings.apify_api_token:
+        raise HTTPException(400, "Apify API token not configured")
+
+    search_query = req.keywords
+    if req.company:
+        search_query += f" {req.company}"
+    if req.location:
+        search_query += f" {req.location}"
+
+    try:
+        scraper = ApifyScraperService(app_settings.apify_api_token)
+        raw = await scraper.run_actor(
+            actor_id="harvestapi/linkedin-profile-search",
+            input_data={
+                "searchTerms": [search_query],
+                "maxResults": req.max_results,
+            },
+            timeout=180,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"LinkedIn people search failed: {e}")
+
+    results = []
+    for item in raw.get("results", []):
+        results.append({
+            "first_name": item.get("firstName", ""),
+            "last_name": item.get("lastName", ""),
+            "name": item.get("fullName") or item.get("name", ""),
+            "headline": item.get("headline", ""),
+            "title": item.get("title") or item.get("headline", ""),
+            "company": item.get("companyName") or item.get("company", ""),
+            "location": item.get("location", ""),
+            "linkedin_url": item.get("profileUrl") or item.get("url", ""),
+            "email": item.get("email", ""),
+        })
+
+    cost_usd = raw.get("cost_usd", 0.0)
+    await _log_search(db, "linkedin_people", search_query, req.model_dump(),
+                      len(results), 0, cost_usd, req.client_tag)
+
+    return ToolSearchResponse(
+        results=results, total=len(results),
+        credits_used=0, cost_usd=cost_usd,
+    )
+
+
+# ── LinkedIn Search Companies ──────────────────────────────────────
+
+@router.post("/linkedin/search-companies", response_model=ToolSearchResponse)
+async def linkedin_search_companies(
+    req: LinkedInSearchCompaniesRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Search LinkedIn company profiles via Apify scraper."""
+    from app.services.apify_scraper import ApifyScraperService
+
+    if not app_settings.apify_api_token:
+        raise HTTPException(400, "Apify API token not configured")
+
+    if not req.company_urls and not req.company_names:
+        raise HTTPException(400, "Provide company_urls or company_names")
+
+    input_data = {}
+    if req.company_urls:
+        input_data["startUrls"] = [{"url": u} for u in req.company_urls]
+    elif req.company_names:
+        input_data["startUrls"] = [
+            {"url": f"https://www.linkedin.com/company/{name.lower().replace(' ', '-')}"}
+            for name in req.company_names
+        ]
+
+    try:
+        scraper = ApifyScraperService(app_settings.apify_api_token)
+        raw = await scraper.run_actor(
+            actor_id="curious_coder/linkedin-company-scraper",
+            input_data=input_data,
+            timeout=300,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"LinkedIn companies search failed: {e}")
+
+    results = []
+    for item in raw.get("results", []):
+        results.append({
+            "name": item.get("name", ""),
+            "description": item.get("description", ""),
+            "industry": item.get("industry", ""),
+            "employee_count": item.get("staffCount") or item.get("employeeCount", 0),
+            "specialties": item.get("specialities") or item.get("specialties", []),
+            "website": item.get("website", ""),
+            "linkedin_url": item.get("url") or item.get("linkedInUrl", ""),
+            "followers": item.get("followerCount", 0),
+            "headquarters": item.get("headquarters", ""),
+            "founded": item.get("foundedOn", ""),
+        })
+
+    cost_usd = raw.get("cost_usd", 0.0)
+    query_label = ", ".join(req.company_names or [u.split("/")[-1] for u in (req.company_urls or [])[:5]])
+    await _log_search(db, "linkedin_companies", query_label, req.model_dump(),
+                      len(results), 0, cost_usd, req.client_tag)
 
     return ToolSearchResponse(
         results=results, total=len(results),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Users, Building2, Zap, MapPin, Globe, Bot, MessageSquare } from "lucide-react";
+import { Search, Users, Building2, Zap, MapPin, Globe, Bot, MessageSquare, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -17,11 +17,21 @@ import { ApolloCompaniesForm } from "@/components/tools/apollo-companies-form";
 import { ApolloEnrichForm } from "@/components/tools/apollo-enrich-form";
 import { GoogleMapsForm } from "@/components/tools/google-maps-form";
 import { WebsiteScraperForm } from "@/components/tools/website-scraper-form";
+import { LinkedInPeopleForm } from "@/components/tools/linkedin-people-form";
+import { LinkedInCompaniesForm } from "@/components/tools/linkedin-companies-form";
 import { ClaudePanel } from "@/components/tools/claude-panel";
+import { MiniChat } from "@/components/tools/mini-chat";
 import { AIAgent } from "@/types";
 import { api } from "@/lib/api";
 
-type ToolId = "apollo-people" | "apollo-companies" | "apollo-enrich" | "google-maps" | "website-scraper";
+type ToolId =
+  | "apollo-people"
+  | "apollo-companies"
+  | "apollo-enrich"
+  | "google-maps"
+  | "website-scraper"
+  | "linkedin-people"
+  | "linkedin-companies";
 
 const TOOLS: { id: ToolId; name: string; description: string; icon: typeof Search; cost: string }[] = [
   {
@@ -44,6 +54,20 @@ const TOOLS: { id: ToolId; name: string; description: string; icon: typeof Searc
     description: "Arricchisci lead gia' importate con email, telefono e LinkedIn.",
     icon: Zap,
     cost: "1 credito / contatto",
+  },
+  {
+    id: "linkedin-people",
+    name: "LinkedIn Search People",
+    description: "Cerca decision maker su LinkedIn per ruolo, azienda, location.",
+    icon: Linkedin,
+    cost: "~$0.01 / profilo (Apify)",
+  },
+  {
+    id: "linkedin-companies",
+    name: "LinkedIn Search Companies",
+    description: "Scraping profili aziendali LinkedIn: dipendenti, settore, specialties.",
+    icon: Linkedin,
+    cost: "~$0.01 / profilo (Apify)",
   },
   {
     id: "google-maps",
@@ -92,6 +116,10 @@ export default function ProspectingPage() {
         return <GoogleMapsForm clientTag={clientTag} />;
       case "website-scraper":
         return <WebsiteScraperForm clientTag={clientTag} />;
+      case "linkedin-people":
+        return <LinkedInPeopleForm clientTag={clientTag} />;
+      case "linkedin-companies":
+        return <LinkedInCompaniesForm clientTag={clientTag} />;
       default:
         return null;
     }
@@ -141,7 +169,7 @@ export default function ProspectingPage() {
       </div>
 
       {/* Tool Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 px-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-1">
         {TOOLS.map((tool) => (
           <ToolCard
             key={tool.id}
@@ -165,6 +193,9 @@ export default function ProspectingPage() {
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-4">
             {renderToolForm()}
+            {activeTool && (
+              <MiniChat agentId={agentId} toolContext={activeToolMeta?.name} />
+            )}
           </div>
         </SheetContent>
       </Sheet>

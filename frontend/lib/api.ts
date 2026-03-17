@@ -878,6 +878,14 @@ class ApiClient {
     return this.post("/tools/import-leads", params);
   }
 
+  async toolsLinkedInSearchPeople(params: import("@/types").LinkedInSearchPeopleParams): Promise<import("@/types").ToolSearchResponse> {
+    return this.post("/tools/linkedin/search-people", params);
+  }
+
+  async toolsLinkedInSearchCompanies(params: import("@/types").LinkedInSearchCompaniesParams): Promise<import("@/types").ToolSearchResponse> {
+    return this.post("/tools/linkedin/search-companies", params);
+  }
+
   async toolsGenerateCsv(params: import("@/types").GenerateCsvParams): Promise<import("@/types").CsvExportResponse> {
     return this.post("/tools/generate-csv", params);
   }

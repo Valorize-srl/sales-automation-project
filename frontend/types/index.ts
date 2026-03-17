@@ -1084,6 +1084,20 @@ export interface GenerateCsvParams {
   filename?: string;
 }
 
+export interface LinkedInSearchPeopleParams {
+  keywords: string;
+  company?: string;
+  location?: string;
+  max_results?: number;
+  client_tag?: string;
+}
+
+export interface LinkedInSearchCompaniesParams {
+  company_urls?: string[];
+  company_names?: string[];
+  client_tag?: string;
+}
+
 export interface CsvExportResponse {
   filename: string;
   rows: number;
