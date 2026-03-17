@@ -1013,3 +1013,80 @@ export interface BandoMatch {
   industry: string | null;
   match_reason: string;
 }
+
+// ── Prospecting Tools ──────────────────────────────────────────────
+
+export interface ToolSearchResponse {
+  results: Record<string, unknown>[];
+  total: number;
+  credits_used: number;
+  cost_usd: number;
+}
+
+export interface ImportLeadsResponse {
+  imported: number;
+  skipped: number;
+  errors: number;
+  message: string;
+}
+
+export interface ToolsApolloEnrichResponse {
+  enriched: number;
+  total_requested: number;
+  credits_used: number;
+  cost_usd: number;
+  message: string;
+}
+
+export interface ApolloSearchPeopleParams {
+  person_titles?: string[];
+  person_locations?: string[];
+  person_seniorities?: string[];
+  organization_keywords?: string[];
+  organization_sizes?: string[];
+  keywords?: string;
+  per_page?: number;
+  client_tag?: string;
+}
+
+export interface ApolloSearchCompaniesParams {
+  organization_locations?: string[];
+  organization_keywords?: string[];
+  organization_sizes?: string[];
+  technologies?: string[];
+  keywords?: string;
+  per_page?: number;
+  client_tag?: string;
+}
+
+export interface GoogleMapsSearchParams {
+  query: string;
+  location?: string;
+  max_results?: number;
+  client_tag?: string;
+}
+
+export interface ScrapeWebsitesParams {
+  urls: string[];
+  client_tag?: string;
+}
+
+export interface ImportLeadsParams {
+  results: Record<string, unknown>[];
+  import_type: "people" | "companies";
+  client_tag?: string;
+  list_id?: number;
+}
+
+export interface GenerateCsvParams {
+  results: Record<string, unknown>[];
+  columns?: string[];
+  filename?: string;
+}
+
+export interface CsvExportResponse {
+  filename: string;
+  rows: number;
+  columns: string[];
+  content_base64: string;
+}

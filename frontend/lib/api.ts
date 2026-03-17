@@ -851,6 +851,36 @@ class ApiClient {
   async archiveBando(bandoId: number): Promise<import("@/types").Bando> {
     return this.post(`/bandi/${bandoId}/archive`, undefined);
   }
+
+  // --- Prospecting Tools ---
+
+  async toolsSearchPeople(params: import("@/types").ApolloSearchPeopleParams): Promise<import("@/types").ToolSearchResponse> {
+    return this.post("/tools/apollo/search-people", params);
+  }
+
+  async toolsSearchCompanies(params: import("@/types").ApolloSearchCompaniesParams): Promise<import("@/types").ToolSearchResponse> {
+    return this.post("/tools/apollo/search-companies", params);
+  }
+
+  async toolsEnrichPeople(personIds: number[], clientTag?: string): Promise<import("@/types").ToolsApolloEnrichResponse> {
+    return this.post("/tools/apollo/enrich", { person_ids: personIds, client_tag: clientTag });
+  }
+
+  async toolsGoogleMapsSearch(params: import("@/types").GoogleMapsSearchParams): Promise<import("@/types").ToolSearchResponse> {
+    return this.post("/tools/google-maps/search", params);
+  }
+
+  async toolsScrapeWebsites(params: import("@/types").ScrapeWebsitesParams): Promise<import("@/types").ToolSearchResponse> {
+    return this.post("/tools/scrape-websites", params);
+  }
+
+  async toolsImportLeads(params: import("@/types").ImportLeadsParams): Promise<import("@/types").ImportLeadsResponse> {
+    return this.post("/tools/import-leads", params);
+  }
+
+  async toolsGenerateCsv(params: import("@/types").GenerateCsvParams): Promise<import("@/types").CsvExportResponse> {
+    return this.post("/tools/generate-csv", params);
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

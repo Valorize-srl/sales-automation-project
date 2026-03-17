@@ -16,6 +16,7 @@ from app.api import (
     lead_lists,
     prospecting_tools,
     bandi,
+    tools,
 )
 
 api_router = APIRouter()
@@ -35,3 +36,4 @@ api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(prospecting_tools.router, prefix="/prospecting-tools", tags=["prospecting-tools"])
 api_router.include_router(bandi.router, prefix="/bandi", tags=["bandi"])
+api_router.include_router(tools.router, prefix="/tools", tags=["tools"])
