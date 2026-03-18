@@ -252,6 +252,84 @@ async def _paginated_fetch(
     return fetched, skipped
 
 
+@router.get("/debug-instantly")
+async def debug_instantly(
+    campaign_id: Optional[int] = Query(None, description="Internal campaign DB ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Diagnostic endpoint: test raw Instantly API response for a campaign."""
+    result: dict[str, Any] = {"api_key_set": bool(instantly_service.api_key)}
+
+    # Test accounts endpoint
+    try:
+        acct_data = await instantly_service.list_accounts(limit=5)
+        acct_keys = [k for k in acct_data.keys() if k != "_status_code"]
+        accounts_list = acct_data.get("items") or acct_data.get("data") or acct_data.get("accounts") or []
+        result["accounts"] = {
+            "response_keys": acct_keys,
+            "status_code": acct_data.get("_status_code"),
+            "count": len(accounts_list),
+            "sample": accounts_list[:2] if accounts_list else [],
+        }
+    except Exception as e:
+        result["accounts"] = {"error": str(e)}
+
+    # Test emails endpoint for a specific campaign
+    if campaign_id:
+        camp_result = await db.execute(
+            select(Campaign).where(Campaign.id == campaign_id)
+        )
+        campaign = camp_result.scalar_one_or_none()
+        if not campaign:
+            result["campaign"] = {"error": f"Campaign {campaign_id} not found"}
+        elif not campaign.instantly_campaign_id:
+            result["campaign"] = {"error": f"Campaign {campaign_id} has no instantly_campaign_id"}
+        else:
+            result["campaign"] = {
+                "id": campaign.id,
+                "name": campaign.name,
+                "instantly_campaign_id": campaign.instantly_campaign_id,
+            }
+            # Test with email_type=received
+            try:
+                email_data = await instantly_service.list_emails(
+                    campaign_id=campaign.instantly_campaign_id,
+                    email_type="received",
+                    limit=5,
+                )
+                email_keys = [k for k in email_data.keys() if k != "_status_code"]
+                items = email_data.get("items") or email_data.get("data") or email_data.get("emails") or []
+                result["emails_received"] = {
+                    "response_keys": email_keys,
+                    "status_code": email_data.get("_status_code"),
+                    "count": len(items),
+                    "sample_keys": list(items[0].keys()) if items else [],
+                    "raw_response_snippet": {k: email_data[k] for k in email_keys[:5]},
+                }
+            except Exception as e:
+                result["emails_received"] = {"error": str(e)}
+
+            # Test without email_type filter
+            try:
+                email_data2 = await instantly_service.list_emails(
+                    campaign_id=campaign.instantly_campaign_id,
+                    email_type=None,
+                    limit=5,
+                )
+                email_keys2 = [k for k in email_data2.keys() if k != "_status_code"]
+                items2 = email_data2.get("items") or email_data2.get("data") or email_data2.get("emails") or []
+                result["emails_all"] = {
+                    "response_keys": email_keys2,
+                    "status_code": email_data2.get("_status_code"),
+                    "count": len(items2),
+                    "sample_keys": list(items2[0].keys()) if items2 else [],
+                }
+            except Exception as e:
+                result["emails_all"] = {"error": str(e)}
+
+    return result
+
+
 @router.post("/fetch", response_model=FetchRepliesResponse)
 async def fetch_replies(
     data: FetchRepliesRequest,
