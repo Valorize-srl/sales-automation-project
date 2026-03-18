@@ -1,6 +1,7 @@
 """
 Instantly API v2 client - manages campaigns, leads, analytics, and webhooks.
 """
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -41,32 +42,51 @@ class InstantlyService:
         json: Optional[dict] = None,
         params: Optional[dict] = None,
         timeout: float = 30.0,
+        _retries: int = 3,
     ) -> dict[str, Any]:
-        """Generic request wrapper with error handling."""
+        """Generic request wrapper with error handling and rate-limit retry."""
         url = f"{self.base_url}{path}"
         headers: dict[str, str] = {"Authorization": f"Bearer {self.api_key}"}
         if json is not None:
             headers["Content-Type"] = "application/json"
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(
-                method, url,
-                headers=headers,
-                json=json,
-                params=params,
-            )
-        logger.info(f"Instantly API {method} {path} -> status={response.status_code} body={response.text[:500]}")
-        if response.status_code >= 400:
-            detail = response.text
-            try:
-                detail = response.json().get("message", response.text)
-            except Exception:
-                pass
-            raise InstantlyAPIError(response.status_code, detail)
-        if not response.text.strip():
-            return {"_status_code": response.status_code}
-        result = response.json()
-        result["_status_code"] = response.status_code
-        return result
+
+        last_error: Optional[Exception] = None
+        for attempt in range(_retries):
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.request(
+                    method, url,
+                    headers=headers,
+                    json=json,
+                    params=params,
+                )
+            logger.info(f"Instantly API {method} {path} -> status={response.status_code} body={response.text[:300]}")
+
+            # Retry on rate limit (429) or server errors (5xx)
+            if response.status_code == 429 or response.status_code >= 500:
+                wait = (attempt + 1) * 2  # 2s, 4s, 6s
+                logger.warning(
+                    f"Instantly API {response.status_code} on {path}, retrying in {wait}s (attempt {attempt + 1}/{_retries})"
+                )
+                last_error = InstantlyAPIError(response.status_code, response.text[:200])
+                await asyncio.sleep(wait)
+                continue
+
+            if response.status_code >= 400:
+                detail = response.text
+                try:
+                    detail = response.json().get("message", response.text)
+                except Exception:
+                    pass
+                raise InstantlyAPIError(response.status_code, detail)
+
+            if not response.text.strip():
+                return {"_status_code": response.status_code}
+            result = response.json()
+            result["_status_code"] = response.status_code
+            return result
+
+        # All retries exhausted
+        raise last_error or InstantlyAPIError(429, "Rate limited after retries")
 
     # --- Campaign Methods ---
 

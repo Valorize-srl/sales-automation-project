@@ -1,5 +1,6 @@
 from typing import Any, Optional
 """Email responses API routes - fetch, generate AI reply, approve, send, delete."""
+import asyncio
 import html
 import logging
 from datetime import datetime
@@ -248,6 +249,7 @@ async def _paginated_fetch(
         if not next_cursor or len(items) < 50:
             break
         starting_after = next_cursor
+        await asyncio.sleep(0.5)  # Rate limit between pagination calls
 
     return fetched, skipped
 
@@ -434,12 +436,16 @@ async def fetch_replies(
                 except InstantlyAPIError:
                     # Non-critical: log but continue with other leads
                     logger.warning(f"Failed to fetch follow-ups for lead {lead_email}")
+                await asyncio.sleep(0.5)  # Rate limit between per-lead fetches
 
         except InstantlyAPIError as e:
             logger.error(
                 f"Failed to fetch emails for campaign {campaign.id}: {e.detail}"
             )
             errors += 1
+
+        # Rate limit between campaigns
+        await asyncio.sleep(1)
 
     return FetchRepliesResponse(
         fetched=fetched, skipped=skipped, errors=errors
