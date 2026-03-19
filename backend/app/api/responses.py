@@ -384,59 +384,16 @@ async def fetch_replies(
         logger.info(f"Fetching replies for campaign {campaign.id} ({campaign.name}), instantly_id={campaign.instantly_campaign_id}")
 
         try:
-            # Pass 1: fetch received emails (replies from leads)
+            # Fetch all emails for this campaign (no email_type filter to get everything)
             f, s = await _paginated_fetch(
                 campaign.instantly_campaign_id,
                 campaign.id,
                 db,
                 our_accounts,
-                email_type="received",
             )
             fetched += f
             skipped += s
-            logger.info(f"Campaign {campaign.id} pass 1 (received): fetched={f}, skipped={s}")
-
-            # If pass 1 got nothing, try without email_type filter as fallback
-            if f == 0 and s == 0:
-                logger.info(f"Campaign {campaign.id}: no results with email_type=received, trying without filter")
-                f_all, s_all = await _paginated_fetch(
-                    campaign.instantly_campaign_id,
-                    campaign.id,
-                    db,
-                    our_accounts,
-                )
-                fetched += f_all
-                skipped += s_all
-                logger.info(f"Campaign {campaign.id} fallback (all): fetched={f_all}, skipped={s_all}")
-
-            # Pass 2: fetch follow-up replies for leads who already replied
-            # Get distinct lead emails that have existing inbound replies for this campaign
-            lead_emails_result = await db.execute(
-                select(EmailResponse.from_email)
-                .where(
-                    EmailResponse.campaign_id == campaign.id,
-                    EmailResponse.direction == MessageDirection.INBOUND,
-                    EmailResponse.from_email.isnot(None),
-                )
-                .distinct()
-            )
-            lead_emails = [row[0] for row in lead_emails_result.all() if row[0]]
-
-            for lead_email in lead_emails:
-                try:
-                    f2, s2 = await _paginated_fetch(
-                        campaign.instantly_campaign_id,
-                        campaign.id,
-                        db,
-                        our_accounts,
-                        lead_email=lead_email,
-                    )
-                    fetched += f2
-                    skipped += s2
-                except InstantlyAPIError:
-                    # Non-critical: log but continue with other leads
-                    logger.warning(f"Failed to fetch follow-ups for lead {lead_email}")
-                await asyncio.sleep(0.5)  # Rate limit between per-lead fetches
+            logger.info(f"Campaign {campaign.id}: fetched={f}, skipped={s}")
 
         except InstantlyAPIError as e:
             logger.error(
@@ -444,8 +401,8 @@ async def fetch_replies(
             )
             errors += 1
 
-        # Rate limit between campaigns
-        await asyncio.sleep(1)
+        # Brief pause between campaigns to avoid rate limits
+        await asyncio.sleep(0.5)
 
     return FetchRepliesResponse(
         fetched=fetched, skipped=skipped, errors=errors
