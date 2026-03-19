@@ -48,6 +48,7 @@ Regole:
 - funding_type: uno tra "fondo perduto", "credito d'imposta", "finanziamento agevolato", "garanzia", "voucher", "misto"
 - regions: lista di regioni italiane o "nazionale" se applicabile a tutta Italia
 - sectors: lista di settori economici pertinenti in italiano
+- IMPORTANTE per le date: cerca attentamente nel testo espressioni come "a partire dal", "dal giorno", "entro il", "scadenza", "termine presentazione domande", "apertura sportello". Converti le date italiane (es. "31 marzo 2026") in formato ISO 8601 (es. 2026-03-31T00:00:00Z). Se trovi solo una data senza specificare se e' apertura o chiusura, inseriscila come closing_date.
 
 BANDO DA ANALIZZARE:
 
@@ -137,7 +138,7 @@ class BandiMonitorService:
                 source=source,
                 source_url=link,
                 title=entry.get("title", "Senza titolo"),
-                raw_description=raw_desc[:5000] if raw_desc else None,
+                raw_description=raw_desc[:8000] if raw_desc else None,
                 published_at=published_at,
                 status=BandoStatus.NEW,
             )
@@ -333,11 +334,11 @@ class BandiMonitorService:
         """Analyze a single bando with Claude."""
         description = bando.raw_description or bando.title
 
-        # If we have no description, try to fetch the page content
-        if not bando.raw_description and bando.source_url:
+        # Always try to fetch the full page content (richer than RSS summary)
+        if bando.source_url:
             try:
                 async with httpx.AsyncClient(
-                    timeout=15,
+                    timeout=20,
                     follow_redirects=True,
                     headers={"User-Agent": "Mozilla/5.0 (compatible; BandiMonitor/1.0)"},
                 ) as http:
@@ -347,14 +348,15 @@ class BandiMonitorService:
                         for tag in soup(["script", "style", "nav", "footer", "header"]):
                             tag.decompose()
                         page_text = soup.get_text(separator=" ", strip=True)
-                        description = page_text[:4000]
-                        bando.raw_description = description
+                        if len(page_text) > len(description or ""):
+                            description = page_text[:8000]
+                            bando.raw_description = description
             except Exception as e:
                 logger.warning(f"Could not fetch page for bando {bando.id}: {e}")
 
         prompt = BANDO_ANALYSIS_PROMPT.format(
             title=bando.title,
-            description=description[:4000],
+            description=description[:8000],
             source=bando.source.value,
             url=bando.source_url,
         )
@@ -393,8 +395,8 @@ class BandiMonitorService:
                 bando.deadline = datetime.fromisoformat(
                     str(closing_str).replace("Z", "+00:00")
                 )
-            except (ValueError, AttributeError):
-                pass
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Failed to parse closing_date '{closing_str}' for bando {bando.id}: {e}")
 
         # Parse opening_date
         opening_str = analysis.get("opening_date")
@@ -403,8 +405,8 @@ class BandiMonitorService:
                 bando.opening_date = datetime.fromisoformat(
                     str(opening_str).replace("Z", "+00:00")
                 )
-            except (ValueError, AttributeError):
-                pass
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"Failed to parse opening_date '{opening_str}' for bando {bando.id}: {e}")
 
         # Parse amounts — ensure numeric types
         try:
