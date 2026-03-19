@@ -34,21 +34,32 @@ SCRAPE_SOURCES = {
 
 BANDO_ANALYSIS_PROMPT = """Sei un esperto di finanza agevolata italiana. Analizza il seguente bando/incentivo.
 
-IMPORTANTE: Rispondi ESCLUSIVAMENTE con un oggetto JSON valido che inizia con {{ e finisce con }}. Nessun testo prima o dopo, nessun markdown.
+IMPORTANTE: Rispondi ESCLUSIVAMENTE con un oggetto JSON valido. Nessun testo prima o dopo, nessun markdown, nessun commento.
 
-Struttura JSON richiesta:
+Struttura JSON richiesta (rispetta ESATTAMENTE questi nomi di campo):
 
-{{"ai_summary": "Riassunto chiaro in 2-3 frasi del bando, cosa finanzia e per chi", "target_companies": "Descrizione delle aziende target (dimensione, tipologia, requisiti)", "ateco_codes": ["62.01", "28.11"], "opening_date": "2026-04-01T00:00:00Z", "closing_date": "2026-06-30T00:00:00Z", "amount_min": 10000, "amount_max": 200000, "funding_type": "fondo perduto", "regions": ["nazionale"], "sectors": ["manifattura", "tecnologia"]}}
+{{
+  "ai_summary": "Riassunto chiaro in 2-3 frasi del bando, cosa finanzia e per chi",
+  "target_companies": "Descrizione delle aziende target (dimensione, tipologia, requisiti)",
+  "ateco_codes": ["62.01", "28.11"],
+  "opening_date": "2026-04-01T00:00:00Z",
+  "closing_date": "2026-06-30T00:00:00Z",
+  "amount_min": 10000,
+  "amount_max": 200000,
+  "funding_type": "fondo perduto",
+  "regions": ["nazionale"],
+  "sectors": ["manifattura", "tecnologia"]
+}}
 
 Regole:
 - ateco_codes: lista di codici ATECO pertinenti (formato XX.XX). Se non puoi determinare i codici specifici, indica i piu' probabili.
-- opening_date: data ISO di apertura/inizio presentazione domande, null se non nota
-- closing_date: data ISO di chiusura/scadenza per la presentazione domande, null se non specificata. Se il bando dice "fino ad esaurimento fondi" senza data, metti null.
+- opening_date: data ISO 8601 di apertura/inizio presentazione domande. Cerca nel testo espressioni come "a partire dal", "dal giorno", "apertura sportello", "data di apertura". Se non trovi alcuna data di apertura, usa null.
+- closing_date: data ISO 8601 di chiusura/scadenza. Cerca espressioni come "entro il", "scadenza", "termine presentazione domande", "data di chiusura", "fino al". Se il bando dice "fino ad esaurimento fondi" senza data specifica, usa null. Se trovi una data senza specificare se e' apertura o chiusura, inseriscila qui come closing_date.
+- Se le date sono in formato italiano (es. "31 marzo 2026", "15/04/2026"), convertile in ISO 8601 (es. "2026-03-31T00:00:00Z").
 - amount_min/amount_max: importi in EUR, null se non specificati
 - funding_type: uno tra "fondo perduto", "credito d'imposta", "finanziamento agevolato", "garanzia", "voucher", "misto"
 - regions: lista di regioni italiane o "nazionale" se applicabile a tutta Italia
 - sectors: lista di settori economici pertinenti in italiano
-- IMPORTANTE per le date: cerca attentamente nel testo espressioni come "a partire dal", "dal giorno", "entro il", "scadenza", "termine presentazione domande", "apertura sportello". Converti le date italiane (es. "31 marzo 2026") in formato ISO 8601 (es. 2026-03-31T00:00:00Z). Se trovi solo una data senza specificare se e' apertura o chiusura, inseriscila come closing_date.
 
 BANDO DA ANALIZZARE:
 
@@ -378,6 +389,12 @@ class BandiMonitorService:
             bando.status = BandoStatus.ANALYZED
             bando.analyzed_at = datetime.now(timezone.utc)
             return
+
+        # Log date extraction results for debugging
+        logger.info(
+            f"Bando {bando.id} AI dates: opening_date={analysis.get('opening_date')}, "
+            f"closing_date={analysis.get('closing_date')}, deadline={analysis.get('deadline')}"
+        )
 
         # Update bando with extracted data
         bando.ai_summary = analysis.get("ai_summary")

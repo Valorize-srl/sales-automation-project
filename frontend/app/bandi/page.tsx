@@ -200,9 +200,10 @@ export default function BandiPage() {
   const handleAnalyze = async (bandoId: number) => {
     setActionLoading((prev) => ({ ...prev, [`analyze-${bandoId}`]: true }));
     try {
-      await api.analyzeBando(bandoId);
+      const updated = await api.analyzeBando(bandoId);
       toast({ title: "Analisi completata", description: "Il bando è stato analizzato con AI" });
-      await loadBandi(true);
+      // Update the bando in-place so it doesn't disappear from current view
+      setBandi((prev) => prev.map((b) => (b.id === bandoId ? updated : b)));
       await loadStats();
     } catch (err: any) {
       console.error("Analyze failed:", err);
