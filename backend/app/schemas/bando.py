@@ -17,6 +17,7 @@ class BandoOut(BaseModel):
     ai_summary: Optional[str] = None
     target_companies: Optional[str] = None
     ateco_codes: Optional[list[str]] = None
+    opening_date: Optional[datetime] = None
     deadline: Optional[datetime] = None
     amount_min: Optional[float] = None
     amount_max: Optional[float] = None

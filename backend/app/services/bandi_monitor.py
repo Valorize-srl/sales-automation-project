@@ -32,23 +32,18 @@ SCRAPE_SOURCES = {
     BandoSource.INCENTIVI_GOV: "https://www.incentivi.gov.it/it/catalogo",
 }
 
-BANDO_ANALYSIS_PROMPT = """Sei un esperto di finanza agevolata italiana. Analizza il seguente bando/incentivo e restituisci SOLO un JSON valido (senza markdown, senza ```json```) con questa struttura esatta:
+BANDO_ANALYSIS_PROMPT = """Sei un esperto di finanza agevolata italiana. Analizza il seguente bando/incentivo.
 
-{
-  "ai_summary": "Riassunto chiaro in 2-3 frasi del bando, cosa finanzia e per chi",
-  "target_companies": "Descrizione delle aziende target (dimensione, tipologia, requisiti)",
-  "ateco_codes": ["62.01", "28.11"],
-  "deadline": "2026-06-30T00:00:00Z",
-  "amount_min": 10000,
-  "amount_max": 200000,
-  "funding_type": "fondo perduto",
-  "regions": ["nazionale"],
-  "sectors": ["manifattura", "tecnologia"]
-}
+IMPORTANTE: Rispondi ESCLUSIVAMENTE con un oggetto JSON valido che inizia con {{ e finisce con }}. Nessun testo prima o dopo, nessun markdown.
+
+Struttura JSON richiesta:
+
+{{"ai_summary": "Riassunto chiaro in 2-3 frasi del bando, cosa finanzia e per chi", "target_companies": "Descrizione delle aziende target (dimensione, tipologia, requisiti)", "ateco_codes": ["62.01", "28.11"], "opening_date": "2026-04-01T00:00:00Z", "closing_date": "2026-06-30T00:00:00Z", "amount_min": 10000, "amount_max": 200000, "funding_type": "fondo perduto", "regions": ["nazionale"], "sectors": ["manifattura", "tecnologia"]}}
 
 Regole:
-- ateco_codes: lista di codici ATECO pertinenti (formato XX.XX). Se non puoi determinare i codici specifici, indica i più probabili.
-- deadline: data ISO se presente, null se non specificata
+- ateco_codes: lista di codici ATECO pertinenti (formato XX.XX). Se non puoi determinare i codici specifici, indica i piu' probabili.
+- opening_date: data ISO di apertura/inizio presentazione domande, null se non nota
+- closing_date: data ISO di chiusura/scadenza per la presentazione domande, null se non specificata. Se il bando dice "fino ad esaurimento fondi" senza data, metti null.
 - amount_min/amount_max: importi in EUR, null se non specificati
 - funding_type: uno tra "fondo perduto", "credito d'imposta", "finanziamento agevolato", "garanzia", "voucher", "misto"
 - regions: lista di regioni italiane o "nazionale" se applicabile a tutta Italia
@@ -285,7 +280,7 @@ class BandiMonitorService:
         await self._analyze_single(client, bando)
 
     def _extract_json(self, text: str) -> dict:
-        """Extract a JSON object from text, handling code fences and surrounding text."""
+        """Extract a JSON object from text, handling code fences, missing braces, etc."""
         # Remove markdown code fences
         cleaned = re.sub(r'```(?:json)?\s*', '', text)
         cleaned = re.sub(r'```', '', cleaned).strip()
@@ -308,6 +303,30 @@ class BandiMonitorService:
             except (json.JSONDecodeError, ValueError):
                 pass
 
+        # Fallback: if text looks like JSON key-value pairs without braces, wrap with {}
+        if '"' in cleaned and ':' in cleaned:
+            wrapped = '{' + cleaned + '}'
+            try:
+                result = json.loads(wrapped)
+                if isinstance(result, dict):
+                    logger.info("Extracted JSON by wrapping with braces")
+                    return result
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+            # Try wrapping just the content between first key and last value
+            first_quote = cleaned.find('"')
+            if first_quote >= 0:
+                wrapped = '{' + cleaned[first_quote:] + '}'
+                try:
+                    result = json.loads(wrapped)
+                    if isinstance(result, dict):
+                        logger.info("Extracted JSON by trimming prefix and wrapping")
+                        return result
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+        logger.error(f"Failed to extract JSON from AI response: {cleaned[:500]}")
         raise ValueError(f"No valid JSON object found in response: {cleaned[:200]}")
 
     async def _analyze_single(self, client: anthropic.AsyncAnthropic, bando: Bando):
@@ -367,12 +386,22 @@ class BandiMonitorService:
         bando.sectors = analysis.get("sectors")
         bando.ai_analysis_raw = analysis
 
-        # Parse deadline
-        deadline_str = analysis.get("deadline")
-        if deadline_str:
+        # Parse closing_date → deadline (backward compatible)
+        closing_str = analysis.get("closing_date") or analysis.get("deadline")
+        if closing_str:
             try:
                 bando.deadline = datetime.fromisoformat(
-                    str(deadline_str).replace("Z", "+00:00")
+                    str(closing_str).replace("Z", "+00:00")
+                )
+            except (ValueError, AttributeError):
+                pass
+
+        # Parse opening_date
+        opening_str = analysis.get("opening_date")
+        if opening_str:
+            try:
+                bando.opening_date = datetime.fromisoformat(
+                    str(opening_str).replace("Z", "+00:00")
                 )
             except (ValueError, AttributeError):
                 pass
@@ -392,6 +421,24 @@ class BandiMonitorService:
         bando.status = BandoStatus.ANALYZED
         bando.analyzed_at = datetime.now(timezone.utc)
         await self.db.flush()
+
+    async def update_expired_status(self) -> int:
+        """Mark bandi with closing_date (deadline) in the past as expired."""
+        from sqlalchemy import update
+        now = datetime.now(timezone.utc)
+        result = await self.db.execute(
+            update(Bando)
+            .where(
+                Bando.deadline < now,
+                Bando.status.in_([BandoStatus.NEW.value, BandoStatus.ANALYZED.value]),
+            )
+            .values(status=BandoStatus.EXPIRED)
+        )
+        expired_count = result.rowcount
+        if expired_count > 0:
+            logger.info(f"Marked {expired_count} bandi as expired")
+            await self.db.flush()
+        return expired_count
 
     async def get_stats(self) -> dict:
         """Get bandi statistics."""

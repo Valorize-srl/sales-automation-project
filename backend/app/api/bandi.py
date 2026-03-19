@@ -100,6 +100,12 @@ async def fetch_bandi(db: AsyncSession = Depends(get_db)):
     # Fetch only (fast: RSS + scraping, typically <5s)
     fetch_result = await service.fetch_all_sources()
 
+    # Mark expired bandi
+    expired_count = await service.update_expired_status()
+    if expired_count:
+        await db.commit()
+        logger.info(f"Marked {expired_count} bandi as expired")
+
     # Trigger AI analysis in background (slow: Claude API calls)
     import asyncio
     asyncio.create_task(_analyze_in_background())
@@ -121,6 +127,11 @@ async def _analyze_in_background():
             service = BandiMonitorService(db)
             analyzed = await service.analyze_new_bandi()
             logger.info(f"Background analysis completed: {analyzed} bandi analyzed")
+            # Update expired status after analysis (deadlines may have been extracted)
+            expired = await service.update_expired_status()
+            if expired:
+                await db.commit()
+                logger.info(f"Background: marked {expired} bandi as expired")
     except Exception as e:
         logger.error(f"Background bandi analysis failed: {e}")
 

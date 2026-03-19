@@ -976,6 +976,7 @@ export interface Bando {
   ai_summary: string | null;
   target_companies: string | null;
   ateco_codes: string[] | null;
+  opening_date: string | null;
   deadline: string | null;
   amount_min: number | null;
   amount_max: number | null;

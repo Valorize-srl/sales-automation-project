@@ -58,7 +58,7 @@ const SOURCE_COLORS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   new: "bg-yellow-100 text-yellow-800",
   analyzed: "bg-blue-100 text-blue-800",
-  expired: "bg-gray-100 text-gray-500",
+  expired: "bg-red-100 text-red-700",
   archived: "bg-gray-100 text-gray-400",
 };
 
@@ -461,18 +461,39 @@ export default function BandiPage() {
                         </div>
                       </div>
                     )}
-                    {bando.deadline && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Scadenza</p>
-                        <p className="text-sm">
-                          {new Date(bando.deadline).toLocaleDateString("it-IT", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                          })}
-                        </p>
-                      </div>
-                    )}
+                    {/* Date apertura e scadenza */}
+                    <div className="flex flex-wrap gap-6">
+                      {bando.opening_date && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Data Apertura</p>
+                          <p className="text-sm">
+                            {new Date(bando.opening_date).toLocaleDateString("it-IT", {
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                            })}
+                          </p>
+                        </div>
+                      )}
+                      {bando.deadline && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Scadenza</p>
+                          <p className="text-sm">
+                            {new Date(bando.deadline).toLocaleDateString("it-IT", {
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                            })}
+                          </p>
+                        </div>
+                      )}
+                      {!bando.opening_date && !bando.deadline && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Date</p>
+                          <p className="text-sm text-muted-foreground">Non disponibili - analizza con AI per estrarre le date</p>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex gap-2 pt-1">
                       {bando.status !== "archived" && (
                         <Button
@@ -490,7 +511,7 @@ export default function BandiPage() {
                           Archivia
                         </Button>
                       )}
-                      {bando.status === "new" && (
+                      {bando.status !== "archived" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -503,7 +524,7 @@ export default function BandiPage() {
                           ) : (
                             <Brain className="h-3 w-3" />
                           )}
-                          Analizza con AI
+                          {bando.status === "new" ? "Analizza con AI" : "Ri-analizza con AI"}
                         </Button>
                       )}
                     </div>

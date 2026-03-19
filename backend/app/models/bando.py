@@ -56,6 +56,9 @@ class Bando(Base):
     ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     target_companies: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ateco_codes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    opening_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     deadline: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
