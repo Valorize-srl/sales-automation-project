@@ -132,7 +132,14 @@ async def lifespan(app: FastAPI):
         await _ensure_indexes()
     except Exception as e:
         logger.error(f"Startup indexes check failed: {e}")
-    yield
+
+    # Run the MCP streamable-http app's own lifespan (session manager init) if mounted
+    mcp_lifespan = getattr(app.state, "mcp_lifespan", None)
+    if mcp_lifespan is not None:
+        async with mcp_lifespan(app):
+            yield
+    else:
+        yield
 
 
 app = FastAPI(
@@ -171,6 +178,19 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(api_router, prefix="/api")
+
+
+# Mount MCP (Model Context Protocol) server at /mcp. Protected by API key middleware.
+if settings.mcp_enabled:
+    try:
+        from app.mcp import build_mcp_asgi_app
+        mcp_asgi = build_mcp_asgi_app()
+        # Forward the MCP session manager lifespan into FastAPI's lifespan above.
+        app.state.mcp_lifespan = mcp_asgi.router.lifespan_context
+        app.mount("/mcp", mcp_asgi)
+        logger.info("MCP server mounted at /mcp")
+    except Exception as e:
+        logger.error(f"Failed to mount MCP server: {e}", exc_info=True)
 
 
 @app.get("/health")

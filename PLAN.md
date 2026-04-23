@@ -5,6 +5,7 @@ Piattaforma che automatizza la generazione di lead e l'outreach via email B2B. L
 
 **Uso**: Multi-client (client tagging per separare costi e lead)
 **API attive**: Instantly v2, Anthropic Claude, Apollo.io, Apify
+**Accesso esterno**: MCP server (streamable-HTTP) su `/mcp` per Claude Desktop/Code e altri client MCP
 **Deploy**: Railway (backend, frontend, worker) + PostgreSQL + Redis
 
 ---
@@ -41,6 +42,14 @@ Piattaforma che automatizza la generazione di lead e l'outreach via email B2B. L
 ┌─────────────────────────┴────────────────────────────────────┐
 │                PostgreSQL + Redis (Railway)                    │
 └──────────────────────────────────────────────────────────────┘
+
+                          ┌───────────────┐
+                          │  MCP Server   │ ← mounted in FastAPI at /mcp
+                          │  (FastMCP)    │   streamable-HTTP + API key auth
+                          └───────────────┘
+                                  ▲
+                    Claude Desktop/Code, Agent SDK, Cursor,
+                    n8n/Make, tool custom — qualsiasi client MCP
 ```
 
 ---
@@ -90,8 +99,17 @@ sales-automation-project/
 │
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI entry point + CORS
+│   │   ├── main.py              # FastAPI entry point + CORS + MCP mount
 │   │   ├── config.py            # Settings da env vars
+│   │   ├── mcp/                 # MCP server (FastMCP)
+│   │   │   ├── app.py           # Starlette app con auth middleware
+│   │   │   ├── server.py        # FastMCP instance + tool registration
+│   │   │   ├── middleware.py    # API key auth middleware
+│   │   │   ├── keys.py          # Key generation/hashing/verification
+│   │   │   ├── session.py       # DB session helper per tool
+│   │   │   └── tools/           # Tool per dominio (people, companies,
+│   │   │                        #   lead_lists, campaigns, responses,
+│   │   │                        #   ai_agents, apollo, analytics)
 │   │   ├── models/              # SQLAlchemy models
 │   │   │   ├── icp.py           # Ideal Customer Profile
 │   │   │   ├── person.py        # Contatti (da Apollo/CSV)
@@ -171,6 +189,9 @@ sales-automation-project/
 **chat_sessions** — Sessioni chat conversazionali
 - id, uuid, title, total_claude_input_tokens, total_claude_output_tokens, total_apollo_credits, total_cost_usd, client_tag
 
+**api_keys** — Chiavi API per autenticare i client MCP
+- id, name, key_hash (sha256), prefix, last_four, scopes, client_tag, is_active, last_used_at, expires_at, revoked_at
+
 ---
 
 ## Flussi Operativi
@@ -220,6 +241,24 @@ sales-automation-project/
 2. Breakdown per client tag nella pagina Usage
 3. Breakdown giornaliero con grafico costi
 4. Stima costi prima dell'enrichment
+
+### 8. Accesso via MCP (Model Context Protocol)
+1. L'admin crea una API key via `POST /api/admin/api-keys` (protetto da `MCP_MASTER_KEY`)
+2. La chiave plaintext (`mir_…`) viene mostrata una volta sola
+3. Il client MCP (Claude Desktop/Code, Agent SDK, Cursor, n8n/Make, tool custom) si collega a `POST https://<host>/mcp/` con header `Authorization: Bearer mir_…`
+4. Il server autentica via sha256 della chiave e aggiorna `last_used_at`
+5. Il client può invocare i tool per fare ricerche Apollo, importare/aggiornare lead, creare campagne, generare reply AI, leggere analytics, ecc.
+6. Le chiavi possono essere revocate istantaneamente via `DELETE /api/admin/api-keys/{id}`
+
+**Cataloghi di tool MCP** (`backend/app/mcp/tools/`):
+- **people**: list/get/create/update/delete/bulk_delete/bulk_tag/bulk_enrich/import/export_csv/person_campaigns
+- **companies**: list/get/create/update/delete/bulk_delete
+- **lead_lists**: list/get/create/update/delete + add/remove people & companies + list_people_in_list / list_companies_in_list
+- **campaigns**: list/get/create/update/delete/activate/pause + push_people + campaign_analytics + generate_email_template
+- **responses**: list/get + generate_ai_reply + approve_and_send_reply + approve_reply_without_sending + ignore_response
+- **ai_agents**: list/get/create/update/delete + update_knowledge_base
+- **apollo**: apollo_search_people, apollo_search_organizations, apollo_credits_status, import_apollo_results
+- **analytics**: dashboard_stats, cost_breakdown, list_client_tags
 
 ---
 
@@ -273,6 +312,7 @@ sales-automation-project/
 - [x] Tracking costi per client (Apollo, Claude, Apify)
 - [x] Deploy su Railway (backend, frontend, worker)
 - [x] Database migrations automatiche (Alembic su startup)
+- [x] MCP server su `/mcp` con API key auth (sha256) e tool per tutti i domini
 
 ### Da fare
 - [ ] Migrazione database a Supabase (backup automatici, PITR)
