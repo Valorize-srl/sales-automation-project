@@ -67,6 +67,13 @@ B2B outreach automation platform with AI-powered prospecting, campaign orchestra
 - Per-client cost summaries
 - Search history with credit consumption
 
+### MCP Server (external integration)
+- **Streamable-HTTP MCP endpoint** at `/mcp` exposes Miriade's full data model as tools so Claude (Desktop, Code, Agent SDK) and other MCP-compatible clients can read, create, update, import, and export everything: people, companies, lead lists, campaigns, responses, AI agents, Apollo prospecting, analytics, costs.
+- Per-client API keys with `sha256` hashing, optional scopes/client_tag and expiry; master-key-protected admin endpoints (`/api/admin/api-keys`) to create, list, and revoke keys.
+- Single source of truth: tools operate on the same PostgreSQL database and reuse existing services (Apollo, Instantly, AI replier) — no duplication.
+
+See [MCP usage](#mcp-server) below for setup and client configuration.
+
 ## Costs
 
 The platform tracks costs per API call and aggregates them per client in the Usage page.
@@ -134,6 +141,9 @@ INSTANTLY_API_KEY=...
 APOLLO_API_KEY=...
 APIFY_API_TOKEN=...
 APP_ENV=development
+# MCP server — generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+MCP_MASTER_KEY=replace-me
+MCP_ENABLED=true
 ```
 
 **Frontend** (`frontend/.env`):
@@ -204,3 +214,73 @@ Deployed on **Railway** with three services:
 - **Worker**: Celery for background tasks
 
 Database: PostgreSQL 16 (external or Railway-hosted)
+
+## MCP Server
+
+Miriade exposes a [Model Context Protocol](https://modelcontextprotocol.io) server
+at `POST /mcp/` (streamable-HTTP transport) so Claude and other MCP clients can
+operate the platform with natural language.
+
+### Tool catalog
+
+Grouped by domain (see `backend/app/mcp/tools/`):
+
+| Domain | Representative tools |
+|--------|----------------------|
+| **people** | `list_people`, `get_person`, `create_person`, `update_person`, `delete_person`, `bulk_delete_people`, `bulk_tag_people`, `bulk_enrich_people`, `import_people`, `export_people_csv`, `person_campaigns` |
+| **companies** | `list_companies`, `get_company`, `create_company`, `update_company`, `delete_company`, `bulk_delete_companies` |
+| **lead_lists** | `list_lead_lists`, `get_lead_list`, `create_lead_list`, `update_lead_list`, `delete_lead_list`, `add_people_to_list`, `remove_people_from_list`, `add_companies_to_list`, `list_people_in_list`, `list_companies_in_list` |
+| **campaigns** | `list_campaigns`, `get_campaign`, `create_campaign`, `update_campaign`, `delete_campaign`, `activate_campaign`, `pause_campaign`, `push_people_to_campaign`, `campaign_analytics`, `generate_email_template` |
+| **responses** | `list_responses`, `get_response`, `generate_ai_reply`, `approve_and_send_reply`, `approve_reply_without_sending`, `ignore_response` |
+| **ai_agents** | `list_ai_agents`, `get_ai_agent`, `create_ai_agent`, `update_ai_agent`, `update_knowledge_base`, `delete_ai_agent` |
+| **apollo** | `apollo_search_people`, `apollo_search_organizations`, `apollo_credits_status`, `import_apollo_results` |
+| **analytics** | `dashboard_stats`, `cost_breakdown`, `list_client_tags` |
+
+### 1. Configure the master key
+
+Set `MCP_MASTER_KEY` in `backend/.env` (generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`).
+This key is used only to mint/list/revoke API keys — it is **not** the key MCP
+clients use.
+
+### 2. Create an API key
+
+```bash
+curl -X POST https://<host>/api/admin/api-keys \
+  -H "x-master-key: $MCP_MASTER_KEY" \
+  -H "content-type: application/json" \
+  -d '{"name": "my-laptop", "client_tag": "internal"}'
+```
+
+The plaintext `raw_key` (prefixed `mir_…`) is returned **once** — copy it immediately.
+
+### 3. Connect a client
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "miriade": {
+      "type": "http",
+      "url": "https://<host>/mcp/",
+      "headers": { "Authorization": "Bearer mir_..." }
+    }
+  }
+}
+```
+
+**Claude Code** / **Claude Agent SDK** / **Cursor**: equivalent config pointing
+to `https://<host>/mcp/` with `Authorization: Bearer mir_...`.
+
+### 4. Revoke / rotate
+
+```bash
+curl https://<host>/api/admin/api-keys \
+  -H "x-master-key: $MCP_MASTER_KEY"                       # list
+
+curl -X DELETE https://<host>/api/admin/api-keys/<id> \
+  -H "x-master-key: $MCP_MASTER_KEY"                       # revoke
+```
+
+Keys are hashed at rest (sha256). Revoked keys are soft-deleted with `revoked_at`
+and `is_active=false` — they stop working immediately on the next request.

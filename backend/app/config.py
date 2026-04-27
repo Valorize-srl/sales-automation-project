@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # Webhooks
     webhook_base_url: str = ""
 
+    # MCP server
+    # Master key used only to create/revoke API keys via /api/admin/api-keys.
+    # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    mcp_master_key: str = ""
+    mcp_enabled: bool = True
+
     # App
     app_env: str = "development"
     debug: bool = True
