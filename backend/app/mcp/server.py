@@ -4,12 +4,21 @@ from __future__ import annotations
 import logging
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 logger = logging.getLogger(__name__)
 
 
 def build_mcp_server() -> FastMCP:
     """Construct a FastMCP instance and register all tool groups."""
+    # Mount the streamable-HTTP route at "/" so when the outer FastAPI app
+    # mounts this Starlette app at "/mcp", the public URL stays "/mcp/" instead
+    # of becoming "/mcp/mcp".
+    #
+    # DNS rebinding protection is disabled because the streamable-HTTP transport
+    # is already behind our API-key middleware (see app/mcp/middleware.py), and
+    # we explicitly serve from a Railway-hosted custom domain. Re-enable + fill
+    # `allowed_hosts` if the deployment topology changes.
     mcp = FastMCP(
         name="miriade",
         instructions=(
@@ -18,6 +27,11 @@ def build_mcp_server() -> FastMCP:
             "email campaigns (Instantly-synced), AI agents, email responses with sentiment "
             "analysis and AI reply generation, Apollo.io prospecting, and usage analytics. "
             "Every action is scoped to the authenticated API key's client_tag when present."
+        ),
+        streamable_http_path="/",
+        stateless_http=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
         ),
     )
 
