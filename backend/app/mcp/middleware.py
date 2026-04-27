@@ -43,6 +43,14 @@ class ApiKeyAuthMiddleware:
         scope = dict(scope)
         scope["state"] = dict(scope.get("state") or {})
 
+        logger.info(
+            "MCP auth: method=%s path=%r root_path=%r raw_path=%r",
+            scope.get("method"),
+            scope.get("path"),
+            scope.get("root_path"),
+            scope.get("raw_path"),
+        )
+
         raw_key, scope = self._extract_key_from_path(scope)
         if not raw_key:
             raw_key = self._extract_key_from_headers(scope)
