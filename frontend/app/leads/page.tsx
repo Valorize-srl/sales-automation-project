@@ -275,21 +275,27 @@ export default function LeadsPage() {
     setPersonDetailOpen(true);
   };
 
-  const handleDetailPersonCompanyClick = (companyId: number) => {
+  const handleDetailPersonCompanyClick = async (companyId: number) => {
     setPersonDetailOpen(false);
-    const company = companies.find((c) => c.id === companyId);
-    if (company) {
+    try {
+      const company = companies.find((c) => c.id === companyId)
+        ?? await api.getCompany(companyId);
       setDetailCompany(company);
       setCompanyDetailOpen(true);
+    } catch (err) {
+      console.error("Failed to load company:", err);
     }
   };
 
-  const handleDetailCompanyPersonClick = (personId: number) => {
+  const handleDetailCompanyPersonClick = async (personId: number) => {
     setCompanyDetailOpen(false);
-    const person = people.find((p) => p.id === personId);
-    if (person) {
+    try {
+      const person = people.find((p) => p.id === personId)
+        ?? await api.getPerson(personId);
       setDetailPerson(person);
       setPersonDetailOpen(true);
+    } catch (err) {
+      console.error("Failed to load person:", err);
     }
   };
 

@@ -750,6 +750,10 @@ class ApiClient {
     return this.put(`/people/${personId}`, data);
   }
 
+  async getPerson(personId: number): Promise<import("@/types").Person> {
+    return this.get(`/people/${personId}`);
+  }
+
   async getPeopleIndustries(): Promise<string[]> {
     return this.get("/people/industries");
   }
@@ -775,6 +779,10 @@ class ApiClient {
 
   async updateCompany(companyId: number, data: import("@/types").CompanyUpdate): Promise<import("@/types").Company> {
     return this.put(`/companies/${companyId}`, data);
+  }
+
+  async getCompany(companyId: number): Promise<import("@/types").Company> {
+    return this.get(`/companies/${companyId}`);
   }
 
   async getCompanyDetail(companyId: number): Promise<import("@/types").CompanyDetailResponse> {
