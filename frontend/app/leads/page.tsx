@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
@@ -12,7 +13,7 @@ import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { api } from "@/lib/api";
-import { Company, CompanyFilters, LeadList, Person } from "@/types";
+import { Campaign, Company, CompanyFilters, LeadList, Person } from "@/types";
 
 const DEFAULT_DM_TITLES = ["CEO", "Founder", "Co-Founder", "Owner", "Managing Director", "Director", "VP", "Head"];
 const DEFAULT_DM_SENIORITIES = ["c_suite", "vp", "director", "owner", "founder"];
@@ -44,6 +45,11 @@ export default function LeadsPage() {
   const [detailPerson, setDetailPerson] = useState<Person | null>(null);
   const [personDetailOpen, setPersonDetailOpen] = useState(false);
   const [addToListMenuOpen, setAddToListMenuOpen] = useState(false);
+  const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
+    mode: "single" | "bulk";
+    companyIds: number[];
+  } | null>(null);
+  const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
 
   // Toast-style flash
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -74,14 +80,16 @@ export default function LeadsPage() {
 
   const loadAux = useCallback(async () => {
     try {
-      const [keys, inds, lists] = await Promise.all([
+      const [keys, inds, lists, camps] = await Promise.all([
         api.listCustomFieldKeys(),
         api.getCompanyIndustries(),
         api.listLeadLists(),
+        api.getCampaigns().catch(() => ({ campaigns: [], total: 0 })),
       ]);
       setCustomFieldKeys(keys);
       setIndustries(inds);
       setAllLists(lists.lists || []);
+      setAllCampaigns(("campaigns" in camps ? camps.campaigns : []) as Campaign[]);
     } catch (e) {
       console.error("Failed to load aux data", e);
     }
@@ -182,6 +190,8 @@ export default function LeadsPage() {
       }
     } else if (action === "score") {
       setScoreSingleId(companyId); setScoreOpen(true);
+    } else if (action === "push_to_campaign") {
+      setPushToCampaignTarget({ mode: "single", companyIds: [companyId] });
     } else if (action === "delete") {
       if (!confirm("Eliminare questa azienda?")) return;
       try {
@@ -203,6 +213,29 @@ export default function LeadsPage() {
     setSelectedIds(new Set());
     setSelectAllMatching(false);
     loadCompanies(page);
+  };
+
+  const handlePushToCampaign = async (campaignId: number) => {
+    if (!pushToCampaignTarget) return;
+    const ids = pushToCampaignTarget.mode === "bulk"
+      ? await resolveSelectedIds()
+      : pushToCampaignTarget.companyIds;
+    setPushToCampaignTarget(null);
+    if (ids.length === 0) return;
+    let totalUploaded = 0;
+    let failures = 0;
+    for (const cid of ids) {
+      try {
+        const r = await api.pushCompanyDecisionMakersToCampaign(cid, campaignId);
+        totalUploaded += r.uploaded;
+      } catch (e) {
+        failures += 1;
+        console.error("push failed for company", cid, e);
+      }
+    }
+    showFlash(failures === 0 ? "ok" : "err",
+      `${totalUploaded} decision makers spinti su Instantly` +
+      (failures ? ` (${failures} aziende fallite)` : ""));
   };
 
   const handleAddToList = async (listId: number, createNew?: string) => {
@@ -346,6 +379,13 @@ export default function LeadsPage() {
                 onClick={() => { setScoreSingleId(null); setScoreOpen(true); }}>
                 <Sparkles className="h-3.5 w-3.5" /> Score
               </Button>
+              <Button size="sm" variant="outline" className="gap-1.5"
+                onClick={async () => {
+                  const ids = await resolveSelectedIds();
+                  setPushToCampaignTarget({ mode: "bulk", companyIds: ids });
+                }}>
+                <Tag className="h-3.5 w-3.5" /> Aggiungi DM a campagna…
+              </Button>
               <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={handleBulkDelete}>
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </Button>
@@ -366,6 +406,7 @@ export default function LeadsPage() {
             onToggleSelectAll={toggleSelectAllOnPage}
             customFieldKeys={customFieldKeys}
             onCompanyClick={handleCompanyClick}
+            onPersonClick={handleDetailCompanyPersonClick}
             onAction={handleAction}
             onCustomFieldSave={handleCustomFieldSave}
             onAddCustomFieldKey={handleAddCustomFieldKey}
@@ -415,8 +456,70 @@ export default function LeadsPage() {
             onCompanyClick={handleDetailPersonCompanyClick}
             onUpdated={() => loadCompanies(page)}
           />
+
+          {pushToCampaignTarget && (
+            <PushToCampaignDialog
+              open={true}
+              onOpenChange={(open) => { if (!open) setPushToCampaignTarget(null); }}
+              campaigns={allCampaigns}
+              targetCount={pushToCampaignTarget.companyIds.length}
+              onPick={handlePushToCampaign}
+            />
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+// Inline dialog component — picks an Instantly-synced campaign from a list
+function PushToCampaignDialog({
+  open, onOpenChange, campaigns, targetCount, onPick,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  campaigns: Campaign[];
+  targetCount: number;
+  onPick: (campaignId: number) => void;
+}) {
+  // Only campaigns synced to Instantly can accept leads
+  const syncedCampaigns = campaigns.filter((c) => c.instantly_campaign_id);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TagIcon className="h-5 w-5 text-primary" />
+            Aggiungi decision makers a campagna
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2 py-2">
+          <p className="text-sm text-muted-foreground">
+            Verranno spinti su Instantly tutti i decision maker (con email) di {targetCount} {targetCount === 1 ? "azienda" : "aziende"}.
+          </p>
+          {syncedCampaigns.length === 0 ? (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+              Nessuna campagna synced con Instantly. Crea/sync prima una campagna.
+            </p>
+          ) : (
+            <div className="space-y-1 max-h-[300px] overflow-y-auto">
+              {syncedCampaigns.map((c) => (
+                <button
+                  key={c.id}
+                  className="flex items-center gap-2 px-3 py-2 rounded-md border w-full text-left text-sm hover:bg-accent"
+                  onClick={() => onPick(c.id)}
+                >
+                  <span className="flex-1 truncate font-medium">{c.name}</span>
+                  <span className="text-[10px] text-muted-foreground">{c.status}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Annulla</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

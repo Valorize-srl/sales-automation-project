@@ -201,14 +201,17 @@ def _company_to_response(company: Company, people_count: int = 0) -> CompanyResp
         resp.list_ids = [ll.id for ll in (company.lists or [])]
     except Exception:
         resp.list_ids = []
-    # Aggregate work emails of linked decision makers
+    # Aggregate work emails + decision-maker summary of linked persons
     try:
-        resp.work_emails = [
-            p.email for p in (company.people or [])
-            if getattr(p, "email", None)
+        from app.schemas.company import DecisionMakerSummary
+        people = company.people or []
+        resp.work_emails = [p.email for p in people if getattr(p, "email", None)]
+        resp.decision_makers = [
+            DecisionMakerSummary.model_validate(p) for p in people
         ]
     except Exception:
         resp.work_emails = []
+        resp.decision_makers = []
     return resp
 
 
@@ -282,7 +285,8 @@ def _build_company_filter_query(
     employee_count_max,
     score_min,
     score_max,
-    filters,
+    decision_maker_name_contains=None,
+    filters=None,
 ):
     """Build the SQLAlchemy SELECT for /companies (and /companies/ids).
 
@@ -311,6 +315,24 @@ def _build_company_filter_query(
         q = q.join(
             company_lead_list, Company.id == company_lead_list.c.company_id
         ).where(company_lead_list.c.lead_list_id == list_id)
+    if decision_maker_name_contains:
+        # Filter to companies that have at least one Person whose first/last
+        # name (or full name) matches the given substring (case-insensitive).
+        like = f"%{decision_maker_name_contains.lower()}%"
+        sub = (
+            select(Person.company_id)
+            .where(
+                Person.company_id == Company.id,
+                or_(
+                    sa_func.lower(Person.first_name).ilike(like),
+                    sa_func.lower(Person.last_name).ilike(like),
+                    sa_func.lower(sa_func.concat(Person.first_name, " ", Person.last_name)).ilike(like),
+                ),
+            )
+            .correlate(Company)
+            .exists()
+        )
+        q = q.where(sub)
     if has_email is True:
         q = q.where(Company.email.isnot(None), Company.email != "")
     elif has_email is False:
@@ -395,6 +417,7 @@ async def list_company_ids(
     employee_count_max: Optional[int] = Query(None),
     score_min: Optional[int] = Query(None),
     score_max: Optional[int] = Query(None),
+    decision_maker_name_contains: Optional[str] = Query(None),
     filters: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -411,7 +434,8 @@ async def list_company_ids(
         has_linkedin=has_linkedin, has_website=has_website, has_score=has_score,
         revenue_min=revenue_min, revenue_max=revenue_max,
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
-        score_min=score_min, score_max=score_max, filters=filters,
+        score_min=score_min, score_max=score_max,
+        decision_maker_name_contains=decision_maker_name_contains, filters=filters,
     )
     id_query = base_query.with_only_columns(Company.id)
     rows = (await db.execute(id_query)).all()
@@ -439,6 +463,7 @@ async def list_companies(
     employee_count_max: Optional[int] = Query(None),
     score_min: Optional[int] = Query(None),
     score_max: Optional[int] = Query(None),
+    decision_maker_name_contains: Optional[str] = Query(None, description="Filter to companies with at least one Person whose name matches"),
     filters: Optional[str] = Query(None, description="JSON-encoded advanced filters, incl. custom_fields"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -460,7 +485,8 @@ async def list_companies(
         has_linkedin=has_linkedin, has_website=has_website, has_score=has_score,
         revenue_min=revenue_min, revenue_max=revenue_max,
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
-        score_min=score_min, score_max=score_max, filters=filters,
+        score_min=score_min, score_max=score_max,
+        decision_maker_name_contains=decision_maker_name_contains, filters=filters,
     )
 
     # Count total matching records
@@ -1185,6 +1211,83 @@ def _clean(row: dict, column_name: Optional[str], max_len: int = 0) -> Optional[
     if max_len and len(val) > max_len:
         val = val[:max_len]
     return val
+
+
+class PushToCampaignRequest(BaseModel):
+    campaign_id: int
+
+
+@router.post("/{company_id}/push-to-campaign")
+async def push_company_decision_makers_to_campaign(
+    company_id: int,
+    payload: PushToCampaignRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Push every Person linked to this company as a lead in the given Instantly
+    campaign. Skips persons without a valid email. Writes one activity_log row
+    per uploaded contact.
+    """
+    from app.models.campaign import Campaign
+    from app.services.instantly import instantly_service, InstantlyAPIError
+    from app.services.activity import log_activity
+
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+    campaign = await db.get(Campaign, payload.campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if not campaign.instantly_campaign_id:
+        raise HTTPException(400, "Campaign is not synced to Instantly yet")
+
+    persons = (await db.execute(
+        select(Person).where(Person.company_id == company_id, Person.email.isnot(None))
+    )).scalars().all()
+    if not persons:
+        return {"company_id": company_id, "campaign_id": payload.campaign_id,
+                "uploaded": 0, "message": "No decision makers with email"}
+
+    leads = [{
+        "email": p.email,
+        "first_name": p.first_name,
+        "last_name": p.last_name,
+        "company_name": company.name or "",
+        "phone": p.phone or "",
+        "custom_variables": {
+            "title": p.title or "",
+            "industry": p.industry or company.industry or "",
+            "linkedin_url": p.linkedin_url or "",
+        },
+    } for p in persons]
+
+    try:
+        result = await instantly_service.add_leads_to_campaign(
+            campaign.instantly_campaign_id, leads
+        )
+    except InstantlyAPIError as e:
+        raise HTTPException(e.status_code, e.detail) from e
+
+    for p in persons:
+        await log_activity(
+            db, target_type="contact", target_id=p.id,
+            action="pushed_to_campaign",
+            payload={"campaign_id": payload.campaign_id, "campaign_name": campaign.name},
+            actor="user",
+        )
+    await log_activity(
+        db, target_type="account", target_id=company.id,
+        action="pushed_decision_makers_to_campaign",
+        payload={"campaign_id": payload.campaign_id, "campaign_name": campaign.name, "count": len(leads)},
+        actor="user",
+    )
+
+    return {
+        "company_id": company.id,
+        "campaign_id": campaign.id,
+        "campaign_name": campaign.name,
+        "uploaded": len(leads),
+        "instantly_result": result,
+    }
 
 
 @router.post("/{company_id}/find-people")

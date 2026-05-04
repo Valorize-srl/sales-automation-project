@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Company, LeadList } from "@/types";
 
-type ActionId = "find_dm" | "enrich" | "score" | "delete";
+type ActionId = "find_dm" | "enrich" | "score" | "push_to_campaign" | "delete";
 
 interface Props {
   companies: Company[];
@@ -26,6 +26,7 @@ interface Props {
   onToggleSelectAll: () => void;
   customFieldKeys: string[];
   onCompanyClick: (company: Company) => void;
+  onPersonClick?: (personId: number) => void;
   onAction: (companyId: number, action: ActionId) => Promise<void> | void;
   onCustomFieldSave: (companyId: number, key: string, value: string) => Promise<void> | void;
   onAddCustomFieldKey: () => void;
@@ -88,6 +89,7 @@ function ActionMenu({
     { id: "find_dm", label: "Trova decision makers", icon: UserPlus },
     { id: "enrich", label: "Arricchisci email/sito", icon: Sparkles },
     { id: "score", label: "Score con ICP", icon: Sparkles },
+    { id: "push_to_campaign", label: "Aggiungi DM a campagna…", icon: UserPlus },
     { id: "delete", label: "Elimina", icon: Trash2, cls: "text-destructive" },
   ];
   return (
@@ -170,7 +172,7 @@ function EditableCustomCell({
 export function ClayCompaniesTable({
   companies, loading, search, onSearchChange,
   selectedIds, onToggleSelect, onToggleSelectAll,
-  customFieldKeys, onCompanyClick, onAction, onCustomFieldSave, onAddCustomFieldKey,
+  customFieldKeys, onCompanyClick, onPersonClick, onAction, onCustomFieldSave, onAddCustomFieldKey,
   rowsPerPage, pageIndex, total, allLists,
   selectAllMatching, onSelectAllMatching,
 }: Props) {
@@ -282,7 +284,7 @@ export function ClayCompaniesTable({
               <ColHeader icon="number" align="right">Score</ColHeader>
               <ColHeader icon="multi">Email Aziendali</ColHeader>
               <ColHeader icon="multi">Email Lavoro</ColHeader>
-              <ColHeader icon="people" align="center">Decision Makers</ColHeader>
+              <ColHeader icon="people">Decision Makers</ColHeader>
               <ColHeader icon="tag">Liste</ColHeader>
               {customFieldKeys.map((k) => (
                 <TableHead key={k} className="py-1.5">
@@ -390,8 +392,29 @@ export function ClayCompaniesTable({
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-center py-1.5">
-                    {c.people_count > 0 ? (
+                  <TableCell className="py-1.5 max-w-[300px]">
+                    {c.decision_makers && c.decision_makers.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {c.decision_makers.slice(0, 3).map((dm) => {
+                          const fullName = `${dm.first_name ?? ""} ${dm.last_name ?? ""}`.trim() || dm.email || `#${dm.id}`;
+                          return (
+                            <button
+                              key={dm.id}
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md border bg-background px-1.5 py-0.5 text-[10px] hover:bg-accent"
+                              onClick={(e) => { e.stopPropagation(); onPersonClick?.(dm.id); }}
+                              title={dm.title ? `${fullName} · ${dm.title}` : fullName}
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full bg-primary/60" />
+                              <span className="truncate max-w-[120px]">{fullName}</span>
+                            </button>
+                          );
+                        })}
+                        {c.decision_makers.length > 3 && (
+                          <Badge variant="outline" className="text-[10px]">+{c.decision_makers.length - 3}</Badge>
+                        )}
+                      </div>
+                    ) : c.people_count > 0 ? (
                       <button onClick={() => onCompanyClick(c)}>
                         <Badge variant="outline" className="cursor-pointer hover:bg-accent gap-1">
                           <Users className="h-3 w-3" /> {c.people_count}
