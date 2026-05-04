@@ -168,7 +168,7 @@ export default function LeadsPage() {
 
   const handleAction = async (
     companyId: number,
-    action: "find_dm" | "enrich" | "score" | "delete",
+    action: "find_dm" | "enrich" | "score" | "push_to_campaign" | "delete",
   ) => {
     if (action === "find_dm") {
       try {
