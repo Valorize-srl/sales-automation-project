@@ -72,6 +72,8 @@ class CompanyResponse(BaseModel):
     employee_count: Optional[int] = None
     custom_fields: Optional[dict] = None
     list_ids: list[int] = []
+    # Aggregated work emails of decision makers (Person.email of linked persons)
+    work_emails: list[str] = []
     # Enrichment fields
     generic_emails: Optional[list[str]] = None
     enrichment_source: Optional[str] = None

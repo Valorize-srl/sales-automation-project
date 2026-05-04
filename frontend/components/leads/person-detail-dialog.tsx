@@ -104,7 +104,7 @@ export function PersonDetailDialog({ person, open, onOpenChange, onCompanyClick,
             <div className="space-y-0.5">
               <EditableField label="Nome" value={current.first_name} onSave={(v) => saveField("first_name", v)} placeholder="Nome" />
               <EditableField label="Cognome" value={current.last_name} onSave={(v) => saveField("last_name", v)} placeholder="Cognome" />
-              <EditableField label="Email" value={current.email} onSave={(v) => saveField("email", v)} placeholder="email@esempio.com" icon={<Mail className="h-3 w-3 text-muted-foreground" />} />
+              <EditableField label="Email lavoro" value={current.email} onSave={(v) => saveField("email", v)} placeholder="email@esempio.com" icon={<Mail className="h-3 w-3 text-muted-foreground" />} />
               <EditableField label="Telefono" value={current.phone} onSave={(v) => saveField("phone", v)} placeholder="+39 ..." icon={<Phone className="h-3 w-3 text-muted-foreground" />} />
               <EditableField label="LinkedIn" value={current.linkedin_url} onSave={(v) => saveField("linkedin_url", v)} type="url" placeholder="https://linkedin.com/in/..." icon={<Linkedin className="h-3 w-3 text-muted-foreground" />} />
             </div>

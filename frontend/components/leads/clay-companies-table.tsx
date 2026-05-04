@@ -281,6 +281,7 @@ export function ClayCompaniesTable({
               <ColHeader icon="tag" align="center">Tier</ColHeader>
               <ColHeader icon="number" align="right">Score</ColHeader>
               <ColHeader icon="multi">Email Aziendali</ColHeader>
+              <ColHeader icon="multi">Email Lavoro</ColHeader>
               <ColHeader icon="people" align="center">Decision Makers</ColHeader>
               <ColHeader icon="tag">Liste</ColHeader>
               {customFieldKeys.map((k) => (
@@ -371,6 +372,22 @@ export function ClayCompaniesTable({
                           <Badge variant="outline" className="text-[10px]">+{generic.length - 2}</Badge>
                         )}
                       </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-1.5 max-w-[260px]">
+                    {(c.work_emails && c.work_emails.length > 0) ? (
+                      <div className="flex flex-wrap gap-1">
+                        {c.work_emails.slice(0, 2).map((e) => (
+                          <Badge key={e} variant="outline" className="text-[10px] font-normal px-1.5 bg-emerald-50 border-emerald-200 text-emerald-900">
+                            {e}
+                          </Badge>
+                        ))}
+                        {c.work_emails.length > 2 && (
+                          <Badge variant="outline" className="text-[10px]">+{c.work_emails.length - 2}</Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
                     )}
                   </TableCell>
                   <TableCell className="text-center py-1.5">
