@@ -33,6 +33,9 @@ interface Props {
   pageIndex: number; // 0-indexed page (for row number offset)
   total: number;
   allLists?: LeadList[];
+  // "Select all N matching across pages" banner
+  selectAllMatching?: boolean;
+  onSelectAllMatching?: (v: boolean) => void;
 }
 
 const fmtRevenue = (n: number | null | undefined) =>
@@ -169,6 +172,7 @@ export function ClayCompaniesTable({
   selectedIds, onToggleSelect, onToggleSelectAll,
   customFieldKeys, onCompanyClick, onAction, onCustomFieldSave, onAddCustomFieldKey,
   rowsPerPage, pageIndex, total, allLists,
+  selectAllMatching, onSelectAllMatching,
 }: Props) {
   const listsById = new Map((allLists || []).map((l) => [l.id, l]));
   const [busyRows, setBusyRows] = useState<Set<number>>(new Set());
@@ -180,6 +184,12 @@ export function ClayCompaniesTable({
   };
 
   const allOnPageSelected = companies.length > 0 && companies.every((c) => selectedIds.has(c.id));
+  // Show the "all N matching" banner when:
+  //  - the user just selected the full visible page,
+  //  - and the dataset has more rows than the page,
+  //  - and the cross-page selection isn't already active.
+  const showAllMatchingBanner =
+    allOnPageSelected && total > companies.length && !selectAllMatching;
 
   // Total visible columns: 8 fixed + 1 per custom + 1 (#) + 1 (checkbox) + 1 (people) + 1 (action menu)
   const baseCols = 8;
@@ -218,6 +228,34 @@ export function ClayCompaniesTable({
           <span>{total.toLocaleString("it-IT")} rows</span>
         </div>
       </div>
+
+      {/* Cross-page selection banner */}
+      {showAllMatchingBanner && (
+        <div className="flex items-center justify-center gap-3 px-3 py-1.5 text-xs bg-amber-50 border-b border-amber-200">
+          <span>
+            Hai selezionato {selectedIds.size} aziende in questa pagina.
+          </span>
+          <button
+            className="font-medium text-amber-900 hover:underline"
+            onClick={() => onSelectAllMatching?.(true)}
+          >
+            Seleziona tutte le {total.toLocaleString("it-IT")} aziende che rispettano i filtri
+          </button>
+        </div>
+      )}
+      {selectAllMatching && (
+        <div className="flex items-center justify-center gap-3 px-3 py-1.5 text-xs bg-primary/10 border-b border-primary/20">
+          <span className="font-medium">
+            Tutte le {total.toLocaleString("it-IT")} aziende che rispettano i filtri sono selezionate.
+          </span>
+          <button
+            className="text-primary hover:underline"
+            onClick={() => onSelectAllMatching?.(false)}
+          >
+            Deseleziona
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto">

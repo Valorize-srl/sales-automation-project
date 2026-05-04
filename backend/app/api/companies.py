@@ -253,6 +253,163 @@ async def get_industries(db: AsyncSession = Depends(get_db)):
     return industries
 
 
+def _build_company_filter_query(
+    *,
+    search,
+    industry,
+    client_tag,
+    province,
+    location,
+    priority_tier,
+    lifecycle_stage,
+    list_id,
+    has_email,
+    has_phone,
+    has_linkedin,
+    has_website,
+    has_score,
+    revenue_min,
+    revenue_max,
+    employee_count_min,
+    employee_count_max,
+    score_min,
+    score_max,
+    filters,
+):
+    """Build the SQLAlchemy SELECT for /companies (and /companies/ids).
+
+    Centralised so both endpoints stay in sync.
+    """
+    import json
+    from sqlalchemy import cast, Float
+    from app.models.company import company_lead_list
+
+    q = select(Company)
+    if search:
+        q = q.where(Company.name.ilike(f"%{search}%"))
+    if industry is not None:
+        q = q.where(Company.industry == industry)
+    if province is not None:
+        q = q.where(Company.province == province)
+    if location is not None:
+        q = q.where(Company.location.ilike(f"%{location}%"))
+    if client_tag is not None:
+        q = q.where(Company.client_tag.ilike(f"%{client_tag}%"))
+    if priority_tier is not None:
+        q = q.where(Company.priority_tier == priority_tier)
+    if lifecycle_stage is not None:
+        q = q.where(Company.lifecycle_stage == lifecycle_stage)
+    if list_id is not None:
+        q = q.join(
+            company_lead_list, Company.id == company_lead_list.c.company_id
+        ).where(company_lead_list.c.lead_list_id == list_id)
+    if has_email is True:
+        q = q.where(Company.email.isnot(None), Company.email != "")
+    elif has_email is False:
+        q = q.where(or_(Company.email.is_(None), Company.email == ""))
+    if has_phone is True:
+        q = q.where(Company.phone.isnot(None), Company.phone != "")
+    elif has_phone is False:
+        q = q.where(or_(Company.phone.is_(None), Company.phone == ""))
+    if has_linkedin is True:
+        q = q.where(Company.linkedin_url.isnot(None), Company.linkedin_url != "")
+    elif has_linkedin is False:
+        q = q.where(or_(Company.linkedin_url.is_(None), Company.linkedin_url == ""))
+    if has_website is True:
+        q = q.where(Company.website.isnot(None), Company.website != "")
+    elif has_website is False:
+        q = q.where(or_(Company.website.is_(None), Company.website == ""))
+    if has_score is True:
+        q = q.where(Company.icp_score.isnot(None))
+    elif has_score is False:
+        q = q.where(Company.icp_score.is_(None))
+    if revenue_min is not None:
+        q = q.where(Company.revenue >= revenue_min)
+    if revenue_max is not None:
+        q = q.where(Company.revenue <= revenue_max)
+    if employee_count_min is not None:
+        q = q.where(Company.employee_count >= employee_count_min)
+    if employee_count_max is not None:
+        q = q.where(Company.employee_count <= employee_count_max)
+    if score_min is not None:
+        q = q.where(Company.icp_score >= score_min)
+    if score_max is not None:
+        q = q.where(Company.icp_score <= score_max)
+
+    if filters:
+        try:
+            advanced = json.loads(filters)
+        except json.JSONDecodeError:
+            advanced = None
+        if isinstance(advanced, dict):
+            if isinstance(advanced.get("name_contains"), str):
+                q = q.where(Company.name.ilike(f"%{advanced['name_contains']}%"))
+            cf_filters = advanced.get("cf") or {}
+            if isinstance(cf_filters, dict):
+                for key, spec in cf_filters.items():
+                    if not isinstance(key, str) or not key:
+                        continue
+                    cf_text = Company.custom_fields[key].astext  # type: ignore[index]
+                    if isinstance(spec, str):
+                        q = q.where(cf_text.ilike(f"%{spec}%"))
+                    elif isinstance(spec, dict):
+                        if "eq" in spec:
+                            q = q.where(cf_text == str(spec["eq"]))
+                        if "contains" in spec and isinstance(spec["contains"], str):
+                            q = q.where(cf_text.ilike(f"%{spec['contains']}%"))
+                        if "min" in spec or "max" in spec:
+                            cast_num = cast(cf_text, Float)
+                            if "min" in spec and spec["min"] is not None:
+                                q = q.where(cast_num >= float(spec["min"]))
+                            if "max" in spec and spec["max"] is not None:
+                                q = q.where(cast_num <= float(spec["max"]))
+    return q
+
+
+@router.get("/ids", response_model=list[int])
+async def list_company_ids(
+    search: Optional[str] = Query(None),
+    industry: Optional[str] = Query(None),
+    client_tag: Optional[str] = Query(None),
+    province: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    priority_tier: Optional[str] = Query(None),
+    lifecycle_stage: Optional[str] = Query(None),
+    list_id: Optional[int] = Query(None),
+    has_email: Optional[bool] = Query(None),
+    has_phone: Optional[bool] = Query(None),
+    has_linkedin: Optional[bool] = Query(None),
+    has_website: Optional[bool] = Query(None),
+    has_score: Optional[bool] = Query(None),
+    revenue_min: Optional[int] = Query(None),
+    revenue_max: Optional[int] = Query(None),
+    employee_count_min: Optional[int] = Query(None),
+    employee_count_max: Optional[int] = Query(None),
+    score_min: Optional[int] = Query(None),
+    score_max: Optional[int] = Query(None),
+    filters: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return only the IDs of companies matching the same filters as GET /companies.
+
+    Used by the Clay-style "Select all N matching" banner so bulk actions
+    (add to list / score / delete) can operate on the entire filtered set
+    without paginating through every page first.
+    """
+    base_query = _build_company_filter_query(
+        search=search, industry=industry, client_tag=client_tag, province=province,
+        location=location, priority_tier=priority_tier, lifecycle_stage=lifecycle_stage,
+        list_id=list_id, has_email=has_email, has_phone=has_phone,
+        has_linkedin=has_linkedin, has_website=has_website, has_score=has_score,
+        revenue_min=revenue_min, revenue_max=revenue_max,
+        employee_count_min=employee_count_min, employee_count_max=employee_count_max,
+        score_min=score_min, score_max=score_max, filters=filters,
+    )
+    id_query = base_query.with_only_columns(Company.id)
+    rows = (await db.execute(id_query)).all()
+    return [r[0] for r in rows]
+
+
 @router.get("", response_model=CompanyListResponse)
 async def list_companies(
     search: Optional[str] = Query(None),
@@ -286,93 +443,17 @@ async def list_companies(
         "name_contains": "acme"
       }
     """
-    import math, json
-    from sqlalchemy import cast, Float
-    from app.models.company import company_lead_list
+    import math
 
-    base_query = select(Company)
-    if search:
-        base_query = base_query.where(Company.name.ilike(f"%{search}%"))
-    if industry is not None:
-        base_query = base_query.where(Company.industry == industry)
-    if province is not None:
-        base_query = base_query.where(Company.province == province)
-    if location is not None:
-        base_query = base_query.where(Company.location.ilike(f"%{location}%"))
-    if client_tag is not None:
-        base_query = base_query.where(Company.client_tag.ilike(f"%{client_tag}%"))
-    if priority_tier is not None:
-        base_query = base_query.where(Company.priority_tier == priority_tier)
-    if lifecycle_stage is not None:
-        base_query = base_query.where(Company.lifecycle_stage == lifecycle_stage)
-    if list_id is not None:
-        base_query = base_query.join(
-            company_lead_list, Company.id == company_lead_list.c.company_id
-        ).where(company_lead_list.c.lead_list_id == list_id)
-    # Presence filters
-    if has_email is True:
-        base_query = base_query.where(Company.email.isnot(None), Company.email != "")
-    elif has_email is False:
-        base_query = base_query.where(or_(Company.email.is_(None), Company.email == ""))
-    if has_phone is True:
-        base_query = base_query.where(Company.phone.isnot(None), Company.phone != "")
-    elif has_phone is False:
-        base_query = base_query.where(or_(Company.phone.is_(None), Company.phone == ""))
-    if has_linkedin is True:
-        base_query = base_query.where(Company.linkedin_url.isnot(None), Company.linkedin_url != "")
-    elif has_linkedin is False:
-        base_query = base_query.where(or_(Company.linkedin_url.is_(None), Company.linkedin_url == ""))
-    if has_website is True:
-        base_query = base_query.where(Company.website.isnot(None), Company.website != "")
-    elif has_website is False:
-        base_query = base_query.where(or_(Company.website.is_(None), Company.website == ""))
-    if has_score is True:
-        base_query = base_query.where(Company.icp_score.isnot(None))
-    elif has_score is False:
-        base_query = base_query.where(Company.icp_score.is_(None))
-    # Numeric ranges
-    if revenue_min is not None:
-        base_query = base_query.where(Company.revenue >= revenue_min)
-    if revenue_max is not None:
-        base_query = base_query.where(Company.revenue <= revenue_max)
-    if employee_count_min is not None:
-        base_query = base_query.where(Company.employee_count >= employee_count_min)
-    if employee_count_max is not None:
-        base_query = base_query.where(Company.employee_count <= employee_count_max)
-    if score_min is not None:
-        base_query = base_query.where(Company.icp_score >= score_min)
-    if score_max is not None:
-        base_query = base_query.where(Company.icp_score <= score_max)
-
-    # Advanced JSON filter (custom_fields, name_contains)
-    if filters:
-        try:
-            advanced = json.loads(filters)
-        except json.JSONDecodeError:
-            advanced = None
-        if isinstance(advanced, dict):
-            if isinstance(advanced.get("name_contains"), str):
-                base_query = base_query.where(Company.name.ilike(f"%{advanced['name_contains']}%"))
-            cf_filters = advanced.get("cf") or {}
-            if isinstance(cf_filters, dict):
-                for key, spec in cf_filters.items():
-                    if not isinstance(key, str) or not key:
-                        continue
-                    # JSONB textual access; fall through to JSON `->>` operator
-                    cf_text = Company.custom_fields[key].astext  # type: ignore[index]
-                    if isinstance(spec, str):
-                        base_query = base_query.where(cf_text.ilike(f"%{spec}%"))
-                    elif isinstance(spec, dict):
-                        if "eq" in spec:
-                            base_query = base_query.where(cf_text == str(spec["eq"]))
-                        if "contains" in spec and isinstance(spec["contains"], str):
-                            base_query = base_query.where(cf_text.ilike(f"%{spec['contains']}%"))
-                        if "min" in spec or "max" in spec:
-                            cast_num = cast(cf_text, Float)
-                            if "min" in spec and spec["min"] is not None:
-                                base_query = base_query.where(cast_num >= float(spec["min"]))
-                            if "max" in spec and spec["max"] is not None:
-                                base_query = base_query.where(cast_num <= float(spec["max"]))
+    base_query = _build_company_filter_query(
+        search=search, industry=industry, client_tag=client_tag, province=province,
+        location=location, priority_tier=priority_tier, lifecycle_stage=lifecycle_stage,
+        list_id=list_id, has_email=has_email, has_phone=has_phone,
+        has_linkedin=has_linkedin, has_website=has_website, has_score=has_score,
+        revenue_min=revenue_min, revenue_max=revenue_max,
+        employee_count_min=employee_count_min, employee_count_max=employee_count_max,
+        score_min=score_min, score_max=score_max, filters=filters,
+    )
 
     # Count total matching records
     count_query = select(sa_func.count()).select_from(base_query.subquery())
