@@ -103,15 +103,14 @@ export function BulkScrapeDialog({ open, onOpenChange, companies, onCompleted }:
   const saveRow = async (idx: number) => {
     const row = rows[idx];
     if (!row.result) return;
-    const updates: Record<string, string | null> = {};
-    if (row.result.emails.length > 0 && !row.company.email) {
-      updates.email = row.result.emails[0];
-    }
-    if (row.result.linkedin_url && !row.company.linkedin_url) {
-      updates.linkedin_url = row.result.linkedin_url;
-    }
-    if (Object.keys(updates).length === 0) return;
-    await api.updateCompany(row.company.id, updates);
+    // Send everything the scraper found — the backend decides what to merge:
+    // every email goes into generic_emails (dedup), the canonical LinkedIn
+    // /company/ URL replaces a non-canonical one, etc.
+    if (row.result.emails.length === 0 && !row.result.linkedin_url) return;
+    await api.saveScrapedDataToCompany(row.company.id, {
+      emails: row.result.emails,
+      linkedin_url: row.result.linkedin_url ?? null,
+    });
     setRows((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], status: "saved" };
@@ -131,10 +130,9 @@ export function BulkScrapeDialog({ open, onOpenChange, companies, onCompleted }:
 
   const hasNewData = (row: CompanyScrapeState) => {
     if (!row.result) return false;
-    return (
-      (row.result.emails.length > 0 && !row.company.email) ||
-      (!!row.result.linkedin_url && !row.company.linkedin_url)
-    );
+    // Considered "savable" whenever the scraper returned any data: the backend
+    // takes care of dedup + best-canonical-LinkedIn picking.
+    return row.result.emails.length > 0 || !!row.result.linkedin_url;
   };
 
   const completedCount = rows.filter((r) => r.status === "done" || r.status === "saved" || r.status === "error").length;

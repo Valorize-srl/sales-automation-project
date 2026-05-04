@@ -815,6 +815,13 @@ class ApiClient {
     return this.get("/icps");
   }
 
+  async saveScrapedDataToCompany(
+    companyId: number,
+    data: { emails: string[]; linkedin_url?: string | null; phone?: string | null },
+  ): Promise<import("@/types").Company> {
+    return this.post(`/companies/${companyId}/save-scraped`, data);
+  }
+
   async pushCompanyDecisionMakersToCampaign(
     companyId: number,
     campaignId: number,
