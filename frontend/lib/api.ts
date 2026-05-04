@@ -547,6 +547,21 @@ class ApiClient {
     return this.post(`/companies/${companyId}/find-people`, params || {});
   }
 
+  async findAndImportDecisionMakers(
+    companyId: number,
+    params?: { titles?: string[]; seniorities?: string[]; per_page?: number; client_tag?: string },
+  ): Promise<{ imported_count: number; candidates: number }> {
+    const search = await this.findPeopleAtCompany(companyId, {
+      titles: params?.titles,
+      seniorities: params?.seniorities,
+      per_page: params?.per_page ?? 25,
+    });
+    const results = (search.results || []).slice(0, params?.per_page ?? 25);
+    if (results.length === 0) return { imported_count: 0, candidates: 0 };
+    const imp = await this.apolloImport(results, "people", params?.client_tag, false);
+    return { imported_count: imp.imported ?? 0, candidates: results.length };
+  }
+
   async bulkTagCompanies(company_ids: number[], tags_to_add?: string[], tags_to_remove?: string[]): Promise<{ companies_tagged: number; message: string }> {
     return this.post("/companies/bulk-tag", { company_ids, tags_to_add, tags_to_remove });
   }
@@ -798,6 +813,18 @@ class ApiClient {
 
   async getICPs(): Promise<{ icps: import("@/types").ICP[]; total: number }> {
     return this.get("/icps");
+  }
+
+  async upsertCompanyCustomField(
+    companyId: number,
+    key: string,
+    value: string | null,
+  ): Promise<import("@/types").Company> {
+    return this.put(`/companies/${companyId}/custom-field`, { key, value });
+  }
+
+  async listCustomFieldKeys(): Promise<string[]> {
+    return this.get("/companies/custom-field-keys");
   }
 
   async listEnrichmentTasks(params?: {

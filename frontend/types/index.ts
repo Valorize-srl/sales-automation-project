@@ -152,10 +152,15 @@ export interface Company {
   linkedin_url: string | null;
   industry: string | null;
   location: string | null;
+  province: string | null;
   signals: string | null;
   website: string | null;
   client_tag: string | null;
   notes: string | null;
+  // Raw firmographics
+  revenue: number | null;
+  employee_count: number | null;
+  custom_fields: Record<string, string> | null;
   // Enrichment fields
   generic_emails?: string[];
   enrichment_source?: "apollo" | "web_scrape" | "both";

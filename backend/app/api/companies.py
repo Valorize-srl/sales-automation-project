@@ -3,6 +3,7 @@ from typing import Optional
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func as sa_func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,7 +38,10 @@ from app.services.apollo import ApolloService, ApolloAPIError
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-COMPANY_FIELDS = ["name", "email", "phone", "linkedin_url", "industry", "location", "signals", "website"]
+COMPANY_FIELDS = [
+    "name", "email", "phone", "linkedin_url", "industry",
+    "location", "signals", "website", "revenue", "employee_count", "province",
+]
 
 COMPANY_MAPPING_SYSTEM_PROMPT = """You are a data mapping assistant. You receive CSV column headers \
 and sample data, and must map them to company database fields.
@@ -48,14 +52,18 @@ Company fields to map:
 - phone: Phone/telephone number
 - linkedin_url: LinkedIn company page URL
 - industry: Industry sector or category
-- location: Location (city, country or region)
+- location: City or location text
+- province: Italian "Provincia" 2-letter code (MI, RM, BG, etc.) if a dedicated column exists
 - signals: Funding events, acquisitions, news, or other business signals
 - website: Company website URL
+- revenue: Annual revenue / fatturato (any numeric or formatted column like "729.269.649 €")
+- employee_count: Headcount / number of employees / dipendenti
 
 Rules:
 - Map each CSV column to the most appropriate company field
 - The name field is the most important - always try to identify it
-- If a column clearly does not match any company field, set it to null
+- ANY unmapped column will automatically become a custom_fields entry on the company —
+  so prefer leaving it null if it doesn't fit a known field, instead of forcing a poor match.
 - Use the map_columns tool to return your mapping"""
 
 COMPANY_MAPPING_TOOL = {
@@ -80,6 +88,86 @@ def _extract_domain(email: Optional[str]) -> Optional[str]:
     if not email or "@" not in email:
         return None
     return email.split("@", 1)[1].lower().strip()
+
+
+def _parse_int(value) -> Optional[int]:
+    """Parse a possibly-formatted integer string ('1.234', '1,234', '11-50') -> int or None."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # Handle ranges like "11-50" by taking the lower bound
+    if "-" in s and not s.startswith("-"):
+        s = s.split("-", 1)[0].strip()
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if not digits:
+        return None
+    try:
+        return int(digits)
+    except ValueError:
+        return None
+
+
+def _parse_revenue(value) -> Optional[int]:
+    """Parse a revenue string ('729.269.649 €', '€1,234.56M') into euro int.
+
+    Handles common formats:
+    - "729.269.649 €" / "729,269,649€"      -> 729269649
+    - "1.5M" / "1,5 mln"                    -> 1500000
+    - "12.3K"                               -> 12300
+    - plain numbers
+    """
+    if value is None:
+        return None
+    raw = str(value).strip().lower()
+    if not raw:
+        return None
+    raw = raw.replace("€", "").replace("eur", "").replace("euro", "").strip()
+    multiplier = 1
+    if any(suffix in raw for suffix in ("mln", "milion", "million")):
+        multiplier = 1_000_000
+        for s in ("mln", "milione", "milioni", "million", "millions"):
+            raw = raw.replace(s, "")
+    elif raw.endswith("m"):
+        multiplier = 1_000_000
+        raw = raw[:-1]
+    elif raw.endswith("k"):
+        multiplier = 1_000
+        raw = raw[:-1]
+    elif raw.endswith("b") or "miliard" in raw:
+        multiplier = 1_000_000_000
+        for s in ("b", "mld", "miliardi", "miliardo"):
+            raw = raw.replace(s, "")
+
+    raw = raw.replace(" ", "").replace("'", "")
+    # If there are both commas and dots, drop the thousands separator (whichever
+    # appears first); the last separator before the decimals is the decimal sep.
+    if "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "")
+            raw = raw.replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    elif "," in raw:
+        # Treat as thousands sep if 3-digit groups; otherwise decimal
+        parts = raw.split(",")
+        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+            raw = raw.replace(",", "")
+        else:
+            raw = raw.replace(",", ".")
+    elif "." in raw:
+        # Italian thousands separator like "729.269.649"
+        parts = raw.split(".")
+        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
+            raw = raw.replace(".", "")
+        # else assume it's a decimal: leave as-is
+
+    try:
+        n = float(raw)
+    except ValueError:
+        return None
+    return int(round(n * multiplier))
 
 
 def _merge_email(company: Company, new_email: str) -> bool:
@@ -338,6 +426,52 @@ async def delete_company(company_id: int, db: AsyncSession = Depends(get_db)):
     if not company:
         raise HTTPException(404, "Company not found")
     await db.delete(company)
+
+
+# ==============================================================================
+# Custom fields (Clay-style "+ Add column")
+# ==============================================================================
+
+class CustomFieldUpsert(BaseModel):
+    key: str
+    value: Optional[str] = None  # null/empty deletes the key
+
+
+@router.put("/{company_id}/custom-field", response_model=CompanyResponse)
+async def upsert_custom_field(
+    company_id: int,
+    payload: CustomFieldUpsert,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or remove a single custom_fields[key] = value on a company."""
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+    cf = dict(company.custom_fields or {})
+    key = payload.key.strip()
+    if not key:
+        raise HTTPException(400, "Custom field key required")
+    if payload.value is None or payload.value == "":
+        cf.pop(key, None)
+    else:
+        cf[key] = payload.value
+    company.custom_fields = cf or None
+    await db.flush()
+    await db.refresh(company)
+    return _company_to_response(company)
+
+
+@router.get("/custom-field-keys", response_model=list[str])
+async def list_custom_field_keys(db: AsyncSession = Depends(get_db)):
+    """Distinct keys present in any company's custom_fields. Used by the UI to
+    derive the dynamic columns to render in the Clay-style table."""
+    result = await db.execute(select(Company.custom_fields).where(Company.custom_fields.isnot(None)))
+    keys: set[str] = set()
+    for row in result.all():
+        cf = row[0]
+        if isinstance(cf, dict):
+            keys.update(k for k in cf.keys() if k)
+    return sorted(keys)
 
 
 # ==============================================================================
@@ -605,6 +739,23 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     continue
 
                 email = _val(row, data.mapping.email, "email")
+                # Parse numeric fields out of the raw row (revenue / employee_count)
+                rev_raw = _clean(row, data.mapping.revenue, 0)
+                emp_raw = _clean(row, data.mapping.employee_count, 0)
+                rev_val = _parse_revenue(rev_raw) if rev_raw else None
+                emp_val = _parse_int(emp_raw) if emp_raw else None
+                # Capture every CSV column the mapping didn't claim into custom_fields
+                mapped_cols = {
+                    v for v in data.mapping.model_dump().values() if v
+                }
+                cf: dict[str, str] = {}
+                for k, v in row.items():
+                    if not k or k in mapped_cols:
+                        continue
+                    cleaned = (str(v).strip() if v is not None else "")
+                    if cleaned:
+                        cf[k] = cleaned[:500]
+
                 company = Company(
                     name=name,
                     email=email,
@@ -613,8 +764,12 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
                     industry=_val(row, data.mapping.industry, "industry"),
                     location=_val(row, data.mapping.location, "location"),
+                    province=_val(row, data.mapping.province, "province"),
                     signals=_val(row, data.mapping.signals, "signals"),
                     website=_val(row, data.mapping.website, "website"),
+                    revenue=rev_val,
+                    employee_count=emp_val,
+                    custom_fields=cf or None,
                 )
                 db.add(company)
                 companies_by_name[name.lower()] = company
