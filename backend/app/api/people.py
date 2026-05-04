@@ -233,10 +233,18 @@ async def update_person(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a person's fields."""
+    from app.services.activity import log_activity, diff_for_log
+
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
     if not person:
         raise HTTPException(404, "Person not found")
+
+    track_keys = (
+        "first_name", "last_name", "email", "phone", "linkedin_url",
+        "title", "company_name", "industry", "location", "client_tag", "notes",
+    )
+    before = {k: getattr(person, k, None) for k in track_keys}
 
     updates = data.model_dump(exclude_unset=True)
 
@@ -245,8 +253,12 @@ async def update_person(
         converted = updates.pop("converted")
         if converted:
             person.converted_at = datetime.now(timezone.utc)
+            await log_activity(db, target_type="contact", target_id=person.id,
+                               action="converted", payload=None, actor="user")
         else:
             person.converted_at = None
+            await log_activity(db, target_type="contact", target_id=person.id,
+                               action="unconverted", payload=None, actor="user")
 
     if "company_name" in updates:
         person.company_id = await _find_matching_company(
@@ -258,16 +270,28 @@ async def update_person(
 
     await db.flush()
     await db.refresh(person)
+
+    after = {k: getattr(person, k, None) for k in track_keys}
+    diff = diff_for_log(before, after, track_keys)
+    if diff:
+        await log_activity(db, target_type="contact", target_id=person.id,
+                           action="field_updated", payload=diff, actor="user")
     return person
 
 
 @router.delete("/{person_id}", status_code=204)
 async def delete_person(person_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a person."""
+    from app.services.activity import log_activity
+
     result = await db.execute(select(Person).where(Person.id == person_id))
     person = result.scalar_one_or_none()
     if not person:
         raise HTTPException(404, "Person not found")
+    await log_activity(db, target_type="contact", target_id=person.id,
+                       action="deleted",
+                       payload={"name": f"{person.first_name} {person.last_name}", "email": person.email},
+                       actor="user")
     await db.delete(person)
 
 
@@ -433,29 +457,52 @@ def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
 # Bulk Operations
 # ==============================================================================
 
+VERIFICATION_TTL_DAYS = 180
+
+
 @router.post("/bulk-enrich")
 async def bulk_enrich_people(
     person_ids: list[int],
+    force: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
-    """Bulk enrich selected people via Apollo API."""
+    """Bulk enrich selected people via Apollo API.
+
+    Skips contacts whose email/phone was verified in the last 180 days unless
+    `force=true` is passed — saves Apollo credits on already-known data.
+    Writes one `email_verified` / `phone_verified` activity_log entry per
+    successful update so the timeline of a contact is auditable.
+    """
+    from datetime import datetime, timezone, timedelta
     from app.services.apollo import ApolloService
+    from app.services.activity import log_activity
 
     # Fetch people
     result = await db.execute(select(Person).where(Person.id.in_(person_ids)))
     people = list(result.scalars().all())
-
     if not people:
         raise HTTPException(404, "No people found with provided IDs")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=VERIFICATION_TTL_DAYS)
+    skipped_cached = 0
+    if not force:
+        candidates = []
+        for p in people:
+            email_fresh = p.last_email_verified_at and p.last_email_verified_at > cutoff
+            phone_fresh = p.last_phone_verified_at and p.last_phone_verified_at > cutoff
+            if email_fresh and phone_fresh:
+                skipped_cached += 1
+                continue
+            candidates.append(p)
+        people = candidates
 
     apollo = ApolloService()
     enriched_count = 0
     credits_consumed = 0
+    now = datetime.now(timezone.utc)
 
-    # Batch enrich in groups of 10 (Apollo API limit)
     for i in range(0, len(people), 10):
-        batch = people[i:i+10]
-
+        batch = people[i:i + 10]
         apollo_people = [
             {
                 "id": p.id,
@@ -470,20 +517,31 @@ async def bulk_enrich_people(
         try:
             enrich_result = await apollo.enrich_people(apollo_people)
             matches = enrich_result.get("matches", [])
-
             for match in matches:
                 person_id = match.get("id")
-                if person_id:
-                    person = next((p for p in batch if p.id == person_id), None)
-                    if person:
-                        if match.get("email"):
-                            person.email = match["email"]
-                        if match.get("phone_numbers"):
-                            person.phone = match["phone_numbers"][0].get("sanitized_number")
-                        from datetime import datetime
-                        person.enriched_at = datetime.utcnow()
-                        enriched_count += 1
-
+                if not person_id:
+                    continue
+                person = next((p for p in batch if p.id == person_id), None)
+                if not person:
+                    continue
+                if match.get("email"):
+                    person.email = match["email"]
+                    person.last_email_verified_at = now
+                    person.email_verification_source = "apollo"
+                    await log_activity(
+                        db, target_type="contact", target_id=person.id,
+                        action="email_verified", payload={"source": "apollo"}, actor="system",
+                    )
+                if match.get("phone_numbers"):
+                    person.phone = match["phone_numbers"][0].get("sanitized_number")
+                    person.last_phone_verified_at = now
+                    person.phone_verification_source = "apollo"
+                    await log_activity(
+                        db, target_type="contact", target_id=person.id,
+                        action="phone_verified", payload={"source": "apollo"}, actor="system",
+                    )
+                person.enriched_at = now
+                enriched_count += 1
             credits_consumed += len(batch)
         except Exception as e:
             logger.error(f"Apollo enrich error: {e}")
@@ -493,7 +551,12 @@ async def bulk_enrich_people(
     return {
         "enriched_count": enriched_count,
         "credits_consumed": credits_consumed,
-        "message": f"Enriched {enriched_count} people using {credits_consumed} Apollo credits"
+        "skipped_cached": skipped_cached,
+        "ttl_days": VERIFICATION_TTL_DAYS,
+        "message": (
+            f"Enriched {enriched_count} people using {credits_consumed} Apollo credits"
+            + (f"; skipped {skipped_cached} cached (verified < {VERIFICATION_TTL_DAYS}d)" if skipped_cached else "")
+        ),
     }
 
 

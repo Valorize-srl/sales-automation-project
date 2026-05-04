@@ -269,6 +269,9 @@ export function ClayCompaniesTable({
                 />
               </TableHead>
               <TableHead className="w-[40px] text-center text-[10px] font-mono text-muted-foreground py-1.5">#</TableHead>
+              <TableHead className="w-[60px] py-1.5">
+                <span className="text-[10px] font-mono text-muted-foreground">ID</span>
+              </TableHead>
               <ColHeader icon="text">Nome Azienda</ColHeader>
               <ColHeader icon="number" align="right">Fatturato</ColHeader>
               <ColHeader icon="number" align="right">Dipendenti</ColHeader>
@@ -321,6 +324,16 @@ export function ClayCompaniesTable({
                     />
                   </TableCell>
                   <TableCell className="text-center font-mono text-[10px] text-muted-foreground py-1.5">{rowNum}</TableCell>
+                  <TableCell className="py-1.5">
+                    <button
+                      type="button"
+                      className="font-mono text-[10px] text-muted-foreground hover:text-primary hover:underline"
+                      title={`Click per copiare l'account_id ${c.id}`}
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(String(c.id)); }}
+                    >
+                      {c.id}
+                    </button>
+                  </TableCell>
                   <TableCell className="font-medium py-1.5">
                     <button
                       className="text-primary hover:underline text-left flex items-center gap-1.5 max-w-[260px] truncate"

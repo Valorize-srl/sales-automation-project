@@ -583,13 +583,20 @@ async def create_company(data: CompanyCreate, db: AsyncSession = Depends(get_db)
 @router.put("/{company_id}", response_model=CompanyResponse)
 async def update_company(company_id: int, data: CompanyUpdate, db: AsyncSession = Depends(get_db)):
     """Update a company's fields."""
+    from app.services.activity import log_activity, diff_for_log
+
     result = await db.execute(select(Company).where(Company.id == company_id))
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(404, "Company not found")
 
-    updates = data.model_dump(exclude_unset=True)
+    before = {k: getattr(company, k, None) for k in (
+        "name", "email", "phone", "linkedin_url", "industry", "location",
+        "province", "signals", "website", "client_tag", "notes",
+        "revenue", "employee_count",
+    )}
 
+    updates = data.model_dump(exclude_unset=True)
     if "email" in updates:
         updates["email_domain"] = _extract_domain(updates["email"])
 
@@ -598,6 +605,15 @@ async def update_company(company_id: int, data: CompanyUpdate, db: AsyncSession 
 
     await db.flush()
     await db.refresh(company)
+
+    after = {k: getattr(company, k, None) for k in before.keys()}
+    diff = diff_for_log(before, after, before.keys())
+    if diff:
+        await log_activity(
+            db, target_type="account", target_id=company.id,
+            action="field_updated", payload=diff, actor="user",
+        )
+
     count_result = await db.execute(
         select(sa_func.count(Person.id)).where(Person.company_id == company_id)
     )
@@ -608,10 +624,16 @@ async def update_company(company_id: int, data: CompanyUpdate, db: AsyncSession 
 @router.delete("/{company_id}", status_code=204)
 async def delete_company(company_id: int, db: AsyncSession = Depends(get_db)):
     """Delete a company (people are set to company_id=NULL)."""
+    from app.services.activity import log_activity
+
     result = await db.execute(select(Company).where(Company.id == company_id))
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(404, "Company not found")
+    await log_activity(
+        db, target_type="account", target_id=company.id,
+        action="deleted", payload={"name": company.name}, actor="user",
+    )
     await db.delete(company)
 
 
@@ -631,6 +653,8 @@ async def upsert_custom_field(
     db: AsyncSession = Depends(get_db),
 ):
     """Set or remove a single custom_fields[key] = value on a company."""
+    from app.services.activity import log_activity
+
     company = await db.get(Company, company_id)
     if not company:
         raise HTTPException(404, "Company not found")
@@ -638,13 +662,22 @@ async def upsert_custom_field(
     key = payload.key.strip()
     if not key:
         raise HTTPException(400, "Custom field key required")
+    old_value = cf.get(key)
     if payload.value is None or payload.value == "":
         cf.pop(key, None)
+        action = "custom_field_removed"
+        log_payload = {"key": key, "previous": old_value}
     else:
         cf[key] = payload.value
+        action = "custom_field_set"
+        log_payload = {"key": key, "from": old_value, "to": payload.value}
     company.custom_fields = cf or None
     await db.flush()
     await db.refresh(company)
+    await log_activity(
+        db, target_type="account", target_id=company.id,
+        action=action, payload=log_payload, actor="user",
+    )
     return _company_to_response(company)
 
 
@@ -732,6 +765,7 @@ async def score_companies(
     usage = result.get("_usage") or {}
 
     # Persist account-level scoring (positional match: i-th account ↔ i-th company).
+    from app.services.activity import log_activity
     now = datetime.now(timezone.utc)
     tier_counts = {"A": 0, "B": 0, "C": 0}
     pairs = list(zip(companies, accounts))
@@ -745,6 +779,12 @@ async def score_companies(
         company.reason_summary = acct.get("reason_summary")
         company.last_scored_at = now
         company.scored_with_icp_id = icp.id
+        await log_activity(
+            db, target_type="account", target_id=company.id,
+            action="scored",
+            payload={"icp_id": icp.id, "icp_score": company.icp_score, "tier": company.priority_tier},
+            actor="user",
+        )
         if company.priority_tier in tier_counts:
             tier_counts[company.priority_tier] += 1
 

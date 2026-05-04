@@ -158,6 +158,16 @@ async def add_companies_to_list(
     if to_insert:
         await db.execute(company_lead_list.insert(), to_insert)
 
+    # Activity log per added company
+    from app.services.activity import log_activity
+    for row in to_insert:
+        await log_activity(
+            db, target_type="account", target_id=row["company_id"],
+            action="added_to_list",
+            payload={"list_id": list_id, "list_name": ll.name},
+            actor="user",
+        )
+
     n = await _refresh_companies_count(db, list_id)
     return BulkOperationResponse(
         companies_affected=len(to_insert),
@@ -184,6 +194,13 @@ async def remove_companies_from_list(
             company_lead_list.c.company_id.in_(payload.company_ids),
         )
     )
+    from app.services.activity import log_activity
+    for cid in payload.company_ids:
+        await log_activity(
+            db, target_type="account", target_id=cid,
+            action="removed_from_list",
+            payload={"list_id": list_id, "list_name": ll.name}, actor="user",
+        )
     n_total = await _refresh_companies_count(db, list_id)
     return BulkOperationResponse(
         companies_affected=res.rowcount or 0,

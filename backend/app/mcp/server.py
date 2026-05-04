@@ -46,6 +46,7 @@ def build_mcp_server() -> FastMCP:
         ai_agents as _ai_agents,
         apollo as _apollo,
         analytics as _analytics,
+        activity as _activity,
     )
 
     for module in (
@@ -57,6 +58,7 @@ def build_mcp_server() -> FastMCP:
         _ai_agents,
         _apollo,
         _analytics,
+        _activity,
     ):
         module.register(mcp)
 

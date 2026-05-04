@@ -19,6 +19,7 @@ from app.models.prospecting_tool import ProspectingTool
 from app.models.bando import Bando
 from app.models.api_key import ApiKey
 from app.models.enrichment_task import EnrichmentTask
+from app.models.activity_log import ActivityLog
 
 __all__ = [
     "ICP",
@@ -42,4 +43,5 @@ __all__ = [
     "Bando",
     "ApiKey",
     "EnrichmentTask",
+    "ActivityLog",
 ]

@@ -40,6 +40,11 @@ class Person(Base):
     tags: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)  # ["cliente_xyz", "wine_industry"]
     enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Per-channel verification cache — used by enrichment to skip already-verified contacts
+    last_email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verification_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    last_phone_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    phone_verification_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
