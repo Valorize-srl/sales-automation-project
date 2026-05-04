@@ -1217,6 +1217,145 @@ class PushToCampaignRequest(BaseModel):
     campaign_id: int
 
 
+class BulkScrapeRequest(BaseModel):
+    """Bulk-enrich a set of companies by scraping their websites for contacts."""
+    company_ids: list[int]
+
+
+@router.post("/bulk-enrich-websites")
+async def bulk_enrich_company_websites(
+    payload: BulkScrapeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the Apify website scraper on every selected company that has a
+    website. Extracts emails, phone numbers and social URLs (LinkedIn, etc.)
+    and merges them into each Company record.
+
+    - emails -> appended to companies.generic_emails (dedup by lowercase)
+    - phone  -> set on companies.phone if currently empty
+    - linkedin_url -> set on companies.linkedin_url if currently empty
+    - enrichment_source = "web_scrape" (or "both" if Apollo email already set)
+    - last_enriched / activity_log written
+    """
+    from datetime import datetime, timezone
+    from app.config import settings as app_settings
+    from app.services.apify_scraper import ApifyScraperService
+    from app.services.activity import log_activity
+
+    if not payload.company_ids:
+        return {"processed": 0, "updated": 0, "contacts_found": 0, "cost_usd": 0.0}
+    if not app_settings.apify_api_token:
+        raise HTTPException(400, "Apify API token not configured")
+
+    rows = (await db.execute(
+        select(Company).where(Company.id.in_(payload.company_ids))
+    )).scalars().all()
+    companies_by_id = {c.id: c for c in rows}
+    # Build URL list and a domain -> company map for matching results
+    url_to_company: dict[str, Company] = {}
+    for c in rows:
+        if not c.website:
+            continue
+        url = c.website.strip()
+        if not url.startswith("http"):
+            url = "https://" + url
+        url_to_company[url] = c
+    if not url_to_company:
+        return {"processed": len(rows), "updated": 0, "contacts_found": 0,
+                "cost_usd": 0.0, "message": "No websites to scrape"}
+
+    scraper = ApifyScraperService(app_settings.apify_api_token)
+    try:
+        raw = await scraper.run_actor(
+            actor_id="anchor/email-phone-extractor",
+            input_data={
+                "startUrls": [{"url": u} for u in list(url_to_company.keys())[:200]],
+                "maxDepth": 2,
+            },
+            timeout=300,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"Website scraping failed: {e}") from e
+
+    # Normalise domain matching
+    def _norm_domain(s: str | None) -> str | None:
+        if not s: return None
+        return (
+            s.lower()
+            .replace("https://", "").replace("http://", "")
+            .replace("www.", "").split("/")[0]
+            .strip() or None
+        )
+
+    domain_to_company: dict[str, Company] = {}
+    for url, c in url_to_company.items():
+        d = _norm_domain(url)
+        if d:
+            domain_to_company[d] = c
+
+    now = datetime.now(timezone.utc)
+    contacts_found = 0
+    updated_count = 0
+
+    for item in raw.get("results", []):
+        domain = _norm_domain(item.get("domain") or item.get("url"))
+        company = domain_to_company.get(domain) if domain else None
+        if not company:
+            continue
+        emails = item.get("emails") or item.get("emailAddresses") or []
+        phones = item.get("phones") or item.get("phoneNumbers") or []
+        emails = [e.strip().lower() for e in emails if isinstance(e, str) and "@" in e]
+        phones = [p.strip() for p in phones if isinstance(p, str) and p.strip()]
+        social = {
+            "linkedin": item.get("linkedin"),
+            "facebook": item.get("facebook"),
+            "instagram": item.get("instagram"),
+            "twitter": item.get("twitter"),
+        }
+
+        added_emails = 0
+        for e in emails:
+            if _merge_email(company, e):
+                added_emails += 1
+                contacts_found += 1
+        if not company.email and emails:
+            company.email = emails[0]
+            company.email_domain = _extract_domain(emails[0])
+        if not company.phone and phones:
+            company.phone = phones[0][:50]
+        if not company.linkedin_url and social.get("linkedin"):
+            company.linkedin_url = str(social["linkedin"])[:500]
+
+        # Track enrichment source
+        had_apollo = (company.enrichment_source or "").lower() == "apollo"
+        company.enrichment_source = "both" if had_apollo else "web_scrape"
+        company.enrichment_date = now
+        company.enrichment_status = "completed"
+
+        if added_emails or phones or social.get("linkedin"):
+            updated_count += 1
+            await log_activity(
+                db, target_type="account", target_id=company.id,
+                action="enriched_via_scraper",
+                payload={
+                    "added_emails": added_emails,
+                    "phones_found": len(phones),
+                    "linkedin_found": bool(social.get("linkedin")),
+                    "source": "apify_email_phone_extractor",
+                },
+                actor="user",
+            )
+
+    cost_usd = float(raw.get("cost_usd", 0.0) or 0.0)
+    return {
+        "processed": len(url_to_company),
+        "updated": updated_count,
+        "contacts_found": contacts_found,
+        "cost_usd": cost_usd,
+        "skipped_no_website": len(rows) - len(url_to_company),
+    }
+
+
 @router.post("/{company_id}/push-to-campaign")
 async def push_company_decision_makers_to_campaign(
     company_id: int,

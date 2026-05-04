@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Company, LeadList } from "@/types";
 
-type ActionId = "find_dm" | "enrich" | "score" | "push_to_campaign" | "delete";
+type ActionId = "find_dm" | "enrich_website" | "push_to_campaign" | "delete";
 
 interface Props {
   companies: Company[];
@@ -87,8 +87,7 @@ function ActionMenu({
   const [open, setOpen] = useState(false);
   const items: { id: ActionId; label: string; icon: React.ComponentType<{ className?: string }>; cls?: string }[] = [
     { id: "find_dm", label: "Trova decision makers", icon: UserPlus },
-    { id: "enrich", label: "Arricchisci email/sito", icon: Sparkles },
-    { id: "score", label: "Score con ICP", icon: Sparkles },
+    { id: "enrich_website", label: "Arricchisci dal sito web", icon: Sparkles },
     { id: "push_to_campaign", label: "Aggiungi DM a campagna…", icon: UserPlus },
     { id: "delete", label: "Elimina", icon: Trash2, cls: "text-destructive" },
   ];

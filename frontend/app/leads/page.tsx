@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
-import { ScoreCompaniesDialog } from "@/components/leads/score-companies-dialog";
 import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
 import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
@@ -38,8 +37,6 @@ export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
-  const [scoreOpen, setScoreOpen] = useState(false);
-  const [scoreSingleId, setScoreSingleId] = useState<number | null>(null);
   const [detailCompany, setDetailCompany] = useState<Company | null>(null);
   const [companyDetailOpen, setCompanyDetailOpen] = useState(false);
   const [detailPerson, setDetailPerson] = useState<Person | null>(null);
@@ -50,6 +47,7 @@ export default function LeadsPage() {
     companyIds: number[];
   } | null>(null);
   const [allCampaigns, setAllCampaigns] = useState<Campaign[]>([]);
+  const [enrichMenuOpen, setEnrichMenuOpen] = useState<"top" | "bulk" | null>(null);
 
   // Toast-style flash
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -168,7 +166,7 @@ export default function LeadsPage() {
 
   const handleAction = async (
     companyId: number,
-    action: "find_dm" | "enrich" | "score" | "push_to_campaign" | "delete",
+    action: "find_dm" | "enrich_website" | "push_to_campaign" | "delete",
   ) => {
     if (action === "find_dm") {
       try {
@@ -180,16 +178,8 @@ export default function LeadsPage() {
       } catch (e) {
         showFlash("err", `Find people fallita: ${e instanceof Error ? e.message : e}`);
       }
-    } else if (action === "enrich") {
-      try {
-        await api.enrichCompany(companyId);
-        showFlash("ok", "Enrichment avviato — rinfresca tra qualche secondo");
-        setTimeout(() => loadCompanies(page), 3000);
-      } catch (e) {
-        showFlash("err", `Enrichment fallito: ${e instanceof Error ? e.message : e}`);
-      }
-    } else if (action === "score") {
-      setScoreSingleId(companyId); setScoreOpen(true);
+    } else if (action === "enrich_website") {
+      await runEnrichWebsites([companyId]);
     } else if (action === "push_to_campaign") {
       setPushToCampaignTarget({ mode: "single", companyIds: [companyId] });
     } else if (action === "delete") {
@@ -200,6 +190,23 @@ export default function LeadsPage() {
       } catch (e) {
         showFlash("err", `Eliminazione fallita: ${e instanceof Error ? e.message : e}`);
       }
+    }
+  };
+
+  const runEnrichWebsites = async (companyIds: number[]) => {
+    if (companyIds.length === 0) return;
+    showFlash("ok", `Avvio scraping di ${companyIds.length} ${companyIds.length === 1 ? "sito" : "siti"}…`);
+    try {
+      const r = await api.bulkEnrichCompanyWebsites(companyIds);
+      showFlash("ok",
+        `Scraping completato: ${r.updated}/${r.processed} aziende aggiornate, ` +
+        `${r.contacts_found} contatti trovati` +
+        (r.skipped_no_website ? `, ${r.skipped_no_website} senza website` : "") +
+        ` · costo $${(r.cost_usd ?? 0).toFixed(4)}`,
+      );
+      loadCompanies(page);
+    } catch (e) {
+      showFlash("err", `Scraping fallito: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -311,11 +318,38 @@ export default function LeadsPage() {
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCsvOpen(true)}>
                 <Upload className="h-3.5 w-3.5" /> Import CSV
               </Button>
-              <Button size="sm" className="gap-1.5" disabled={total === 0}
-                onClick={() => { setScoreSingleId(null); setScoreOpen(true); }}>
-                <Sparkles className="h-3.5 w-3.5" />
-                Score {selectedIds.size > 0 ? `${selectedIds.size} selezionate` : `tutte (${total})`}
-              </Button>
+              <div className="relative">
+                <Button size="sm" className="gap-1.5"
+                  disabled={total === 0}
+                  onClick={() => setEnrichMenuOpen(enrichMenuOpen === "top" ? null : "top")}>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Enrich {selectedIds.size > 0 || selectAllMatching ? `(${selectAllMatching ? total : selectedIds.size})` : `tutte (${total})`}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+                {enrichMenuOpen === "top" && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setEnrichMenuOpen(null)} />
+                    <div className="absolute right-0 top-9 z-40 w-72 rounded-md border bg-popover shadow-md py-1">
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
+                        onClick={async () => {
+                          setEnrichMenuOpen(null);
+                          const ids = (selectedIds.size > 0 || selectAllMatching)
+                            ? await resolveSelectedIds()
+                            : await api.getCompanyIdsFiltered(effectiveFilters);
+                          runEnrichWebsites(ids);
+                        }}
+                      >
+                        <Globe className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        <div>
+                          <div className="font-medium">Scrape siti web → contatti + LinkedIn</div>
+                          <div className="text-[10px] text-muted-foreground">Apify · ~$0.04/CU · email + telefono + social aggiunti automaticamente</div>
+                        </div>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -375,10 +409,33 @@ export default function LeadsPage() {
                   </>
                 )}
               </div>
-              <Button size="sm" variant="outline" className="gap-1.5"
-                onClick={() => { setScoreSingleId(null); setScoreOpen(true); }}>
-                <Sparkles className="h-3.5 w-3.5" /> Score
-              </Button>
+              <div className="relative">
+                <Button size="sm" variant="outline" className="gap-1.5"
+                  onClick={() => setEnrichMenuOpen(enrichMenuOpen === "bulk" ? null : "bulk")}>
+                  <Sparkles className="h-3.5 w-3.5" /> Enrich… <ChevronDown className="h-3 w-3" />
+                </Button>
+                {enrichMenuOpen === "bulk" && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setEnrichMenuOpen(null)} />
+                    <div className="absolute left-0 top-9 z-40 w-72 rounded-md border bg-popover shadow-md py-1">
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
+                        onClick={async () => {
+                          setEnrichMenuOpen(null);
+                          const ids = await resolveSelectedIds();
+                          runEnrichWebsites(ids);
+                        }}
+                      >
+                        <Globe className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        <div>
+                          <div className="font-medium">Scrape siti web → contatti + LinkedIn</div>
+                          <div className="text-[10px] text-muted-foreground">Apify · email + telefono + social</div>
+                        </div>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={async () => {
                   const ids = await resolveSelectedIds();
@@ -431,15 +488,6 @@ export default function LeadsPage() {
             onImportComplete={() => { loadCompanies(1); loadAux(); }}
           />
 
-          <ScoreCompaniesDialog
-            open={scoreOpen}
-            onOpenChange={(o) => { setScoreOpen(o); if (!o) setScoreSingleId(null); }}
-            selectedCompanyIds={
-              scoreSingleId !== null ? [scoreSingleId] : (selectedIds.size > 0 ? Array.from(selectedIds) : [])
-            }
-            totalCompanyCount={total}
-            onCompleted={() => loadCompanies(page)}
-          />
 
           <CompanyDetailDialog
             company={detailCompany}

@@ -815,6 +815,17 @@ class ApiClient {
     return this.get("/icps");
   }
 
+  async bulkEnrichCompanyWebsites(companyIds: number[]): Promise<{
+    processed: number;
+    updated: number;
+    contacts_found: number;
+    cost_usd: number;
+    skipped_no_website?: number;
+    message?: string;
+  }> {
+    return this.post(`/companies/bulk-enrich-websites`, { company_ids: companyIds });
+  }
+
   async pushCompanyDecisionMakersToCampaign(
     companyId: number,
     campaignId: number,
