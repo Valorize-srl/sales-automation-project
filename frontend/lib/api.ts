@@ -499,7 +499,7 @@ class ApiClient {
     return this.get(`/lead-lists/${id}`);
   }
 
-  async updateLeadList(id: number, data: { name?: string; description?: string }): Promise<import("@/types").LeadList> {
+  async updateLeadList(id: number, data: { name?: string; description?: string; color?: string; icon?: string; client_tag?: string }): Promise<import("@/types").LeadList> {
     return this.put(`/lead-lists/${id}`, data);
   }
 
@@ -855,20 +855,8 @@ class ApiClient {
     return this.post(`/lead-lists/${listId}/companies/remove`, { company_ids: companyIds });
   }
 
-  async updateLeadList(listId: number, data: { name?: string; description?: string; color?: string; icon?: string; client_tag?: string }): Promise<import("@/types").LeadList> {
-    return this.put(`/lead-lists/${listId}`, data);
-  }
-
   async listLeadLists(): Promise<{ lists: import("@/types").LeadList[]; total: number }> {
     return this.get("/lead-lists");
-  }
-
-  async createLeadList(data: import("@/types").LeadListCreate): Promise<import("@/types").LeadList> {
-    return this.post("/lead-lists", data);
-  }
-
-  async deleteLeadList(listId: number): Promise<void> {
-    await this.delete(`/lead-lists/${listId}`);
   }
 
   async listEnrichmentTasks(params?: {
