@@ -71,6 +71,7 @@ class CompanyResponse(BaseModel):
     revenue: Optional[int] = None
     employee_count: Optional[int] = None
     custom_fields: Optional[dict] = None
+    list_ids: list[int] = []
     # Enrichment fields
     generic_emails: Optional[list[str]] = None
     enrichment_source: Optional[str] = None

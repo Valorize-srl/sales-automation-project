@@ -20,6 +20,9 @@ class LeadListUpdate(BaseModel):
     """Schema for updating a lead list."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    client_tag: Optional[str] = None
 
 
 class LeadListResponse(BaseModel):
@@ -29,6 +32,8 @@ class LeadListResponse(BaseModel):
     name: str
     description: Optional[str] = None
     client_tag: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
     filters_snapshot: Optional[dict] = None
     people_count: int
     companies_count: int
@@ -39,6 +44,11 @@ class LeadListResponse(BaseModel):
     total_leads: int = Field(default=0, description="Total leads (people + companies)")
 
     model_config = {"from_attributes": True}
+
+
+class CompanyIdsRequest(BaseModel):
+    """Plain payload of company IDs (used by M2M add/remove)."""
+    company_ids: list[int] = Field(default_factory=list)
 
 
 class LeadListListResponse(BaseModel):

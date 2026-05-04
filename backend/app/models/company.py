@@ -3,11 +3,23 @@ from __future__ import annotations
 from datetime import datetime
 
 from typing import Optional
-from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey, Integer, BigInteger
+from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey, Integer, BigInteger, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.database import Base
+
+
+# Association table for the many-to-many Company <-> LeadList relationship.
+# Declared at module scope so SQLAlchemy can resolve it before either side
+# imports the other.
+company_lead_list = Table(
+    "company_lead_list",
+    Base.metadata,
+    Column("company_id", Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True),
+    Column("lead_list_id", Integer, ForeignKey("lead_lists.id", ondelete="CASCADE"), primary_key=True),
+    Column("added_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+)
 
 
 class Company(Base):
@@ -72,4 +84,12 @@ class Company(Base):
         back_populates="company",
         passive_deletes=True,
     )
-    lead_list: Mapped[Optional["LeadList"]] = relationship("LeadList")
+    lead_list: Mapped[Optional["LeadList"]] = relationship(
+        "LeadList", foreign_keys=[list_id]
+    )
+    # Multi-list membership (Clay-style multi-tag)
+    lists: Mapped[list["LeadList"]] = relationship(
+        "LeadList",
+        secondary=company_lead_list,
+        backref="companies",
+    )

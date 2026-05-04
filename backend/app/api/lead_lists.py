@@ -3,9 +3,13 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import select, func as sa_func, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
+from app.models.company import Company, company_lead_list
+from app.models.lead_list import LeadList
 from app.schemas.lead_list import (
     LeadListCreate,
     LeadListUpdate,
@@ -15,6 +19,7 @@ from app.schemas.lead_list import (
     RemoveLeadsFromListRequest,
     BulkTagRequest,
     BulkOperationResponse,
+    CompanyIdsRequest,
 )
 from app.services.lead_list import LeadListService
 
@@ -84,17 +89,140 @@ async def update_list(
     list_data: LeadListUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update lead list name/description."""
-    service = LeadListService(db)
-    lead_list = await service.update_list(
-        list_id=list_id,
-        name=list_data.name,
-        description=list_data.description,
-    )
-    if not lead_list:
+    """Update lead list name/description (and color/icon/client_tag if provided)."""
+    ll = await db.get(LeadList, list_id)
+    if not ll:
         raise HTTPException(status_code=404, detail=f"Lead list {list_id} not found")
+    payload = list_data.model_dump(exclude_unset=True)
+    for key in ("name", "description", "color", "icon", "client_tag"):
+        if key in payload and payload[key] is not None:
+            setattr(ll, key, payload[key])
+    await db.flush()
+    await db.refresh(ll)
+    return ll
 
-    return lead_list
+
+# ==============================================================================
+# Multi-list company membership (Clay-style multi-tag)
+# ==============================================================================
+
+async def _refresh_companies_count(db: AsyncSession, list_id: int) -> int:
+    """Recompute and store the cached companies_count from the M2M table."""
+    result = await db.execute(
+        select(sa_func.count()).select_from(company_lead_list).where(
+            company_lead_list.c.lead_list_id == list_id
+        )
+    )
+    n = result.scalar() or 0
+    ll = await db.get(LeadList, list_id)
+    if ll:
+        ll.companies_count = int(n)
+    return int(n)
+
+
+@router.post("/{list_id}/companies/add", response_model=BulkOperationResponse)
+async def add_companies_to_list(
+    list_id: int,
+    payload: CompanyIdsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a set of companies to this list (idempotent — skips already-present pairs)."""
+    ll = await db.get(LeadList, list_id)
+    if not ll:
+        raise HTTPException(404, "Lead list not found")
+    if not payload.company_ids:
+        return BulkOperationResponse(companies_affected=0, message="No company_ids provided")
+
+    # Existing pairs to skip
+    existing = (
+        await db.execute(
+            select(company_lead_list.c.company_id).where(
+                company_lead_list.c.lead_list_id == list_id,
+                company_lead_list.c.company_id.in_(payload.company_ids),
+            )
+        )
+    ).scalars().all()
+    existing_set = set(existing)
+
+    # Ensure target companies exist
+    valid_ids = (
+        await db.execute(
+            select(Company.id).where(Company.id.in_(payload.company_ids))
+        )
+    ).scalars().all()
+
+    to_insert = [
+        {"lead_list_id": list_id, "company_id": cid}
+        for cid in valid_ids if cid not in existing_set
+    ]
+    if to_insert:
+        await db.execute(company_lead_list.insert(), to_insert)
+
+    n = await _refresh_companies_count(db, list_id)
+    return BulkOperationResponse(
+        companies_affected=len(to_insert),
+        message=f"Added {len(to_insert)} companies; list now has {n} total",
+    )
+
+
+@router.post("/{list_id}/companies/remove", response_model=BulkOperationResponse)
+async def remove_companies_from_list(
+    list_id: int,
+    payload: CompanyIdsRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a set of companies from this list."""
+    ll = await db.get(LeadList, list_id)
+    if not ll:
+        raise HTTPException(404, "Lead list not found")
+    if not payload.company_ids:
+        return BulkOperationResponse(companies_affected=0, message="No company_ids provided")
+
+    res = await db.execute(
+        sql_delete(company_lead_list).where(
+            company_lead_list.c.lead_list_id == list_id,
+            company_lead_list.c.company_id.in_(payload.company_ids),
+        )
+    )
+    n_total = await _refresh_companies_count(db, list_id)
+    return BulkOperationResponse(
+        companies_affected=res.rowcount or 0,
+        message=f"Removed {res.rowcount or 0}; list now has {n_total} total",
+    )
+
+
+@router.get("/{list_id}/companies")
+async def list_companies_in_list(
+    list_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Companies in this list (paginated)."""
+    import math
+    page = max(1, page); page_size = max(1, min(200, page_size))
+    ll = await db.get(LeadList, list_id)
+    if not ll:
+        raise HTTPException(404, "Lead list not found")
+    base = (
+        select(Company)
+        .join(company_lead_list, Company.id == company_lead_list.c.company_id)
+        .where(company_lead_list.c.lead_list_id == list_id)
+        .order_by(Company.name.asc())
+    )
+    total = (await db.execute(select(sa_func.count()).select_from(base.subquery()))).scalar() or 0
+    rows = (
+        await db.execute(base.offset((page - 1) * page_size).limit(page_size))
+    ).scalars().all()
+    from app.schemas.company import CompanyResponse
+    items = [CompanyResponse.model_validate(c) for c in rows]
+    return {
+        "companies": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": math.ceil(total / page_size) if total else 1,
+    }
 
 
 @router.delete("/{list_id}", status_code=204)

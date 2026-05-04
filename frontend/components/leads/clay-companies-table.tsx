@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Company } from "@/types";
+import { Company, LeadList } from "@/types";
 
 type ActionId = "find_dm" | "enrich" | "score" | "delete";
 
@@ -32,6 +32,7 @@ interface Props {
   rowsPerPage: number;
   pageIndex: number; // 0-indexed page (for row number offset)
   total: number;
+  allLists?: LeadList[];
 }
 
 const fmtRevenue = (n: number | null | undefined) =>
@@ -167,8 +168,9 @@ export function ClayCompaniesTable({
   companies, loading, search, onSearchChange,
   selectedIds, onToggleSelect, onToggleSelectAll,
   customFieldKeys, onCompanyClick, onAction, onCustomFieldSave, onAddCustomFieldKey,
-  rowsPerPage, pageIndex, total,
+  rowsPerPage, pageIndex, total, allLists,
 }: Props) {
+  const listsById = new Map((allLists || []).map((l) => [l.id, l]));
   const [busyRows, setBusyRows] = useState<Set<number>>(new Set());
 
   const handleAction: Props["onAction"] = async (cid, action) => {
@@ -239,6 +241,7 @@ export function ClayCompaniesTable({
               <ColHeader icon="number" align="right">Score</ColHeader>
               <ColHeader icon="multi">Email Aziendali</ColHeader>
               <ColHeader icon="people" align="center">Decision Makers</ColHeader>
+              <ColHeader icon="tag">Liste</ColHeader>
               {customFieldKeys.map((k) => (
                 <TableHead key={k} className="py-1.5">
                   <div className="flex items-center gap-1.5">
@@ -326,6 +329,27 @@ export function ClayCompaniesTable({
                           <Users className="h-3 w-3" /> {c.people_count}
                         </Badge>
                       </button>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-1.5 max-w-[220px]">
+                    {(c.list_ids && c.list_ids.length > 0) ? (
+                      <div className="flex flex-wrap gap-1">
+                        {c.list_ids.slice(0, 3).map((id) => {
+                          const ll = listsById.get(id);
+                          if (!ll) return null;
+                          return (
+                            <Badge key={id} variant="outline" className="text-[10px] gap-1 font-normal">
+                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: ll.color || "#9ca3af" }} />
+                              {ll.name}
+                            </Badge>
+                          );
+                        })}
+                        {c.list_ids.length > 3 && (
+                          <Badge variant="outline" className="text-[10px]">+{c.list_ids.length - 3}</Badge>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
