@@ -68,20 +68,28 @@ export default function LeadsPage() {
   const filtersRef = useRef(effectiveFilters);
   filtersRef.current = effectiveFilters;
 
+  // Monotonic request ID. Each loadCompanies bumps it; only the latest in-flight
+  // request applies its result. Prevents a stale debounced page-1 fetch from
+  // overwriting state after the user has already clicked "next page".
+  const loadReqIdRef = useRef(0);
+
   const loadCompanies = useCallback(
     async (p: number = 1, f?: CompanyFilters) => {
       const filtersToUse = f ?? filtersRef.current;
+      const myReqId = ++loadReqIdRef.current;
       setLoading(true);
       try {
         const data = await api.getCompaniesFiltered({ ...filtersToUse, page: p, page_size: 50 });
+        if (myReqId !== loadReqIdRef.current) return; // a newer load is in flight
         setCompanies(data.companies);
         setTotal(data.total);
         setTotalPages(data.total_pages);
         setPage(p);
       } catch (e) {
+        if (myReqId !== loadReqIdRef.current) return;
         console.error("Failed to load companies", e);
       } finally {
-        setLoading(false);
+        if (myReqId === loadReqIdRef.current) setLoading(false);
       }
     },
     [],
@@ -106,17 +114,25 @@ export default function LeadsPage() {
 
   useEffect(() => { loadAux(); }, [loadAux]);
 
-  // Reload table when filters/search change (debounced for search).
-  // Cross-page selection is also reset because the matching set changed.
-  // loadCompanies is intentionally omitted from deps: it's stable thanks to
-  // filtersRef, and including it once made it a transitive dep on
-  // effectiveFilters and broke pagination by re-firing this effect.
+  // Reload table when discrete filters change (sidebar list, FilterPanel selects,
+  // etc.) — fires immediately, no debounce. Cross-page selection is reset because
+  // the matching set changed. loadCompanies is stable thanks to filtersRef.
   useEffect(() => {
     setSelectAllMatching(false);
+    loadCompanies(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
+
+  // Search changes are debounced separately so the user can type without
+  // hammering the backend. Skip the very first run (initial mount handled by
+  // the [filters] effect above).
+  const isFirstSearchRun = useRef(true);
+  useEffect(() => {
+    if (isFirstSearchRun.current) { isFirstSearchRun.current = false; return; }
     const t = setTimeout(() => loadCompanies(1), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveFilters]);
+  }, [search]);
 
   /**
    * Resolve the "live" set of IDs for a bulk action: when selectAllMatching is
