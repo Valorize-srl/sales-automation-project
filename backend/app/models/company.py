@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from typing import Optional
-from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey, Integer
+from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey, Integer, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -21,10 +21,17 @@ class Company(Base):
     linkedin_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    province: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Raw firmographics (used by Clay-style dashboard + Lead Planner)
+    revenue: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    employee_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # User-defined columns; key→value (anything serialisable)
+    custom_fields: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # AI Agents integration
     list_id: Mapped[Optional[int]] = mapped_column(
