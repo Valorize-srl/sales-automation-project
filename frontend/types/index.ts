@@ -258,8 +258,11 @@ export interface CompanyCSVMapping {
   linkedin_url: string | null;
   industry: string | null;
   location: string | null;
+  province: string | null;
   signals: string | null;
   website: string | null;
+  revenue: string | null;
+  employee_count: string | null;
 }
 
 export interface PersonCSVUploadResponse {
