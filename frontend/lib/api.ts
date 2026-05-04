@@ -815,6 +815,13 @@ class ApiClient {
     return this.get("/icps");
   }
 
+  async pushCompanyDecisionMakersToCampaign(
+    companyId: number,
+    campaignId: number,
+  ): Promise<{ company_id: number; campaign_id: number; uploaded: number; campaign_name: string }> {
+    return this.post(`/companies/${companyId}/push-to-campaign`, { campaign_id: campaignId });
+  }
+
   async upsertCompanyCustomField(
     companyId: number,
     key: string,

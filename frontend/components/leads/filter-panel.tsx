@@ -145,6 +145,17 @@ export function FilterPanel({ filters, onFiltersChange, industries, customFieldK
             className="h-7 text-xs" />
         </div>
 
+        {/* Decision maker name */}
+        <div className="space-y-1">
+          <label className="text-muted-foreground">Nome DM contiene</label>
+          <Input
+            value={filters.decision_maker_name_contains ?? ""}
+            onChange={(e) => set({ decision_maker_name_contains: e.target.value || undefined })}
+            className="h-7 text-xs"
+            placeholder="es. Mario Rossi"
+          />
+        </div>
+
         {/* Priority tier */}
         <div className="space-y-1">
           <label className="text-muted-foreground">Tier</label>

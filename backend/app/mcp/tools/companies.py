@@ -343,6 +343,61 @@ def register(mcp: FastMCP) -> None:
             }
 
     @mcp.tool()
+    async def push_company_decision_makers_to_campaign(
+        company_id: int,
+        campaign_id: int,
+    ) -> dict[str, Any]:
+        """Push every Person linked to a company (its decision makers) into the
+        given Instantly campaign as leads. Skips persons without a valid email.
+        Returns the count uploaded.
+        """
+        from app.models.campaign import Campaign
+        from app.models.person import Person
+        from app.services.instantly import instantly_service, InstantlyAPIError
+
+        async with db_session() as db:
+            c = await db.get(Company, company_id)
+            if not c:
+                return {"error": "company_not_found", "company_id": company_id}
+            camp = await db.get(Campaign, campaign_id)
+            if not camp:
+                return {"error": "campaign_not_found", "campaign_id": campaign_id}
+            if not camp.instantly_campaign_id:
+                return {"error": "campaign_not_synced"}
+
+            persons = (await db.execute(
+                select(Person).where(Person.company_id == company_id, Person.email.isnot(None))
+            )).scalars().all()
+            if not persons:
+                return {"uploaded": 0, "message": "No decision makers with email"}
+
+            leads = [{
+                "email": p.email,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "company_name": c.name or "",
+                "phone": p.phone or "",
+                "custom_variables": {
+                    "title": p.title or "",
+                    "industry": p.industry or c.industry or "",
+                    "linkedin_url": p.linkedin_url or "",
+                },
+            } for p in persons]
+
+            try:
+                result = await instantly_service.add_leads_to_campaign(
+                    camp.instantly_campaign_id, leads
+                )
+            except InstantlyAPIError as e:
+                return {"error": "instantly_error", "status_code": e.status_code, "detail": e.detail}
+
+        return {
+            "company_id": company_id, "campaign_id": campaign_id,
+            "campaign_name": camp.name, "uploaded": len(leads),
+            "instantly_result": result,
+        }
+
+    @mcp.tool()
     async def enrich_company_emails(company_id: int) -> dict[str, Any]:
         """Trigger the web-scraping enrichment pipeline for a company (extracts general emails / phone from the website)."""
         from app.services.enrichment import CompanyEnrichmentService
