@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Company, LeadList } from "@/types";
 
-type ActionId = "find_dm" | "enrich" | "score" | "push_to_campaign" | "delete";
+type ActionId = "find_dm" | "enrich" | "push_to_campaign" | "delete";
 
 interface Props {
   companies: Company[];
@@ -57,24 +57,6 @@ function TypeIcon({ kind }: { kind: "text" | "number" | "multi" | "tag" | "peopl
   }
 }
 
-function TierBadge({ tier }: { tier?: string | null }) {
-  if (!tier) return <span className="text-muted-foreground text-xs">—</span>;
-  return (
-    <Badge
-      variant="outline"
-      className={
-        tier === "A"
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-          : tier === "B"
-          ? "bg-amber-50 text-amber-700 border-amber-200"
-          : "bg-muted text-muted-foreground"
-      }
-    >
-      {tier}
-    </Badge>
-  );
-}
-
 function ActionMenu({
   companyId,
   onAction,
@@ -88,7 +70,6 @@ function ActionMenu({
   const items: { id: ActionId; label: string; icon: React.ComponentType<{ className?: string }>; cls?: string }[] = [
     { id: "find_dm", label: "Trova decision makers", icon: UserPlus },
     { id: "enrich", label: "Arricchisci email/sito", icon: Sparkles },
-    { id: "score", label: "Score con ICP", icon: Sparkles },
     { id: "push_to_campaign", label: "Aggiungi DM a campagna…", icon: UserPlus },
     { id: "delete", label: "Elimina", icon: Trash2, cls: "text-destructive" },
   ];
@@ -280,8 +261,6 @@ export function ClayCompaniesTable({
               <ColHeader icon="text">Settore</ColHeader>
               <ColHeader icon="text">Provincia</ColHeader>
               <ColHeader icon="text">Città</ColHeader>
-              <ColHeader icon="tag" align="center">Tier</ColHeader>
-              <ColHeader icon="number" align="right">Score</ColHeader>
               <ColHeader icon="multi">Email Aziendali</ColHeader>
               <ColHeader icon="multi">Email Lavoro</ColHeader>
               <ColHeader icon="people">Decision Makers</ColHeader>
@@ -354,14 +333,6 @@ export function ClayCompaniesTable({
                   </TableCell>
                   <TableCell className="text-sm py-1.5">{c.province || "—"}</TableCell>
                   <TableCell className="text-sm py-1.5">{c.location || "—"}</TableCell>
-                  <TableCell className="text-center py-1.5">
-                    <span title={c.reason_summary || undefined}>
-                      <TierBadge tier={c.priority_tier} />
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-sm py-1.5">
-                    {typeof c.icp_score === "number" ? c.icp_score : "—"}
-                  </TableCell>
                   <TableCell className="py-1.5 max-w-[260px]">
                     {generic.length === 0 ? (
                       <span className="text-muted-foreground text-xs">—</span>

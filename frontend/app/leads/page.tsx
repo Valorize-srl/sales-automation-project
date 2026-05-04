@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
-import { ScoreCompaniesDialog } from "@/components/leads/score-companies-dialog";
 import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
 import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
@@ -39,8 +38,6 @@ export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
-  const [scoreOpen, setScoreOpen] = useState(false);
-  const [scoreSingleId, setScoreSingleId] = useState<number | null>(null);
   const [detailCompany, setDetailCompany] = useState<Company | null>(null);
   const [companyDetailOpen, setCompanyDetailOpen] = useState(false);
   const [detailPerson, setDetailPerson] = useState<Person | null>(null);
@@ -170,7 +167,7 @@ export default function LeadsPage() {
 
   const handleAction = async (
     companyId: number,
-    action: "find_dm" | "enrich" | "score" | "push_to_campaign" | "delete",
+    action: "find_dm" | "enrich" | "push_to_campaign" | "delete",
   ) => {
     if (action === "find_dm") {
       try {
@@ -190,8 +187,6 @@ export default function LeadsPage() {
       } catch (e) {
         showFlash("err", `Enrichment fallito: ${e instanceof Error ? e.message : e}`);
       }
-    } else if (action === "score") {
-      setScoreSingleId(companyId); setScoreOpen(true);
     } else if (action === "push_to_campaign") {
       setPushToCampaignTarget({ mode: "single", companyIds: [companyId] });
     } else if (action === "delete") {
@@ -314,9 +309,9 @@ export default function LeadsPage() {
                 <Upload className="h-3.5 w-3.5" /> Import CSV
               </Button>
               <Button size="sm" className="gap-1.5" disabled={total === 0}
-                onClick={() => { setScoreSingleId(null); setScoreOpen(true); }}>
+                onClick={() => setBulkScrapeOpen(true)}>
                 <Sparkles className="h-3.5 w-3.5" />
-                Score {selectedIds.size > 0 ? `${selectedIds.size} selezionate` : `tutte (${total})`}
+                Enrich {selectedIds.size > 0 ? `${selectedIds.size} selezionate` : `pagina (${companies.length})`}
               </Button>
             </div>
           </div>
@@ -377,10 +372,6 @@ export default function LeadsPage() {
                   </>
                 )}
               </div>
-              <Button size="sm" variant="outline" className="gap-1.5"
-                onClick={() => { setScoreSingleId(null); setScoreOpen(true); }}>
-                <Sparkles className="h-3.5 w-3.5" /> Score
-              </Button>
               <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={() => setBulkScrapeOpen(true)}>
                 <Globe className="h-3.5 w-3.5" /> Scrapa siti
@@ -444,15 +435,6 @@ export default function LeadsPage() {
             onCompleted={() => loadCompanies(page)}
           />
 
-          <ScoreCompaniesDialog
-            open={scoreOpen}
-            onOpenChange={(o) => { setScoreOpen(o); if (!o) setScoreSingleId(null); }}
-            selectedCompanyIds={
-              scoreSingleId !== null ? [scoreSingleId] : (selectedIds.size > 0 ? Array.from(selectedIds) : [])
-            }
-            totalCompanyCount={total}
-            onCompleted={() => loadCompanies(page)}
-          />
 
           <CompanyDetailDialog
             company={detailCompany}
