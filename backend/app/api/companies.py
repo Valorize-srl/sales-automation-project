@@ -1217,6 +1217,100 @@ class PushToCampaignRequest(BaseModel):
     campaign_id: int
 
 
+class SaveScrapedDataRequest(BaseModel):
+    """Persist the result of a website scrape into the company record."""
+    emails: list[str] = []
+    linkedin_url: Optional[str] = None
+    phone: Optional[str] = None
+
+
+@router.post("/{company_id}/save-scraped", response_model=CompanyResponse)
+async def save_scraped_data(
+    company_id: int,
+    payload: SaveScrapedDataRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Merge website-scraper results into a Company record.
+
+    - LinkedIn URL: saved when missing OR when the new value is the canonical
+      `linkedin.com/company/...` form and the existing one isn't.
+    - Emails: the first new email becomes companies.email if currently empty;
+      every other email is appended to generic_emails (dedup via _merge_email).
+    - Phone: saved only when companies.phone is empty.
+    - Updates enrichment_source / enrichment_date / enrichment_status and
+      writes one `enriched_via_scraper` activity_log entry summarising changes.
+    """
+    from datetime import datetime, timezone
+    from app.services.activity import log_activity
+
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.lists), selectinload(Company.people))
+        .where(Company.id == company_id)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    new_emails = [e.strip().lower() for e in payload.emails or [] if isinstance(e, str) and "@" in e]
+    new_emails = list(dict.fromkeys(new_emails))
+    linked_value = (payload.linkedin_url or "").strip() or None
+    phone_value = (payload.phone or "").strip() or None
+
+    added_generic = 0
+    primary_set = False
+    linkedin_set = False
+    phone_set = False
+
+    if new_emails and not company.email:
+        company.email = new_emails[0]
+        company.email_domain = _extract_domain(new_emails[0])
+        primary_set = True
+
+    for email in new_emails:
+        if _merge_email(company, email):
+            added_generic += 1
+
+    if linked_value:
+        current = (company.linkedin_url or "").lower()
+        new_lower = linked_value.lower()
+        is_canonical_new = "/company/" in new_lower
+        is_canonical_current = "/company/" in current
+        if not company.linkedin_url:
+            company.linkedin_url = linked_value[:500]
+            linkedin_set = True
+        elif is_canonical_new and not is_canonical_current:
+            company.linkedin_url = linked_value[:500]
+            linkedin_set = True
+
+    if phone_value and not company.phone:
+        company.phone = phone_value[:50]
+        phone_set = True
+
+    if primary_set or added_generic or linkedin_set or phone_set:
+        now = datetime.now(timezone.utc)
+        had_apollo = (company.enrichment_source or "").lower() == "apollo"
+        company.enrichment_source = "both" if had_apollo else "web_scrape"
+        company.enrichment_date = now
+        company.enrichment_status = "completed"
+        await log_activity(
+            db, target_type="account", target_id=company.id,
+            action="enriched_via_scraper",
+            payload={
+                "primary_email_set": primary_set,
+                "generic_emails_added": added_generic,
+                "linkedin_set": linkedin_set,
+                "phone_set": phone_set,
+                "source": "native_scraper",
+            },
+            actor="user",
+        )
+
+    await db.flush()
+    await db.refresh(company)
+    return _company_to_response(company)
+
+
 @router.post("/{company_id}/push-to-campaign")
 async def push_company_decision_makers_to_campaign(
     company_id: int,
