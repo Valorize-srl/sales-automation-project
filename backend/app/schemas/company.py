@@ -5,6 +5,18 @@ import json
 from pydantic import BaseModel, field_validator
 
 
+class DecisionMakerSummary(BaseModel):
+    """Compact view of a Person, embedded in CompanyResponse for the Clay table."""
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    title: Optional[str] = None
+    email: Optional[str] = None
+    linkedin_url: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class CompanyCSVMapping(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
@@ -74,6 +86,8 @@ class CompanyResponse(BaseModel):
     list_ids: list[int] = []
     # Aggregated work emails of decision makers (Person.email of linked persons)
     work_emails: list[str] = []
+    # Compact summary of linked decision makers for the Clay-style table
+    decision_makers: list["DecisionMakerSummary"] = []
     # Enrichment fields
     generic_emails: Optional[list[str]] = None
     enrichment_source: Optional[str] = None

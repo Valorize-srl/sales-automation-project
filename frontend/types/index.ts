@@ -143,6 +143,15 @@ export interface CompanyUpdate {
 export type PriorityTier = "A" | "B" | "C";
 export type LifecycleStage = "new" | "enriched" | "ready_for_outreach";
 
+export interface DecisionMakerSummary {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  title: string | null;
+  email: string | null;
+  linkedin_url: string | null;
+}
+
 export interface Company {
   id: number;
   name: string;
@@ -164,6 +173,8 @@ export interface Company {
   list_ids?: number[];
   // Aggregated work emails of decision makers (Person.email of linked persons)
   work_emails?: string[];
+  // Compact summary of linked decision makers (people)
+  decision_makers?: DecisionMakerSummary[];
   // Enrichment fields
   generic_emails?: string[];
   enrichment_source?: "apollo" | "web_scrape" | "both";
@@ -915,6 +926,7 @@ export interface CompanyFilters {
   employee_count_max?: number;
   score_min?: number;
   score_max?: number;
+  decision_maker_name_contains?: string;
   // Advanced filters (encoded as the `filters` JSON query param)
   cf?: Record<string, string | { eq?: string; contains?: string; min?: number; max?: number }>;
   name_contains?: string;
