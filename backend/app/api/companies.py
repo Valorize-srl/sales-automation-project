@@ -196,6 +196,11 @@ def _merge_email(company: Company, new_email: str) -> bool:
 def _company_to_response(company: Company, people_count: int = 0) -> CompanyResponse:
     resp = CompanyResponse.model_validate(company)
     resp.people_count = people_count
+    # Include multi-list membership IDs so the UI can render list chips
+    try:
+        resp.list_ids = [ll.id for ll in (company.lists or [])]
+    except Exception:
+        resp.list_ids = []
     return resp
 
 
@@ -253,24 +258,57 @@ async def list_companies(
     search: Optional[str] = Query(None),
     industry: Optional[str] = Query(None),
     client_tag: Optional[str] = Query(None),
+    province: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
+    priority_tier: Optional[str] = Query(None),
+    lifecycle_stage: Optional[str] = Query(None),
+    list_id: Optional[int] = Query(None, description="Filter to companies that belong to this lead_list"),
     has_email: Optional[bool] = Query(None),
     has_phone: Optional[bool] = Query(None),
     has_linkedin: Optional[bool] = Query(None),
     has_website: Optional[bool] = Query(None),
+    has_score: Optional[bool] = Query(None),
+    revenue_min: Optional[int] = Query(None),
+    revenue_max: Optional[int] = Query(None),
+    employee_count_min: Optional[int] = Query(None),
+    employee_count_max: Optional[int] = Query(None),
+    score_min: Optional[int] = Query(None),
+    score_max: Optional[int] = Query(None),
+    filters: Optional[str] = Query(None, description="JSON-encoded advanced filters, incl. custom_fields"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    """List companies with optional search, industry, client_tag, presence filters and pagination."""
-    import math
+    """List companies with rich filtering. `filters` may be a URL-encoded JSON object:
+
+      {
+        "cf": {"My Column": {"contains": "foo"}, "Score Q4": {"min": 50, "max": 100}},
+        "name_contains": "acme"
+      }
+    """
+    import math, json
+    from sqlalchemy import cast, Float
+    from app.models.company import company_lead_list
 
     base_query = select(Company)
     if search:
         base_query = base_query.where(Company.name.ilike(f"%{search}%"))
     if industry is not None:
         base_query = base_query.where(Company.industry == industry)
+    if province is not None:
+        base_query = base_query.where(Company.province == province)
+    if location is not None:
+        base_query = base_query.where(Company.location.ilike(f"%{location}%"))
     if client_tag is not None:
         base_query = base_query.where(Company.client_tag.ilike(f"%{client_tag}%"))
+    if priority_tier is not None:
+        base_query = base_query.where(Company.priority_tier == priority_tier)
+    if lifecycle_stage is not None:
+        base_query = base_query.where(Company.lifecycle_stage == lifecycle_stage)
+    if list_id is not None:
+        base_query = base_query.join(
+            company_lead_list, Company.id == company_lead_list.c.company_id
+        ).where(company_lead_list.c.lead_list_id == list_id)
     # Presence filters
     if has_email is True:
         base_query = base_query.where(Company.email.isnot(None), Company.email != "")
@@ -288,15 +326,66 @@ async def list_companies(
         base_query = base_query.where(Company.website.isnot(None), Company.website != "")
     elif has_website is False:
         base_query = base_query.where(or_(Company.website.is_(None), Company.website == ""))
+    if has_score is True:
+        base_query = base_query.where(Company.icp_score.isnot(None))
+    elif has_score is False:
+        base_query = base_query.where(Company.icp_score.is_(None))
+    # Numeric ranges
+    if revenue_min is not None:
+        base_query = base_query.where(Company.revenue >= revenue_min)
+    if revenue_max is not None:
+        base_query = base_query.where(Company.revenue <= revenue_max)
+    if employee_count_min is not None:
+        base_query = base_query.where(Company.employee_count >= employee_count_min)
+    if employee_count_max is not None:
+        base_query = base_query.where(Company.employee_count <= employee_count_max)
+    if score_min is not None:
+        base_query = base_query.where(Company.icp_score >= score_min)
+    if score_max is not None:
+        base_query = base_query.where(Company.icp_score <= score_max)
+
+    # Advanced JSON filter (custom_fields, name_contains)
+    if filters:
+        try:
+            advanced = json.loads(filters)
+        except json.JSONDecodeError:
+            advanced = None
+        if isinstance(advanced, dict):
+            if isinstance(advanced.get("name_contains"), str):
+                base_query = base_query.where(Company.name.ilike(f"%{advanced['name_contains']}%"))
+            cf_filters = advanced.get("cf") or {}
+            if isinstance(cf_filters, dict):
+                for key, spec in cf_filters.items():
+                    if not isinstance(key, str) or not key:
+                        continue
+                    # JSONB textual access; fall through to JSON `->>` operator
+                    cf_text = Company.custom_fields[key].astext  # type: ignore[index]
+                    if isinstance(spec, str):
+                        base_query = base_query.where(cf_text.ilike(f"%{spec}%"))
+                    elif isinstance(spec, dict):
+                        if "eq" in spec:
+                            base_query = base_query.where(cf_text == str(spec["eq"]))
+                        if "contains" in spec and isinstance(spec["contains"], str):
+                            base_query = base_query.where(cf_text.ilike(f"%{spec['contains']}%"))
+                        if "min" in spec or "max" in spec:
+                            cast_num = cast(cf_text, Float)
+                            if "min" in spec and spec["min"] is not None:
+                                base_query = base_query.where(cast_num >= float(spec["min"]))
+                            if "max" in spec and spec["max"] is not None:
+                                base_query = base_query.where(cast_num <= float(spec["max"]))
 
     # Count total matching records
     count_query = select(sa_func.count()).select_from(base_query.subquery())
     total = (await db.execute(count_query)).scalar() or 0
     total_pages = math.ceil(total / page_size) if total > 0 else 1
 
-    # Paginated data query
+    # Paginated data query — eagerly load list memberships so we can return list_ids per row
     offset = (page - 1) * page_size
-    data_query = base_query.order_by(Company.name.asc()).offset(offset).limit(page_size)
+    data_query = (
+        base_query.options(selectinload(Company.lists))
+        .order_by(Company.name.asc())
+        .offset(offset).limit(page_size)
+    )
     result = await db.execute(data_query)
     companies = result.scalars().all()
 

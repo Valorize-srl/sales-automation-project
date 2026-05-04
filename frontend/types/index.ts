@@ -161,6 +161,7 @@ export interface Company {
   revenue: number | null;
   employee_count: number | null;
   custom_fields: Record<string, string> | null;
+  list_ids?: number[];
   // Enrichment fields
   generic_emails?: string[];
   enrichment_source?: "apollo" | "web_scrape" | "both";
@@ -881,12 +882,40 @@ export interface LeadList {
   name: string;
   description: string | null;
   client_tag: string | null;
-  filters_snapshot: Record<string, any> | null;
+  color: string | null;
+  icon: string | null;
+  filters_snapshot: Record<string, unknown> | null;
   people_count: number;
   companies_count: number;
   created_at: string;
   updated_at: string;
   total_leads: number;
+}
+
+// === Filters for the Companies dashboard ===
+export interface CompanyFilters {
+  search?: string;
+  industry?: string;
+  province?: string;
+  location?: string;
+  client_tag?: string;
+  priority_tier?: "A" | "B" | "C";
+  lifecycle_stage?: "new" | "enriched" | "ready_for_outreach";
+  list_id?: number;
+  has_email?: boolean;
+  has_phone?: boolean;
+  has_linkedin?: boolean;
+  has_website?: boolean;
+  has_score?: boolean;
+  revenue_min?: number;
+  revenue_max?: number;
+  employee_count_min?: number;
+  employee_count_max?: number;
+  score_min?: number;
+  score_max?: number;
+  // Advanced filters (encoded as the `filters` JSON query param)
+  cf?: Record<string, string | { eq?: string; contains?: string; min?: number; max?: number }>;
+  name_contains?: string;
 }
 
 export interface LeadListCreate {

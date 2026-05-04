@@ -44,6 +44,10 @@ class LeadList(Base):
     people_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     companies_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
+    # Optional decoration for the Clay-style sidebar
+    color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    icon: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+
     # Metadata
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

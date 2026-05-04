@@ -4,13 +4,13 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from mcp.server.fastmcp import FastMCP
-from sqlalchemy import func as sa_func, select, update
+from sqlalchemy import func as sa_func, select, update, delete as sql_delete
 
 from app.mcp.session import db_session
 from app.mcp.tools._common import lead_list_to_dict, person_to_dict, company_to_dict
 from app.models.lead_list import LeadList
 from app.models.person import Person
-from app.models.company import Company
+from app.models.company import Company, company_lead_list
 
 
 async def _refresh_counts(db, list_id: int) -> None:
@@ -137,16 +137,57 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def add_companies_to_list(list_id: int, company_ids: list[int]) -> dict[str, Any]:
-        """Attach companies to a lead list."""
+        """Add companies to a lead list via the multi-tag M2M (idempotent — duplicates skipped)."""
         if not company_ids:
             return {"added": 0}
         async with db_session() as db:
             ll = await db.get(LeadList, list_id)
             if not ll:
                 return {"error": "not_found", "list_id": list_id}
-            res = await db.execute(update(Company).where(Company.id.in_(company_ids)).values(list_id=list_id))
-            await _refresh_counts(db, list_id)
-            return {"added": res.rowcount or 0, "list_id": list_id}
+            existing = (await db.execute(
+                select(company_lead_list.c.company_id).where(
+                    company_lead_list.c.lead_list_id == list_id,
+                    company_lead_list.c.company_id.in_(company_ids),
+                )
+            )).scalars().all()
+            existing_set = set(existing)
+            valid = (await db.execute(
+                select(Company.id).where(Company.id.in_(company_ids))
+            )).scalars().all()
+            to_insert = [
+                {"lead_list_id": list_id, "company_id": cid}
+                for cid in valid if cid not in existing_set
+            ]
+            if to_insert:
+                await db.execute(company_lead_list.insert(), to_insert)
+            n = (await db.execute(
+                select(sa_func.count()).select_from(company_lead_list).where(
+                    company_lead_list.c.lead_list_id == list_id
+                )
+            )).scalar() or 0
+            ll.companies_count = int(n)
+            return {"added": len(to_insert), "list_id": list_id, "list_total": int(n)}
+
+    @mcp.tool()
+    async def remove_companies_from_list(list_id: int, company_ids: list[int]) -> dict[str, Any]:
+        """Remove companies from a lead list (M2M)."""
+        if not company_ids:
+            return {"removed": 0}
+        async with db_session() as db:
+            ll = await db.get(LeadList, list_id)
+            if not ll:
+                return {"error": "not_found", "list_id": list_id}
+            res = await db.execute(sql_delete(company_lead_list).where(
+                company_lead_list.c.lead_list_id == list_id,
+                company_lead_list.c.company_id.in_(company_ids),
+            ))
+            n = (await db.execute(
+                select(sa_func.count()).select_from(company_lead_list).where(
+                    company_lead_list.c.lead_list_id == list_id
+                )
+            )).scalar() or 0
+            ll.companies_count = int(n)
+            return {"removed": res.rowcount or 0, "list_id": list_id, "list_total": int(n)}
 
     @mcp.tool()
     async def list_people_in_list(list_id: int, page: int = 1, page_size: int = 100) -> dict[str, Any]:

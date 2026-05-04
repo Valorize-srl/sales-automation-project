@@ -827,6 +827,50 @@ class ApiClient {
     return this.get("/companies/custom-field-keys");
   }
 
+  async getCompaniesFiltered(
+    filters: import("@/types").CompanyFilters & { page?: number; page_size?: number },
+  ): Promise<import("@/types").CompanyListResponse> {
+    const q = new URLSearchParams();
+    const advanced: Record<string, unknown> = {};
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === "") return;
+      if (k === "cf" || k === "name_contains") {
+        advanced[k] = v;
+        return;
+      }
+      q.set(k, String(v));
+    });
+    if (Object.keys(advanced).length > 0) {
+      q.set("filters", JSON.stringify(advanced));
+    }
+    const qs = q.toString();
+    return this.get(`/companies${qs ? `?${qs}` : ""}`);
+  }
+
+  async addCompaniesToList(listId: number, companyIds: number[]): Promise<{ companies_affected: number; message: string }> {
+    return this.post(`/lead-lists/${listId}/companies/add`, { company_ids: companyIds });
+  }
+
+  async removeCompaniesFromList(listId: number, companyIds: number[]): Promise<{ companies_affected: number; message: string }> {
+    return this.post(`/lead-lists/${listId}/companies/remove`, { company_ids: companyIds });
+  }
+
+  async updateLeadList(listId: number, data: { name?: string; description?: string; color?: string; icon?: string; client_tag?: string }): Promise<import("@/types").LeadList> {
+    return this.put(`/lead-lists/${listId}`, data);
+  }
+
+  async listLeadLists(): Promise<{ lists: import("@/types").LeadList[]; total: number }> {
+    return this.get("/lead-lists");
+  }
+
+  async createLeadList(data: import("@/types").LeadListCreate): Promise<import("@/types").LeadList> {
+    return this.post("/lead-lists", data);
+  }
+
+  async deleteLeadList(listId: number): Promise<void> {
+    await this.delete(`/lead-lists/${listId}`);
+  }
+
   async listEnrichmentTasks(params?: {
     target_type?: string;
     task_type?: string;
