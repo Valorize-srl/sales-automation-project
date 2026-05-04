@@ -27,15 +27,19 @@ const COMPANY_FIELDS: { key: keyof CompanyCSVMapping; label: string; required?: 
   { key: "email", label: "General Email" },
   { key: "phone", label: "Phone" },
   { key: "linkedin_url", label: "LinkedIn Page" },
-  { key: "industry", label: "Industry" },
-  { key: "location", label: "Location" },
+  { key: "industry", label: "Industry / Settore" },
+  { key: "location", label: "City / Città" },
+  { key: "province", label: "Provincia (sigla)" },
   { key: "signals", label: "Signals" },
   { key: "website", label: "Website" },
+  { key: "revenue", label: "Revenue / Fatturato" },
+  { key: "employee_count", label: "Employees / Dipendenti" },
 ];
 
 const EMPTY_MAPPING: CompanyCSVMapping = {
   name: null, email: null, phone: null, linkedin_url: null,
-  industry: null, location: null, signals: null, website: null,
+  industry: null, location: null, province: null,
+  signals: null, website: null, revenue: null, employee_count: null,
 };
 
 interface CompaniesCSVDialogProps {
