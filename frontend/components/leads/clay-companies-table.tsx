@@ -116,6 +116,32 @@ const FIXED_COLUMNS: ColumnDef[] = [
     ),
   },
   {
+    id: "website", label: "Sito Web", iconKind: "text", maxWidth: "220px",
+    renderCell: (c) => {
+      if (!c.website) return <span className="text-muted-foreground text-xs">—</span>;
+      let display = c.website;
+      try {
+        const u = new URL(c.website.startsWith("http") ? c.website : `https://${c.website}`);
+        display = u.hostname.replace(/^www\./, "") + (u.pathname !== "/" ? u.pathname : "");
+      } catch {
+        // keep raw display
+      }
+      return (
+        <a
+          href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline text-sm flex items-center gap-1 max-w-full truncate"
+          title={c.website}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="truncate">{display}</span>
+          <ExternalLink className="h-3 w-3 shrink-0" />
+        </a>
+      );
+    },
+  },
+  {
     id: "province", label: "Provincia", iconKind: "text",
     renderCell: (c) => <span className="text-sm">{c.province || "—"}</span>,
   },
