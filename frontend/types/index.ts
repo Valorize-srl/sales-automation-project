@@ -162,6 +162,8 @@ export interface Company {
   employee_count: number | null;
   custom_fields: Record<string, string> | null;
   list_ids?: number[];
+  // Aggregated work emails of decision makers (Person.email of linked persons)
+  work_emails?: string[];
   // Enrichment fields
   generic_emails?: string[];
   enrichment_source?: "apollo" | "web_scrape" | "both";

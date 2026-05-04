@@ -201,6 +201,14 @@ def _company_to_response(company: Company, people_count: int = 0) -> CompanyResp
         resp.list_ids = [ll.id for ll in (company.lists or [])]
     except Exception:
         resp.list_ids = []
+    # Aggregate work emails of linked decision makers
+    try:
+        resp.work_emails = [
+            p.email for p in (company.people or [])
+            if getattr(p, "email", None)
+        ]
+    except Exception:
+        resp.work_emails = []
     return resp
 
 
@@ -460,10 +468,12 @@ async def list_companies(
     total = (await db.execute(count_query)).scalar() or 0
     total_pages = math.ceil(total / page_size) if total > 0 else 1
 
-    # Paginated data query — eagerly load list memberships so we can return list_ids per row
+    # Paginated data query — eagerly load list memberships and linked persons
+    # (only the email field is needed for work_emails aggregation, but we
+    # selectinload the relationship for simplicity).
     offset = (page - 1) * page_size
     data_query = (
-        base_query.options(selectinload(Company.lists))
+        base_query.options(selectinload(Company.lists), selectinload(Company.people))
         .order_by(Company.name.asc())
         .offset(offset).limit(page_size)
     )
@@ -492,7 +502,11 @@ async def list_companies(
 @router.get("/{company_id}", response_model=CompanyResponse)
 async def get_company(company_id: int, db: AsyncSession = Depends(get_db)):
     """Get a single company by ID."""
-    result = await db.execute(select(Company).where(Company.id == company_id))
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.lists), selectinload(Company.people))
+        .where(Company.id == company_id)
+    )
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(404, "Company not found")
@@ -576,7 +590,13 @@ async def create_company(data: CompanyCreate, db: AsyncSession = Depends(get_db)
     await db.flush()
     # After creating company, try to link unmatched people
     await _link_people_to_company(db, company)
-    await db.refresh(company)
+    # Reload with relationships eager-loaded for the response
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.lists), selectinload(Company.people))
+        .where(Company.id == company.id)
+    )
+    company = result.scalar_one()
     return _company_to_response(company)
 
 
@@ -585,7 +605,11 @@ async def update_company(company_id: int, data: CompanyUpdate, db: AsyncSession 
     """Update a company's fields."""
     from app.services.activity import log_activity, diff_for_log
 
-    result = await db.execute(select(Company).where(Company.id == company_id))
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.lists), selectinload(Company.people))
+        .where(Company.id == company_id)
+    )
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(404, "Company not found")
@@ -655,7 +679,12 @@ async def upsert_custom_field(
     """Set or remove a single custom_fields[key] = value on a company."""
     from app.services.activity import log_activity
 
-    company = await db.get(Company, company_id)
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.lists), selectinload(Company.people))
+        .where(Company.id == company_id)
+    )
+    company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(404, "Company not found")
     cf = dict(company.custom_fields or {})
