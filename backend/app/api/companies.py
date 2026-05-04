@@ -218,6 +218,23 @@ async def _find_matching_company(db: AsyncSession, company_name: Optional[str], 
 
 # --- Endpoints ---
 
+@router.get("/custom-field-keys", response_model=list[str])
+async def list_custom_field_keys(db: AsyncSession = Depends(get_db)):
+    """Distinct keys present in any company's custom_fields. Used by the UI to
+    derive the dynamic columns to render in the Clay-style table.
+
+    NOTE: This must be declared BEFORE any `/{company_id}` route to avoid
+    FastAPI matching "custom-field-keys" as an integer path parameter.
+    """
+    result = await db.execute(select(Company.custom_fields).where(Company.custom_fields.isnot(None)))
+    keys: set[str] = set()
+    for row in result.all():
+        cf = row[0]
+        if isinstance(cf, dict):
+            keys.update(k for k in cf.keys() if k)
+    return sorted(keys)
+
+
 @router.get("/industries", response_model=list[str])
 async def get_industries(db: AsyncSession = Depends(get_db)):
     """Get unique list of industries from companies."""
@@ -459,19 +476,6 @@ async def upsert_custom_field(
     await db.flush()
     await db.refresh(company)
     return _company_to_response(company)
-
-
-@router.get("/custom-field-keys", response_model=list[str])
-async def list_custom_field_keys(db: AsyncSession = Depends(get_db)):
-    """Distinct keys present in any company's custom_fields. Used by the UI to
-    derive the dynamic columns to render in the Clay-style table."""
-    result = await db.execute(select(Company.custom_fields).where(Company.custom_fields.isnot(None)))
-    keys: set[str] = set()
-    for row in result.all():
-        cf = row[0]
-        if isinstance(cf, dict):
-            keys.update(k for k in cf.keys() if k)
-    return sorted(keys)
 
 
 # ==============================================================================
