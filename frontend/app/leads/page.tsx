@@ -170,7 +170,8 @@ export default function LeadsPage() {
   const handleBulkDelete = async () => {
     if (!confirm(`Eliminare ${selectedIds.size} aziende?`)) return;
     try {
-      for (const id of selectedIds) {
+      const ids = Array.from(selectedIds);
+      for (const id of ids) {
         await api.deleteCompany(id);
       }
       setSelectedIds(new Set());
