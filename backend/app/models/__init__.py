@@ -18,6 +18,7 @@ from app.models.campaign_lead_list import CampaignLeadList
 from app.models.prospecting_tool import ProspectingTool
 from app.models.bando import Bando
 from app.models.api_key import ApiKey
+from app.models.enrichment_task import EnrichmentTask
 
 __all__ = [
     "ICP",
@@ -40,4 +41,5 @@ __all__ = [
     "ProspectingTool",
     "Bando",
     "ApiKey",
+    "EnrichmentTask",
 ]

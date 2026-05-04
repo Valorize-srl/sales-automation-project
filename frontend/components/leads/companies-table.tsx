@@ -63,6 +63,8 @@ export function CompaniesTable({ companies, loading, selectedIds, onToggleSelect
             <TableHead>LinkedIn</TableHead>
             <TableHead>Industry</TableHead>
             <TableHead>Location</TableHead>
+            <TableHead className="text-center">Tier</TableHead>
+            <TableHead className="text-center">Score</TableHead>
             <TableHead>Signals</TableHead>
             <TableHead>Client/Project</TableHead>
             <TableHead className="text-center">People</TableHead>
@@ -116,6 +118,28 @@ export function CompaniesTable({ companies, loading, selectedIds, onToggleSelect
               </TableCell>
               <TableCell className="text-sm">{company.industry || "—"}</TableCell>
               <TableCell className="text-sm">{company.location || "—"}</TableCell>
+              <TableCell className="text-center">
+                {company.priority_tier ? (
+                  <Badge
+                    variant="outline"
+                    className={
+                      company.priority_tier === "A"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : company.priority_tier === "B"
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-muted text-muted-foreground"
+                    }
+                    title={company.reason_summary || undefined}
+                  >
+                    {company.priority_tier}
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">—</span>
+                )}
+              </TableCell>
+              <TableCell className="text-center text-sm tabular-nums">
+                {typeof company.icp_score === "number" ? company.icp_score : "—"}
+              </TableCell>
               <TableCell className="max-w-[200px]">
                 {company.signals ? (
                   <p className="text-sm truncate" title={company.signals}>

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from typing import Optional
-from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey
+from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -40,6 +40,20 @@ class Company(Base):
     enrichment_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     enrichment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # ICP-based scoring (populated by the Lead Planner & Scorer)
+    icp_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    priority_tier: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)  # 'A' | 'B' | 'C'
+    lifecycle_stage: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="new")
+    revenue_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    employee_count_band: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    industry_standardized: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reason_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_scored_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    scored_with_icp_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("icps.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

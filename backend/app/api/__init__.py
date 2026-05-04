@@ -18,6 +18,7 @@ from app.api import (
     bandi,
     tools,
     api_keys,
+    enrichment_tasks,
 )
 
 api_router = APIRouter()
@@ -39,3 +40,4 @@ api_router.include_router(prospecting_tools.router, prefix="/prospecting-tools",
 api_router.include_router(bandi.router, prefix="/bandi", tags=["bandi"])
 api_router.include_router(tools.router, prefix="/tools", tags=["tools"])
 api_router.include_router(api_keys.router, prefix="/admin/api-keys", tags=["admin"])
+api_router.include_router(enrichment_tasks.router, prefix="/enrichment-tasks", tags=["enrichment-tasks"])

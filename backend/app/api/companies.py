@@ -21,6 +21,8 @@ from app.schemas.company import (
     CompanyCSVUploadResponse,
     CompanyCSVImportRequest,
     CompanyCSVImportResponse,
+    CompanyScoreRequest,
+    CompanyScoreResponse,
     FindPeopleRequest,
 )
 from app.schemas.enrichment import (
@@ -336,6 +338,154 @@ async def delete_company(company_id: int, db: AsyncSession = Depends(get_db)):
     if not company:
         raise HTTPException(404, "Company not found")
     await db.delete(company)
+
+
+# ==============================================================================
+# Lead Planner & Scorer
+# ==============================================================================
+
+# Pricing for cost reporting (Sonnet 4.5)
+_CLAUDE_INPUT_USD_PER_1M = 3.00
+_CLAUDE_OUTPUT_USD_PER_1M = 15.00
+
+
+def _revenue_to_raw(value):
+    """Best-effort string repr of revenue for the planner input."""
+    if value is None:
+        return None
+    return str(value)
+
+
+@router.post("/score", response_model=CompanyScoreResponse)
+async def score_companies(
+    payload: CompanyScoreRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Run the Lead Planner & Scorer over the requested companies (or all if
+    `company_ids` is omitted). Updates each Company's icp_*, priority_tier,
+    lifecycle_stage, *_band, industry_standardized, reason_summary fields, and
+    inserts ``enrichment_tasks`` rows for tier A/B accounts.
+    """
+    from datetime import datetime, timezone
+    from app.models.icp import ICP
+    from app.models.enrichment_task import EnrichmentTask
+    from app.services.lead_planner import get_lead_planner_service
+
+    # Validate ICP
+    icp = await db.get(ICP, payload.icp_id)
+    if not icp:
+        raise HTTPException(404, "ICP not found")
+
+    # Build ICP dict for the prompt
+    icp_dict = {
+        "name": icp.name,
+        "description": icp.description,
+        "industry": icp.industry,
+        "company_size": icp.company_size,
+        "job_titles": icp.job_titles,
+        "geography": icp.geography,
+        "revenue_range": icp.revenue_range,
+        "keywords": icp.keywords,
+    }
+
+    # Fetch companies in stable order (oldest first) so the same indexing maps
+    # back deterministically.
+    q = select(Company).order_by(Company.id.asc())
+    if payload.company_ids:
+        q = q.where(Company.id.in_(payload.company_ids))
+    companies = (await db.execute(q)).scalars().all()
+    if not companies:
+        raise HTTPException(400, "No companies to score")
+
+    # Convert to planner input shape (1-indexed mapping by list position)
+    raw_input = [
+        {
+            "raw_company_name": c.name or "",
+            "raw_website_url": c.website,
+            "raw_revenue": _revenue_to_raw(getattr(c, "revenue", None)),
+            "raw_employee_count": _revenue_to_raw(getattr(c, "employee_count", None)),
+            "raw_country": None,
+            "raw_city": c.location,
+            "source": c.enrichment_source or "miriade",
+        }
+        for c in companies
+    ]
+
+    # Run Claude
+    service = get_lead_planner_service()
+    try:
+        result = await service.score_companies(icp_dict, raw_input)
+    except Exception as e:
+        logger.exception("Lead Planner failed")
+        raise HTTPException(502, f"Scoring failed: {e}") from e
+
+    accounts = result.get("accounts") or []
+    enrichment_tasks = result.get("enrichment_tasks") or []
+    usage = result.get("_usage") or {}
+
+    # Persist account-level scoring (positional match: i-th account ↔ i-th company).
+    now = datetime.now(timezone.utc)
+    tier_counts = {"A": 0, "B": 0, "C": 0}
+    pairs = list(zip(companies, accounts))
+    for company, acct in pairs:
+        company.icp_score = acct.get("icp_score")
+        company.priority_tier = acct.get("priority_tier")
+        company.lifecycle_stage = acct.get("lifecycle_stage") or "new"
+        company.revenue_band = acct.get("revenue_band")
+        company.employee_count_band = acct.get("employee_count_band")
+        company.industry_standardized = acct.get("industry_standardized")
+        company.reason_summary = acct.get("reason_summary")
+        company.last_scored_at = now
+        company.scored_with_icp_id = icp.id
+        if company.priority_tier in tier_counts:
+            tier_counts[company.priority_tier] += 1
+
+    # Resolve enrichment_tasks via target_temp_id → real Company.id (1-indexed)
+    tasks_inserted = 0
+    for t in enrichment_tasks:
+        try:
+            idx = int(str(t.get("target_temp_id", "0")).rsplit("-", 1)[-1])
+        except ValueError:
+            continue
+        if idx < 1 or idx > len(companies):
+            continue
+        target_company = companies[idx - 1]
+        priority = t.get("priority")
+        if not isinstance(priority, int) or priority < 1 or priority > 5:
+            priority = 3
+        task_type = t.get("task_type") or ""
+        if not task_type:
+            continue
+        db.add(
+            EnrichmentTask(
+                target_type="account",
+                target_id=target_company.id,
+                task_type=task_type,
+                priority=priority,
+                reason=t.get("reason"),
+                status="pending",
+                created_by_icp_id=icp.id,
+            )
+        )
+        tasks_inserted += 1
+
+    await db.flush()
+
+    in_tok = usage.get("input_tokens", 0)
+    out_tok = usage.get("output_tokens", 0)
+    cost = (in_tok / 1_000_000) * _CLAUDE_INPUT_USD_PER_1M + (out_tok / 1_000_000) * _CLAUDE_OUTPUT_USD_PER_1M
+
+    return CompanyScoreResponse(
+        icp_id=icp.id,
+        scored_count=len(pairs),
+        tier_a=tier_counts["A"],
+        tier_b=tier_counts["B"],
+        tier_c=tier_counts["C"],
+        enrichment_tasks_created=tasks_inserted,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+        cost_usd=round(cost, 4),
+    )
 
 
 @router.post("/csv/upload", response_model=CompanyCSVUploadResponse)

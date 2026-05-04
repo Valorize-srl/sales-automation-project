@@ -140,6 +140,9 @@ export interface CompanyUpdate {
   notes?: string;
 }
 
+export type PriorityTier = "A" | "B" | "C";
+export type LifecycleStage = "new" | "enriched" | "ready_for_outreach";
+
 export interface Company {
   id: number;
   name: string;
@@ -158,8 +161,62 @@ export interface Company {
   enrichment_source?: "apollo" | "web_scrape" | "both";
   enrichment_date?: string;
   enrichment_status?: "pending" | "completed" | "failed" | "not_needed";
+  // ICP scoring fields (populated by Lead Planner & Scorer)
+  icp_score?: number | null;
+  priority_tier?: PriorityTier | null;
+  lifecycle_stage?: LifecycleStage | null;
+  revenue_band?: string | null;
+  employee_count_band?: string | null;
+  industry_standardized?: string | null;
+  reason_summary?: string | null;
+  last_scored_at?: string | null;
+  scored_with_icp_id?: number | null;
   created_at: string;
   people_count: number;
+}
+
+export type EnrichmentTaskType =
+  | "firmographic_base"
+  | "hiring_scrape"
+  | "funding_lookup"
+  | "techstack_lookup"
+  | "contact_discovery";
+
+export type EnrichmentTaskStatus = "pending" | "completed" | "failed" | "cancelled";
+
+export interface EnrichmentTask {
+  id: number;
+  target_type: "account" | "person";
+  target_id: number;
+  task_type: EnrichmentTaskType;
+  priority: number;
+  reason: string | null;
+  status: EnrichmentTaskStatus;
+  created_by_icp_id: number | null;
+  created_at: string;
+  completed_at: string | null;
+  notes: string | null;
+  target_name?: string | null;
+}
+
+export interface EnrichmentTaskListResponse {
+  tasks: EnrichmentTask[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CompanyScoreResponse {
+  icp_id: number;
+  scored_count: number;
+  tier_a: number;
+  tier_b: number;
+  tier_c: number;
+  enrichment_tasks_created: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
 }
 
 export interface PersonListResponse {
