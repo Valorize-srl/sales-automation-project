@@ -14,6 +14,7 @@ import { PeopleTable } from "@/components/leads/people-table";
 import { CompaniesTable } from "@/components/leads/companies-table";
 import { PeopleCSVDialog } from "@/components/leads/people-csv-dialog";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
+import { ScoreCompaniesDialog } from "@/components/leads/score-companies-dialog";
 import { EditPersonDialog } from "@/components/leads/edit-person-dialog";
 import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
 import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
@@ -67,6 +68,7 @@ export default function LeadsPage() {
   const [companiesPage, setCompaniesPage] = useState(1);
   const [companiesTotal, setCompaniesTotal] = useState(0);
   const [companiesTotalPages, setCompaniesTotalPages] = useState(1);
+  const [scoreCompaniesOpen, setScoreCompaniesOpen] = useState(false);
 
   // --- Companies selection ---
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<number>>(new Set());
@@ -723,9 +725,33 @@ export default function LeadsPage() {
           <Button
             size="sm"
             variant="outline"
+            className="gap-1.5"
+            onClick={() => setScoreCompaniesOpen(true)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Score with ICP
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setSelectedCompanyIds(new Set())}
           >
             Clear selection
+          </Button>
+        </div>
+      )}
+
+      {/* Score-all bar (shown on companies tab when no selection) */}
+      {activeTab === "companies" && selectedCompanyIds.size === 0 && companiesTotal > 0 && (
+        <div className="flex items-center justify-end gap-2 mb-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setScoreCompaniesOpen(true)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Score all {companiesTotal} companies with ICP
           </Button>
         </div>
       )}
@@ -879,6 +905,14 @@ export default function LeadsPage() {
         open={companiesCSVOpen}
         onOpenChange={setCompaniesCSVOpen}
         onImportComplete={() => { loadCompanies(companiesSearch, companiesIndustry, companiesClientTag); loadPeople(peopleSearch, filterCompanyId, peopleIndustry, peopleClientTag); }}
+      />
+
+      <ScoreCompaniesDialog
+        open={scoreCompaniesOpen}
+        onOpenChange={setScoreCompaniesOpen}
+        selectedCompanyIds={Array.from(selectedCompanyIds)}
+        totalCompanyCount={companiesTotal}
+        onCompleted={() => loadCompanies(companiesSearch, companiesIndustry, companiesClientTag)}
       />
 
       <EditPersonDialog

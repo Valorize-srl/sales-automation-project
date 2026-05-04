@@ -60,6 +60,13 @@ class ApiClient {
     });
   }
 
+  async patch<T>(endpoint: string, data?: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: "PATCH",
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: "DELETE" });
   }
@@ -783,6 +790,46 @@ class ApiClient {
 
   async getCompany(companyId: number): Promise<import("@/types").Company> {
     return this.get(`/companies/${companyId}`);
+  }
+
+  async scoreCompanies(icpId: number, companyIds?: number[]): Promise<import("@/types").CompanyScoreResponse> {
+    return this.post("/companies/score", { icp_id: icpId, company_ids: companyIds });
+  }
+
+  async getICPs(): Promise<{ icps: import("@/types").ICP[]; total: number }> {
+    return this.get("/icps");
+  }
+
+  async listEnrichmentTasks(params?: {
+    target_type?: string;
+    task_type?: string;
+    status?: string;
+    priority_min?: number;
+    icp_id?: number;
+    page?: number;
+    page_size?: number;
+  }): Promise<import("@/types").EnrichmentTaskListResponse> {
+    const q = new URLSearchParams();
+    if (params?.target_type) q.set("target_type", params.target_type);
+    if (params?.task_type) q.set("task_type", params.task_type);
+    if (params?.status) q.set("status", params.status);
+    if (params?.priority_min !== undefined) q.set("priority_min", String(params.priority_min));
+    if (params?.icp_id !== undefined) q.set("icp_id", String(params.icp_id));
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.page_size) q.set("page_size", String(params.page_size));
+    const qs = q.toString();
+    return this.get(`/enrichment-tasks${qs ? `?${qs}` : ""}`);
+  }
+
+  async updateEnrichmentTask(
+    taskId: number,
+    data: { status?: string; notes?: string; priority?: number },
+  ): Promise<import("@/types").EnrichmentTask> {
+    return this.patch(`/enrichment-tasks/${taskId}`, data);
+  }
+
+  async deleteEnrichmentTask(taskId: number): Promise<void> {
+    await this.delete(`/enrichment-tasks/${taskId}`);
   }
 
   async getCompanyDetail(companyId: number): Promise<import("@/types").CompanyDetailResponse> {
