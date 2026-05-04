@@ -1042,6 +1042,16 @@ class ApiClient {
   async toolsGenerateCsv(params: import("@/types").GenerateCsvParams): Promise<import("@/types").CsvExportResponse> {
     return this.post("/tools/generate-csv", params);
   }
+
+  // --- Native website scraper ---
+
+  async scrapeWebsite(url: string): Promise<import("@/types").WebsiteScrapeResult> {
+    return this.post("/scraper/scrape", { url });
+  }
+
+  async scrapeWebsitesBulk(urls: string[], concurrency = 5): Promise<import("@/types").WebsiteScrapeResult[]> {
+    return this.post("/scraper/scrape-bulk", { urls, concurrency });
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

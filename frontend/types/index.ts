@@ -1199,3 +1199,11 @@ export interface CsvExportResponse {
   columns: string[];
   content_base64: string;
 }
+
+export interface WebsiteScrapeResult {
+  url: string;
+  emails: string[];
+  linkedin_url: string | null;
+  pages_visited: number;
+  error: string | null;
+}

@@ -16,6 +16,7 @@ import {
 import { EditableField } from "@/components/ui/editable-field";
 import { api } from "@/lib/api";
 import { ActivityTimeline } from "@/components/leads/activity-timeline";
+import { ScrapeWebsiteButton } from "@/components/companies/scrape-website-button";
 import { Company, CompanyDetailResponse, CompanyUpdate } from "@/types";
 
 interface CompanyDetailDialogProps {
@@ -100,6 +101,22 @@ export function CompanyDetailDialog({ company, open, onOpenChange, onPersonClick
                 <EditableField label="Location" value={c.location} onSave={(v) => saveField("location", v)} placeholder="es. Milano, Italia" icon={<MapPin className="h-3 w-3 text-muted-foreground" />} />
                 <EditableField label="Client/Progetto" value={c.client_tag} onSave={(v) => saveField("client_tag", v)} placeholder="es. cliente_xyz" />
               </div>
+
+              {/* Scrape website button */}
+              {c.website && (
+                <div className="px-1 pt-1">
+                  <ScrapeWebsiteButton
+                    websiteUrl={c.website}
+                    companyId={c.id}
+                    currentEmail={c.email}
+                    currentLinkedin={c.linkedin_url}
+                    onSaved={() => {
+                      api.getCompanyDetail(c.id).then(setDetail).catch(() => {});
+                      onUpdated?.();
+                    }}
+                  />
+                </div>
+              )}
 
               {/* Generic emails (read-only, from enrichment) */}
               {c.generic_emails && c.generic_emails.length > 0 && (

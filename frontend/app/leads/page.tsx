@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
 import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
 import { ScoreCompaniesDialog } from "@/components/leads/score-companies-dialog";
 import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
 import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
+import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -44,6 +45,7 @@ export default function LeadsPage() {
   const [detailPerson, setDetailPerson] = useState<Person | null>(null);
   const [personDetailOpen, setPersonDetailOpen] = useState(false);
   const [addToListMenuOpen, setAddToListMenuOpen] = useState(false);
+  const [bulkScrapeOpen, setBulkScrapeOpen] = useState(false);
 
   // Toast-style flash
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -346,6 +348,10 @@ export default function LeadsPage() {
                 onClick={() => { setScoreSingleId(null); setScoreOpen(true); }}>
                 <Sparkles className="h-3.5 w-3.5" /> Score
               </Button>
+              <Button size="sm" variant="outline" className="gap-1.5"
+                onClick={() => setBulkScrapeOpen(true)}>
+                <Globe className="h-3.5 w-3.5" /> Scrapa siti
+              </Button>
               <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={handleBulkDelete}>
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </Button>
@@ -388,6 +394,13 @@ export default function LeadsPage() {
             open={csvOpen}
             onOpenChange={setCsvOpen}
             onImportComplete={() => { loadCompanies(1); loadAux(); }}
+          />
+
+          <BulkScrapeDialog
+            open={bulkScrapeOpen}
+            onOpenChange={setBulkScrapeOpen}
+            companies={companies.filter((c) => selectedIds.has(c.id))}
+            onCompleted={() => loadCompanies(page)}
           />
 
           <ScoreCompaniesDialog
