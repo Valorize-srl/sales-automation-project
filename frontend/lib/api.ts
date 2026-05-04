@@ -827,6 +827,36 @@ class ApiClient {
     return this.get("/companies/custom-field-keys");
   }
 
+  async listActivity(params: {
+    target_type?: "account" | "contact";
+    target_id?: number;
+    action?: string;
+    actor?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{
+    activities: Array<{
+      id: number;
+      target_type: string;
+      target_id: number;
+      action: string;
+      payload: Record<string, unknown> | null;
+      actor: string | null;
+      created_at: string;
+    }>;
+    total: number;
+    page: number;
+    page_size: number;
+    total_pages: number;
+  }> {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+    const qs = q.toString();
+    return this.get(`/activity${qs ? `?${qs}` : ""}`);
+  }
+
   async getCompaniesFiltered(
     filters: import("@/types").CompanyFilters & { page?: number; page_size?: number },
   ): Promise<import("@/types").CompanyListResponse> {

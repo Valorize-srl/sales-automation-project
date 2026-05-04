@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { EditableField } from "@/components/ui/editable-field";
 import { api } from "@/lib/api";
+import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { Company, CompanyDetailResponse, CompanyUpdate } from "@/types";
 
 interface CompanyDetailDialogProps {
@@ -60,6 +61,7 @@ export function CompanyDetailDialog({ company, open, onOpenChange, onPersonClick
           <DialogTitle className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-primary" />
             {c.name}
+            <span className="ml-1 text-[10px] font-mono text-muted-foreground">account_id={c.id}</span>
           </DialogTitle>
           <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
             {c.industry && <span>{c.industry}</span>}
@@ -186,6 +188,12 @@ export function CompanyDetailDialog({ company, open, onOpenChange, onPersonClick
                 </div>
               )}
             </section>
+
+            <Separator />
+
+            <Separator />
+
+            <ActivityTimeline targetType="account" targetId={c.id} />
 
             <Separator />
 

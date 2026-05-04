@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { EditableField } from "@/components/ui/editable-field";
 import { api } from "@/lib/api";
+import { ActivityTimeline } from "@/components/leads/activity-timeline";
 import { Person, CampaignSummary, PersonUpdate } from "@/types";
 
 interface PersonDetailDialogProps {
@@ -61,6 +62,7 @@ export function PersonDetailDialog({ person, open, onOpenChange, onCompanyClick,
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5 text-primary" />
             {fullName}
+            <span className="ml-1 text-[10px] font-mono text-muted-foreground">contact_id={current.id}</span>
           </DialogTitle>
           <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
             {current.company_name && (
@@ -154,6 +156,12 @@ export function PersonDetailDialog({ person, open, onOpenChange, onCompanyClick,
             </h3>
             <EditableField label="Note" value={current.notes} onSave={(v) => saveField("notes", v)} type="textarea" placeholder="Aggiungi note sul contatto..." />
           </section>
+
+          <Separator />
+
+          <Separator />
+
+          <ActivityTimeline targetType="contact" targetId={current.id} />
 
           <Separator />
 
