@@ -830,6 +830,16 @@ class ApiClient {
   async getCompaniesFiltered(
     filters: import("@/types").CompanyFilters & { page?: number; page_size?: number },
   ): Promise<import("@/types").CompanyListResponse> {
+    const qs = this._encodeCompanyFilterQuery(filters);
+    return this.get(`/companies${qs ? `?${qs}` : ""}`);
+  }
+
+  async getCompanyIdsFiltered(filters: import("@/types").CompanyFilters): Promise<number[]> {
+    const qs = this._encodeCompanyFilterQuery(filters);
+    return this.get(`/companies/ids${qs ? `?${qs}` : ""}`);
+  }
+
+  private _encodeCompanyFilterQuery(filters: import("@/types").CompanyFilters & { page?: number; page_size?: number }): string {
     const q = new URLSearchParams();
     const advanced: Record<string, unknown> = {};
     Object.entries(filters).forEach(([k, v]) => {
@@ -843,8 +853,7 @@ class ApiClient {
     if (Object.keys(advanced).length > 0) {
       q.set("filters", JSON.stringify(advanced));
     }
-    const qs = q.toString();
-    return this.get(`/companies${qs ? `?${qs}` : ""}`);
+    return q.toString();
   }
 
   async addCompaniesToList(listId: number, companyIds: number[]): Promise<{ companies_affected: number; message: string }> {

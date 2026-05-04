@@ -35,6 +35,7 @@ export default function LeadsPage() {
 
   // Selection + dialogs
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
   const [scoreOpen, setScoreOpen] = useState(false);
   const [scoreSingleId, setScoreSingleId] = useState<number | null>(null);
@@ -88,11 +89,31 @@ export default function LeadsPage() {
 
   useEffect(() => { loadAux(); }, [loadAux]);
 
-  // Reload table when filters/search change (debounced for search)
+  // Reload table when filters/search change (debounced for search).
+  // Cross-page selection is also reset because the matching set changed.
   useEffect(() => {
+    setSelectAllMatching(false);
     const t = setTimeout(() => loadCompanies(1, effectiveFilters), 250);
     return () => clearTimeout(t);
   }, [effectiveFilters, loadCompanies]);
+
+  /**
+   * Resolve the "live" set of IDs for a bulk action: when selectAllMatching is
+   * active, fetch every ID matching the current filters from the server;
+   * otherwise return the manually selected ones.
+   */
+  const resolveSelectedIds = useCallback(async (): Promise<number[]> => {
+    if (selectAllMatching) {
+      try {
+        return await api.getCompanyIdsFiltered(effectiveFilters);
+      } catch (e) {
+        console.error("Failed to resolve all-matching IDs", e);
+        showFlash("err", "Errore nel recupero degli ID — provo solo con la selezione visibile");
+        return Array.from(selectedIds);
+      }
+    }
+    return Array.from(selectedIds);
+  }, [selectAllMatching, effectiveFilters, selectedIds]);
 
   // --- Selection ---
   const toggleSelect = (id: number) =>
@@ -173,12 +194,14 @@ export default function LeadsPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Eliminare ${selectedIds.size} aziende?`)) return;
-    const ids = Array.from(selectedIds);
+    const ids = await resolveSelectedIds();
+    if (ids.length === 0) return;
+    if (!confirm(`Eliminare ${ids.length} aziende?`)) return;
     for (const id of ids) {
       try { await api.deleteCompany(id); } catch (e) { console.error(e); }
     }
     setSelectedIds(new Set());
+    setSelectAllMatching(false);
     loadCompanies(page);
   };
 
@@ -196,8 +219,10 @@ export default function LeadsPage() {
         return;
       }
     }
+    const ids = await resolveSelectedIds();
+    if (ids.length === 0) return;
     try {
-      const res = await api.addCompaniesToList(targetId, Array.from(selectedIds));
+      const res = await api.addCompaniesToList(targetId, ids);
       showFlash("ok", `${res.companies_affected} aziende aggiunte alla lista`);
       setListsRefreshKey((k) => k + 1);
       loadCompanies(page);
@@ -274,9 +299,13 @@ export default function LeadsPage() {
             customFieldKeys={customFieldKeys}
           />
 
-          {selectedIds.size > 0 && (
+          {(selectedIds.size > 0 || selectAllMatching) && (
             <div className="flex items-center gap-3 p-2.5 bg-primary/5 rounded-md border border-primary/20">
-              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              <span className="text-sm font-medium">
+                {selectAllMatching
+                  ? `${total.toLocaleString("it-IT")} (tutte le matching)`
+                  : `${selectedIds.size} selected`}
+              </span>
               <div className="h-4 w-px bg-border" />
               <div className="relative">
                 <Button size="sm" variant="outline" className="gap-1.5"
@@ -320,7 +349,8 @@ export default function LeadsPage() {
               <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={handleBulkDelete}>
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </Button>
-              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
+              <Button size="sm" variant="ghost" className="ml-auto"
+                onClick={() => { setSelectedIds(new Set()); setSelectAllMatching(false); }}>
                 Clear
               </Button>
             </div>
@@ -332,7 +362,7 @@ export default function LeadsPage() {
             search={search}
             onSearchChange={setSearch}
             selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
+            onToggleSelect={(id) => { setSelectAllMatching(false); toggleSelect(id); }}
             onToggleSelectAll={toggleSelectAllOnPage}
             customFieldKeys={customFieldKeys}
             onCompanyClick={handleCompanyClick}
@@ -343,6 +373,8 @@ export default function LeadsPage() {
             pageIndex={page - 1}
             total={total}
             allLists={allLists}
+            selectAllMatching={selectAllMatching}
+            onSelectAllMatching={setSelectAllMatching}
           />
 
           {totalPages > 1 && (
