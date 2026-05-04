@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,8 @@ export default function LeadsPage() {
   const [personDetailOpen, setPersonDetailOpen] = useState(false);
   const [addToListMenuOpen, setAddToListMenuOpen] = useState(false);
   const [bulkScrapeOpen, setBulkScrapeOpen] = useState(false);
+  const [bulkScrapeCompanies, setBulkScrapeCompanies] = useState<Company[]>([]);
+  const [bulkScrapePreparing, setBulkScrapePreparing] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
     mode: "single" | "bulk";
     companyIds: number[];
@@ -59,11 +61,19 @@ export default function LeadsPage() {
 
   const effectiveFilters: CompanyFilters = useMemo(() => ({ ...filters, search: search || undefined }), [filters, search]);
 
+  // Keep latest filters in a ref so loadCompanies stays stable across renders.
+  // Without this, loadCompanies is re-created whenever effectiveFilters changes,
+  // and the filter-watcher useEffect (which depends on loadCompanies) would
+  // re-fire and reset the page to 1 — breaking pagination on filtered views.
+  const filtersRef = useRef(effectiveFilters);
+  filtersRef.current = effectiveFilters;
+
   const loadCompanies = useCallback(
-    async (p: number = 1, f: CompanyFilters = effectiveFilters) => {
+    async (p: number = 1, f?: CompanyFilters) => {
+      const filtersToUse = f ?? filtersRef.current;
       setLoading(true);
       try {
-        const data = await api.getCompaniesFiltered({ ...f, page: p, page_size: 50 });
+        const data = await api.getCompaniesFiltered({ ...filtersToUse, page: p, page_size: 50 });
         setCompanies(data.companies);
         setTotal(data.total);
         setTotalPages(data.total_pages);
@@ -74,7 +84,7 @@ export default function LeadsPage() {
         setLoading(false);
       }
     },
-    [effectiveFilters],
+    [],
   );
 
   const loadAux = useCallback(async () => {
@@ -98,11 +108,15 @@ export default function LeadsPage() {
 
   // Reload table when filters/search change (debounced for search).
   // Cross-page selection is also reset because the matching set changed.
+  // loadCompanies is intentionally omitted from deps: it's stable thanks to
+  // filtersRef, and including it once made it a transitive dep on
+  // effectiveFilters and broke pagination by re-firing this effect.
   useEffect(() => {
     setSelectAllMatching(false);
-    const t = setTimeout(() => loadCompanies(1, effectiveFilters), 250);
+    const t = setTimeout(() => loadCompanies(1), 250);
     return () => clearTimeout(t);
-  }, [effectiveFilters, loadCompanies]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveFilters]);
 
   /**
    * Resolve the "live" set of IDs for a bulk action: when selectAllMatching is
@@ -121,6 +135,45 @@ export default function LeadsPage() {
     }
     return Array.from(selectedIds);
   }, [selectAllMatching, effectiveFilters, selectedIds]);
+
+  /**
+   * Resolve the full set of Company objects for the bulk-scrape dialog.
+   * - selectAllMatching: paginate through every matching company on the server
+   *   (page_size=200) so the scraper sees all of them, not just the visible page.
+   * - manual selection: filter the already-loaded current page by selectedIds.
+   * - no selection: scrape just the current page.
+   */
+  const openBulkScrape = async () => {
+    if (selectAllMatching) {
+      setBulkScrapePreparing(true);
+      try {
+        const PAGE_SIZE = 200;
+        const acc: Company[] = [];
+        let p = 1;
+        // First page tells us total_pages
+        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+        acc.push(...first.companies);
+        while (p < first.total_pages) {
+          p += 1;
+          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+          acc.push(...next.companies);
+        }
+        setBulkScrapeCompanies(acc);
+        setBulkScrapeOpen(true);
+      } catch (e) {
+        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+      } finally {
+        setBulkScrapePreparing(false);
+      }
+      return;
+    }
+    if (selectedIds.size > 0) {
+      setBulkScrapeCompanies(companies.filter((c) => selectedIds.has(c.id)));
+    } else {
+      setBulkScrapeCompanies(companies);
+    }
+    setBulkScrapeOpen(true);
+  };
 
   // --- Selection ---
   const toggleSelect = (id: number) =>
@@ -308,10 +361,16 @@ export default function LeadsPage() {
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCsvOpen(true)}>
                 <Upload className="h-3.5 w-3.5" /> Import CSV
               </Button>
-              <Button size="sm" className="gap-1.5" disabled={total === 0}
-                onClick={() => setBulkScrapeOpen(true)}>
+              <Button size="sm" className="gap-1.5" disabled={total === 0 || bulkScrapePreparing}
+                onClick={openBulkScrape}>
                 <Sparkles className="h-3.5 w-3.5" />
-                Enrich {selectedIds.size > 0 ? `${selectedIds.size} selezionate` : `pagina (${companies.length})`}
+                {bulkScrapePreparing
+                  ? "Preparo…"
+                  : `Enrich ${selectAllMatching
+                      ? `${total.toLocaleString("it-IT")} matching`
+                      : selectedIds.size > 0
+                      ? `${selectedIds.size} selezionate`
+                      : `pagina (${companies.length})`}`}
               </Button>
             </div>
           </div>
@@ -373,8 +432,9 @@ export default function LeadsPage() {
                 )}
               </div>
               <Button size="sm" variant="outline" className="gap-1.5"
-                onClick={() => setBulkScrapeOpen(true)}>
-                <Globe className="h-3.5 w-3.5" /> Scrapa siti
+                disabled={bulkScrapePreparing}
+                onClick={openBulkScrape}>
+                <Globe className="h-3.5 w-3.5" /> {bulkScrapePreparing ? "Preparo…" : "Scrapa siti"}
               </Button>
               <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={async () => {
@@ -431,7 +491,7 @@ export default function LeadsPage() {
           <BulkScrapeDialog
             open={bulkScrapeOpen}
             onOpenChange={setBulkScrapeOpen}
-            companies={companies.filter((c) => selectedIds.has(c.id))}
+            companies={bulkScrapeCompanies}
             onCompleted={() => loadCompanies(page)}
           />
 
