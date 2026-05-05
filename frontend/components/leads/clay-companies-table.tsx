@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Search, Filter as FilterIcon, ArrowUpDown, MoreHorizontal,
-  UserPlus, Sparkles, Trash2, ExternalLink, Plus, Loader2, X, Users, Mail, Type, Hash,
+  UserPlus, Sparkles, Trash2, ExternalLink, Plus, Loader2, X, Users, Mail, Type, Hash, Linkedin,
   GripVertical,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -137,6 +137,32 @@ const FIXED_COLUMNS: ColumnDef[] = [
         >
           <span className="truncate">{display}</span>
           <ExternalLink className="h-3 w-3 shrink-0" />
+        </a>
+      );
+    },
+  },
+  {
+    id: "linkedin_url", label: "LinkedIn azienda", iconKind: "text", maxWidth: "220px",
+    renderCell: (c) => {
+      if (!c.linkedin_url) return <span className="text-muted-foreground text-xs">—</span>;
+      let display = c.linkedin_url;
+      try {
+        const u = new URL(c.linkedin_url.startsWith("http") ? c.linkedin_url : `https://${c.linkedin_url}`);
+        display = (u.pathname.replace(/^\/+|\/+$/g, "") || u.hostname).replace(/^company\//, "");
+      } catch {
+        // keep raw display
+      }
+      return (
+        <a
+          href={c.linkedin_url.startsWith("http") ? c.linkedin_url : `https://${c.linkedin_url}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#0A66C2] hover:underline text-sm flex items-center gap-1 max-w-full truncate"
+          title={c.linkedin_url}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Linkedin className="h-3 w-3 shrink-0" />
+          <span className="truncate">{display}</span>
         </a>
       );
     },
