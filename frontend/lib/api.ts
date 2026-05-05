@@ -75,129 +75,6 @@ class ApiClient {
     const response = await fetch(`${this.baseUrl}/health`);
     return response.json();
   }
-
-  async streamChat(
-    messages: { role: string; content: string }[],
-    fileContent: string | null,
-    onText: (text: string) => void,
-    onIcpExtracted: (data: Record<string, string>) => void,
-    onDone: () => void,
-    onError: (error: Error) => void,
-    onApolloSearchParams?: (event: { data: Record<string, unknown>; claude_tokens?: { input_tokens: number; output_tokens: number; total_tokens: number } }) => void
-  ): Promise<void> {
-    const url = `${this.baseUrl}/api/chat/stream`;
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, file_content: fileContent }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Chat error: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const parsed = JSON.parse(line.slice(6));
-              if (parsed.type === "text") onText(parsed.content);
-              else if (parsed.type === "icp_extracted") onIcpExtracted(parsed.data);
-              else if (parsed.type === "apollo_search_params") onApolloSearchParams?.(parsed);
-              else if (parsed.type === "done") onDone();
-              else if (parsed.type === "error") onError(new Error(parsed.content));
-            } catch {
-              // Skip malformed SSE lines
-            }
-          }
-        }
-      }
-    } catch (err) {
-      onError(err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-
-  async apolloSearch(params: {
-    search_type: "people" | "companies";
-    filters: Record<string, unknown>;
-    per_page?: number;
-    client_tag?: string;
-    auto_enrich?: boolean;
-    claude_tokens?: {
-      input_tokens: number;
-      output_tokens: number;
-      total_tokens: number;
-    };
-  }): Promise<import("@/types").ApolloSearchResponse> {
-    return this.post("/chat/apollo/search", params);
-  }
-
-  async apolloEnrichPeople(people: Record<string, unknown>[], source: "apollo" | "apify" = "apollo"): Promise<import("@/types").ApolloEnrichResponse> {
-    return this.post("/chat/apollo/enrich", { people, source });
-  }
-
-  async apolloImport(
-    results: Record<string, unknown>[],
-    target: "people" | "companies",
-    client_tag?: string,
-    auto_enrich?: boolean
-  ): Promise<import("@/types").ApolloImportResponse> {
-    return this.post("/chat/apollo/import", { results, target, client_tag, auto_enrich });
-  }
-
-  async uploadFile(file: File): Promise<{ filename: string; text: string; length: number }> {
-    const formData = new FormData();
-    formData.append("file", file);
-    const url = `${this.baseUrl}/api/chat/upload`;
-    const response = await fetch(url, {
-      method: "POST",
-      body: formData,
-    });
-    if (!response.ok) throw new Error(`Upload error: ${response.status}`);
-    return response.json();
-  }
-
-  async uploadCSV(file: File): Promise<import("@/types").CSVUploadResponse> {
-    const formData = new FormData();
-    formData.append("file", file);
-    const url = `${this.baseUrl}/api/leads/csv/upload`;
-    const response = await fetch(url, {
-      method: "POST",
-      body: formData,
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || `Upload error: ${response.status}`);
-    }
-    return response.json();
-  }
-
-  async uploadPeopleCSV(file: File): Promise<import("@/types").PersonCSVUploadResponse> {
-    const formData = new FormData();
-    formData.append("file", file);
-    const url = `${this.baseUrl}/api/people/csv/upload`;
-    const response = await fetch(url, { method: "POST", body: formData });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || `Upload error: ${response.status}`);
-    }
-    return response.json();
-  }
-
   async uploadCompaniesCSV(file: File): Promise<import("@/types").CompanyCSVUploadResponse> {
     const formData = new FormData();
     formData.append("file", file);
@@ -274,210 +151,6 @@ class ApiClient {
   ): Promise<import("@/types").CompanyEnrichmentResponse> {
     return this.post(`/companies/enrich-batch`, { company_ids: companyIds, force });
   }
-
-  // === Session-based Conversational Chat ===
-
-  async createChatSession(
-    request: import("@/types").CreateSessionRequest
-  ): Promise<import("@/types").SessionResponse> {
-    return this.post(`/chat/sessions`, request);
-  }
-
-  async getChatSession(sessionUuid: string): Promise<import("@/types").SessionWithMessages> {
-    return this.get(`/chat/sessions/${sessionUuid}`);
-  }
-
-  async listChatSessions(
-    clientTag?: string,
-    status?: string,
-    limit = 50,
-    offset = 0
-  ): Promise<import("@/types").SessionListResponse> {
-    const params = new URLSearchParams();
-    if (clientTag) params.append("client_tag", clientTag);
-    if (status) params.append("status", status);
-    params.append("limit", limit.toString());
-    params.append("offset", offset.toString());
-    const query = params.toString() ? `?${params.toString()}` : "";
-    return this.get(`/chat/sessions${query}`);
-  }
-
-  async archiveChatSession(sessionUuid: string): Promise<{ status: string; session_uuid: string }> {
-    return this.delete(`/chat/sessions/${sessionUuid}`);
-  }
-
-  async updateChatSession(sessionUuid: string, data: { client_tag?: string; title?: string }): Promise<{ session_uuid: string; client_tag: string | null; title: string | null }> {
-    return this.request(`/chat/sessions/${sessionUuid}`, { method: "PATCH", body: JSON.stringify(data) });
-  }
-
-  async saveSearchContext(
-    sessionUuid: string,
-    data: { search_type: string; total: number; returned: number; filters: Record<string, unknown> }
-  ): Promise<void> {
-    await this.post(`/chat/sessions/${sessionUuid}/search-context`, data);
-  }
-
-  async streamChatSession(
-    sessionUuid: string,
-    message: string,
-    fileContent: string | null,
-    onText: (text: string) => void,
-    onToolStart: (tool: string, input: Record<string, unknown>) => void,
-    onToolComplete: (tool: string, summary: Record<string, unknown>) => void,
-    onDone: () => void,
-    onError: (error: Error) => void,
-    options?: {
-      mode?: string;
-      onApolloResults?: (data: { results: Record<string, unknown>[]; total: number; search_type: string; returned: number; search_params: Record<string, unknown> }) => void;
-      onSearchResults?: (data: { source: string; results: Record<string, unknown>[]; total: number; returned: number; search_type?: string; search_params?: Record<string, unknown> }) => void;
-      onImportComplete?: (data: { target: string; imported: number; duplicates_skipped: number; errors: number }) => void;
-      onCsvReady?: (data: { filename: string; rows: number; columns: string[]; content_base64: string }) => void;
-    }
-  ): Promise<void> {
-    const url = `${this.baseUrl}/api/chat/sessions/${sessionUuid}/stream`;
-    try {
-      const body: Record<string, unknown> = { message, file_content: fileContent };
-      if (options?.mode) body.mode = options.mode;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Chat error: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      let doneReceived = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith("data: ")) continue;
-
-          try {
-            const data = JSON.parse(line.substring(6));
-
-            if (data.type === "text") {
-              onText(data.content);
-            } else if (data.type === "tool_start") {
-              onToolStart(data.tool, data.input);
-            } else if (data.type === "tool_complete") {
-              onToolComplete(data.tool, data.summary);
-            } else if (data.type === "apollo_results") {
-              options?.onApolloResults?.(data.data);
-            } else if (data.type === "search_results") {
-              // New generalized search results (Google Maps, LinkedIn, etc.)
-              options?.onSearchResults?.(data.data);
-              // Also forward to onApolloResults for backward compat with results panel
-              options?.onApolloResults?.({
-                results: data.data.results,
-                total: data.data.total,
-                returned: data.data.returned,
-                search_type: data.data.search_type || data.data.source || "companies",
-                search_params: data.data.search_params || {},
-              });
-            } else if (data.type === "import_complete") {
-              options?.onImportComplete?.(data.data);
-            } else if (data.type === "csv_ready") {
-              options?.onCsvReady?.(data.data);
-            } else if (data.type === "done") {
-              doneReceived = true;
-              onDone();
-            } else if (data.type === "error") {
-              doneReceived = true;
-              onError(new Error(data.message || data.error || "Unknown error"));
-            }
-          } catch (err) {
-            console.error("Failed to parse SSE event:", line, err);
-          }
-        }
-      }
-
-      // Safety: if stream ended without done/error event, clear loading state
-      if (!doneReceived) {
-        console.warn("SSE stream ended without done/error event");
-        onDone();
-      }
-    } catch (err) {
-      onError(err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-
-  // ============================================================================
-  // AI Agents
-  // ============================================================================
-
-  async createAIAgent(data: import("@/types").AIAgentCreate): Promise<import("@/types").AIAgent> {
-    return this.post("/ai-agents", data);
-  }
-
-  async getAIAgents(params?: { is_active?: boolean; skip?: number; limit?: number }): Promise<{ agents: import("@/types").AIAgent[]; total: number }> {
-    const query = new URLSearchParams();
-    if (params?.is_active !== undefined) query.set("is_active", String(params.is_active));
-    if (params?.skip) query.set("skip", String(params.skip));
-    if (params?.limit) query.set("limit", String(params.limit));
-    const queryString = query.toString();
-    return this.get(`/ai-agents${queryString ? `?${queryString}` : ''}`);
-  }
-
-  async getAIAgent(id: number): Promise<import("@/types").AIAgent> {
-    return this.get(`/ai-agents/${id}`);
-  }
-
-  async updateAIAgent(id: number, data: import("@/types").AIAgentUpdate): Promise<import("@/types").AIAgent> {
-    return this.put(`/ai-agents/${id}`, data);
-  }
-
-  async deleteAIAgent(id: number): Promise<void> {
-    await this.delete(`/ai-agents/${id}`);
-  }
-
-  async uploadKnowledgeBase(id: number, data: { source_type: string; content: string; files_metadata?: any[] }): Promise<import("@/types").AIAgent> {
-    return this.post(`/ai-agents/${id}/knowledge-base`, data);
-  }
-
-  async executeApolloSearch(id: number, params: import("@/types").AIAgentApolloSearchRequest): Promise<import("@/types").ApolloSearchResult> {
-    return this.post(`/ai-agents/${id}/search-apollo`, params);
-  }
-
-  async estimateEnrichCost(id: number, person_ids?: number[], company_ids?: number[]): Promise<import("@/types").EnrichEstimate> {
-    return this.post(`/ai-agents/${id}/estimate-enrich`, { person_ids, company_ids });
-  }
-
-  async enrichLeads(id: number, person_ids?: number[], company_ids?: number[]): Promise<{ enriched_count: number; credits_consumed: number; credits_remaining: number }> {
-    return this.post(`/ai-agents/${id}/enrich-leads`, { person_ids, company_ids });
-  }
-
-  async getAIAgentStats(id: number): Promise<import("@/types").AIAgentStats> {
-    return this.get(`/ai-agents/${id}/stats`);
-  }
-
-  async getAssociatedCampaigns(agentId: number): Promise<{ campaigns: any[]; total: number }> {
-    return this.get(`/ai-agents/${agentId}/campaigns`);
-  }
-
-  async associateCampaigns(agentId: number, campaignIds: number[]): Promise<{ campaigns_associated: number; message: string }> {
-    return this.post(`/ai-agents/${agentId}/campaigns`, { campaign_ids: campaignIds });
-  }
-
-  async disassociateCampaign(agentId: number, campaignId: number): Promise<void> {
-    await this.delete(`/ai-agents/${agentId}/campaigns/${campaignId}`);
-  }
-
   // ============================================================================
   // Lead Lists
   // ============================================================================
@@ -486,9 +159,8 @@ class ApiClient {
     return this.post("/lead-lists", data);
   }
 
-  async getLeadLists(params?: { ai_agent_id?: number; skip?: number; limit?: number }): Promise<{ lists: import("@/types").LeadList[]; total: number }> {
+  async getLeadLists(params?: { skip?: number; limit?: number }): Promise<{ lists: import("@/types").LeadList[]; total: number }> {
     const query = new URLSearchParams();
-    if (params?.ai_agent_id) query.set("ai_agent_id", String(params.ai_agent_id));
     if (params?.skip) query.set("skip", String(params.skip));
     if (params?.limit) query.set("limit", String(params.limit));
     const queryString = query.toString();
@@ -549,17 +221,18 @@ class ApiClient {
 
   async findAndImportDecisionMakers(
     companyId: number,
-    params?: { titles?: string[]; seniorities?: string[]; per_page?: number; client_tag?: string },
+    params?: { titles?: string[]; seniorities?: string[]; per_page?: number },
   ): Promise<{ imported_count: number; candidates: number }> {
-    const search = await this.findPeopleAtCompany(companyId, {
+    const r = await this.post<{
+      candidates: number;
+      imported_count: number;
+      duplicates_skipped: number;
+    }>(`/companies/${companyId}/find-and-import-decision-makers`, {
       titles: params?.titles,
       seniorities: params?.seniorities,
       per_page: params?.per_page ?? 25,
     });
-    const results = (search.results || []).slice(0, params?.per_page ?? 25);
-    if (results.length === 0) return { imported_count: 0, candidates: 0 };
-    const imp = await this.apolloImport(results, "people", params?.client_tag, false);
-    return { imported_count: imp.imported ?? 0, candidates: results.length };
+    return { imported_count: r.imported_count, candidates: r.candidates };
   }
 
   /** Find decision makers via Google -> LinkedIn (no LinkedIn auth — powered by
@@ -666,11 +339,6 @@ class ApiClient {
   async pushSequences(campaignId: number): Promise<import("@/types").PushSequencesResponse> {
     return this.post(`/campaigns/${campaignId}/push-sequences`, {});
   }
-
-  async generateTemplates(campaignId: number, data: { icp_id?: number; additional_context?: string; num_subject_lines?: number; num_steps?: number }): Promise<import("@/types").EmailTemplateGenerateResponse> {
-    return this.post(`/campaigns/${campaignId}/generate-templates`, data);
-  }
-
   async getInstantlyAccounts(): Promise<import("@/types").InstantlyEmailAccountListResponse> {
     return this.get("/campaigns/instantly/accounts");
   }
@@ -746,19 +414,6 @@ class ApiClient {
     if (dateTo) params.set("date_to", dateTo);
     return this.get(`/responses/stats?${params}`);
   }
-
-  async generateReply(responseId: number): Promise<import("@/types").EmailResponseWithDetails> {
-    return this.post(`/responses/${responseId}/generate-reply`);
-  }
-
-  async approveReply(responseId: number, editedReply?: string): Promise<import("@/types").EmailResponseWithDetails> {
-    return this.post(`/responses/${responseId}/approve`, { edited_reply: editedReply });
-  }
-
-  async sendReply(responseId: number): Promise<import("@/types").SendReplyResponse> {
-    return this.post(`/responses/${responseId}/send`);
-  }
-
   async deleteResponse(responseId: number): Promise<void> {
     await this.delete(`/responses/${responseId}`);
   }
@@ -832,15 +487,6 @@ class ApiClient {
   async getCompany(companyId: number): Promise<import("@/types").Company> {
     return this.get(`/companies/${companyId}`);
   }
-
-  async scoreCompanies(icpId: number, companyIds?: number[]): Promise<import("@/types").CompanyScoreResponse> {
-    return this.post("/companies/score", { icp_id: icpId, company_ids: companyIds });
-  }
-
-  async getICPs(): Promise<{ icps: import("@/types").ICP[]; total: number }> {
-    return this.get("/icps");
-  }
-
   async saveScrapedDataToCompany(
     companyId: number,
     data: { emails: string[]; linkedin_url?: string | null; phone?: string | null },
@@ -937,39 +583,6 @@ class ApiClient {
   async listLeadLists(): Promise<{ lists: import("@/types").LeadList[]; total: number }> {
     return this.get("/lead-lists");
   }
-
-  async listEnrichmentTasks(params?: {
-    target_type?: string;
-    task_type?: string;
-    status?: string;
-    priority_min?: number;
-    icp_id?: number;
-    page?: number;
-    page_size?: number;
-  }): Promise<import("@/types").EnrichmentTaskListResponse> {
-    const q = new URLSearchParams();
-    if (params?.target_type) q.set("target_type", params.target_type);
-    if (params?.task_type) q.set("task_type", params.task_type);
-    if (params?.status) q.set("status", params.status);
-    if (params?.priority_min !== undefined) q.set("priority_min", String(params.priority_min));
-    if (params?.icp_id !== undefined) q.set("icp_id", String(params.icp_id));
-    if (params?.page) q.set("page", String(params.page));
-    if (params?.page_size) q.set("page_size", String(params.page_size));
-    const qs = q.toString();
-    return this.get(`/enrichment-tasks${qs ? `?${qs}` : ""}`);
-  }
-
-  async updateEnrichmentTask(
-    taskId: number,
-    data: { status?: string; notes?: string; priority?: number },
-  ): Promise<import("@/types").EnrichmentTask> {
-    return this.patch(`/enrichment-tasks/${taskId}`, data);
-  }
-
-  async deleteEnrichmentTask(taskId: number): Promise<void> {
-    await this.delete(`/enrichment-tasks/${taskId}`);
-  }
-
   async getCompanyDetail(companyId: number): Promise<import("@/types").CompanyDetailResponse> {
     return this.get(`/companies/${companyId}/detail`);
   }
@@ -989,62 +602,7 @@ class ApiClient {
   // ============================================================================
   // AI Replies
   // ============================================================================
-
-  async generateAIReply(responseId: number, aiAgentId?: number): Promise<{ subject: string; body: string; tone: string; call_to_action: string }> {
-    return this.post(`/responses/${responseId}/generate-ai-reply`, { ai_agent_id: aiAgentId });
-  }
-
-  async approveAndSendReply(responseId: number, approved_body: string, approved_subject?: string, sender_email?: string): Promise<{ status: string; message: string }> {
-    return this.post(`/responses/${responseId}/approve-and-send`, { approved_body, approved_subject, sender_email });
-  }
-
-  async ignoreResponse(responseId: number): Promise<{ status: string; message: string }> {
-    return this.post(`/responses/${responseId}/ignore`, undefined);
-  }
-
   // --- Bandi Monitor ---
-
-  async getBandi(params?: {
-    source?: string;
-    status?: string;
-    search?: string;
-    ateco?: string;
-    region?: string;
-    skip?: number;
-    limit?: number;
-  }): Promise<import("@/types").BandoListResponse> {
-    const searchParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          searchParams.append(key, String(value));
-        }
-      });
-    }
-    const qs = searchParams.toString();
-    return this.get(`/bandi${qs ? `?${qs}` : ""}`);
-  }
-
-  async getBandoStats(): Promise<import("@/types").BandoStats> {
-    return this.get("/bandi/stats");
-  }
-
-  async fetchBandi(): Promise<import("@/types").FetchBandiResponse> {
-    return this.post("/bandi/fetch", undefined);
-  }
-
-  async getBandoMatches(bandoId: number): Promise<{ matches: import("@/types").BandoMatch[]; total: number }> {
-    return this.get(`/bandi/${bandoId}/matches`);
-  }
-
-  async analyzeBando(bandoId: number): Promise<import("@/types").Bando> {
-    return this.post(`/bandi/${bandoId}/analyze`, undefined);
-  }
-
-  async archiveBando(bandoId: number): Promise<import("@/types").Bando> {
-    return this.post(`/bandi/${bandoId}/archive`, undefined);
-  }
-
   // --- Prospecting Tools ---
 
   async toolsSearchPeople(params: import("@/types").ApolloSearchPeopleParams): Promise<import("@/types").ToolSearchResponse> {

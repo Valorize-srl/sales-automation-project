@@ -194,50 +194,6 @@ export interface Company {
   people_count: number;
 }
 
-export type EnrichmentTaskType =
-  | "firmographic_base"
-  | "hiring_scrape"
-  | "funding_lookup"
-  | "techstack_lookup"
-  | "contact_discovery";
-
-export type EnrichmentTaskStatus = "pending" | "completed" | "failed" | "cancelled";
-
-export interface EnrichmentTask {
-  id: number;
-  target_type: "account" | "person";
-  target_id: number;
-  task_type: EnrichmentTaskType;
-  priority: number;
-  reason: string | null;
-  status: EnrichmentTaskStatus;
-  created_by_icp_id: number | null;
-  created_at: string;
-  completed_at: string | null;
-  notes: string | null;
-  target_name?: string | null;
-}
-
-export interface EnrichmentTaskListResponse {
-  tasks: EnrichmentTask[];
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
-}
-
-export interface CompanyScoreResponse {
-  icp_id: number;
-  scored_count: number;
-  tier_a: number;
-  tier_b: number;
-  tier_c: number;
-  enrichment_tasks_created: number;
-  input_tokens: number;
-  output_tokens: number;
-  cost_usd: number;
-}
-
 export interface PersonListResponse {
   people: Person[];
   total: number;
@@ -254,17 +210,6 @@ export interface CompanyListResponse {
   total_pages: number;
 }
 
-export interface PersonCSVMapping {
-  first_name: string | null;
-  last_name: string | null;
-  company_name: string | null;
-  email: string | null;
-  linkedin_url: string | null;
-  phone: string | null;
-  industry: string | null;
-  location: string | null;
-}
-
 export interface CompanyCSVMapping {
   name: string | null;
   email: string | null;
@@ -279,15 +224,6 @@ export interface CompanyCSVMapping {
   employee_count: string | null;
 }
 
-export interface PersonCSVUploadResponse {
-  headers: string[];
-  mapping: PersonCSVMapping;
-  rows: Record<string, string>[];
-  preview_rows: Record<string, string>[];
-  total_rows: number;
-  unmapped_headers: string[];
-}
-
 export interface CompanyCSVUploadResponse {
   headers: string[];
   mapping: CompanyCSVMapping;
@@ -297,87 +233,11 @@ export interface CompanyCSVUploadResponse {
   unmapped_headers: string[];
 }
 
-export interface AnalyticsEntry {
-  id: number;
-  campaign_id: number;
-  date: string;
-  emails_sent: number;
-  opens: number;
-  replies: number;
-  positive_replies: number;
-  meetings_booked: number;
-}
-
 // === API Responses ===
-
-export interface HealthCheckResponse {
-  status: string;
-  version: string;
-  environment: string;
-}
-
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-export interface ICPExtracted {
-  name: string;
-  description?: string | null;
-  industry?: string | null;
-  company_size?: string | null;
-  job_titles?: string | null;
-  geography?: string | null;
-  revenue_range?: string | null;
-  keywords?: string | null;
-}
 
 export interface ICPListResponse {
   icps: ICP[];
   total: number;
-}
-
-export interface FileUploadResponse {
-  filename: string;
-  text: string;
-  length: number;
-}
-
-export interface LeadListResponse {
-  leads: Lead[];
-  total: number;
-}
-
-export interface CSVColumnMapping {
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  company: string | null;
-  job_title: string | null;
-  industry: string | null;
-  linkedin_url: string | null;
-  phone: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  zip_code: string | null;
-  country: string | null;
-  website: string | null;
-}
-
-export interface CSVUploadResponse {
-  headers: string[];
-  mapping: CSVColumnMapping;
-  rows: Record<string, string>[];
-  preview_rows: Record<string, string>[];
-  total_rows: number;
-  unmapped_headers: string[];
-}
-
-export interface CSVImportResponse {
-  imported: number;
-  duplicates_skipped: number;
-  errors: number;
 }
 
 export interface CampaignListResponse {
@@ -434,11 +294,6 @@ export interface ResponseStats {
   chart_data: ResponseStatsChartEntry[];
 }
 
-export interface SendReplyResponse {
-  success: boolean;
-  message: string;
-}
-
 export interface InstantlyEmailAccount {
   email: string;
   first_name: string | null;
@@ -473,72 +328,6 @@ export interface DashboardStats {
   total_replied: number;
   converted_count: number;
   chart_data: DashboardChartEntry[];
-}
-
-export interface ApolloPersonResult {
-  first_name: string;
-  last_name: string;
-  title: string | null;
-  company: string | null;
-  linkedin_url: string | null;
-  location: string | null;
-  email: string | null;
-  phone: string | null;
-  website: string | null;
-  industry: string | null;
-  apollo_id?: string;
-  is_enriched?: boolean;
-}
-
-export interface ApolloEnrichResponse {
-  enriched: Record<string, { id: string; email?: string; phone?: string; direct_phone?: string; linkedin_url?: string; first_name?: string; last_name?: string; city?: string; state?: string; country?: string }>;
-  credits_consumed: number;
-  enriched_count: number;
-  error?: "credits_exhausted";
-  message?: string;
-  source?: "apollo" | "apify";
-  apify_cost_usd?: number;
-}
-
-export interface ApolloCompanyResult {
-  name: string;
-  industry: string | null;
-  size: string | null;
-  website: string | null;
-  linkedin_url: string | null;
-  location: string | null;
-  email: string | null;
-  phone: string | null;
-  signals: string | null;
-}
-
-export interface ApolloUsage {
-  apollo_credits: number;
-  claude_tokens: {
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-  };
-  estimated_cost_usd: {
-    apollo_usd: number;
-    claude_usd: number;
-    total_usd: number;
-  };
-}
-
-export interface ApolloSearchResponse {
-  results: ApolloPersonResult[] | ApolloCompanyResult[];
-  total: number;
-  search_type: "people" | "companies";
-  returned: number;
-  credits_consumed?: number;
-  usage?: ApolloUsage;
-}
-
-export interface ApolloImportResponse {
-  imported: number;
-  duplicates_skipped: number;
-  errors: number;
 }
 
 // === Usage Tracking & Settings ===
@@ -640,34 +429,6 @@ export interface ProspectingTool {
   updated_at: string | null;
 }
 
-export interface ApolloSearchRequest {
-  search_type: "people" | "companies";
-  filters: {
-    person_titles?: string[];
-    person_locations?: string[];
-    person_seniorities?: string[];
-    organization_locations?: string[];
-    organization_keywords?: string[];
-    organization_sizes?: string[];
-    technologies?: string[];
-    keywords?: string;
-  };
-  per_page?: number;
-  client_tag?: string;
-  claude_tokens?: {
-    input_tokens: number;
-    output_tokens: number;
-    total_tokens: number;
-  };
-}
-
-export interface ApolloImportRequest {
-  results: Array<Record<string, unknown>>;
-  target: "people" | "companies";
-  client_tag?: string;
-  auto_enrich?: boolean; // Auto-enrich companies with website scraping
-}
-
 // === Enrichment ===
 
 export interface EnrichmentResult {
@@ -687,207 +448,7 @@ export interface CompanyEnrichmentResponse {
 
 // === Session-based Chat ===
 
-export type SessionStatus = "active" | "archived" | "completed";
-
-export interface ChatSession {
-  id: number;
-  session_uuid: string;
-  title: string | null;
-  icp_id: number | null;
-  current_icp_draft: Record<string, unknown> | null;
-  session_metadata: Record<string, unknown> | null;
-  total_claude_input_tokens: number;
-  total_claude_output_tokens: number;
-  total_apollo_credits: number;
-  total_cost_usd: number;
-  client_tag: string | null;
-  status: SessionStatus;
-  created_at: string;
-  updated_at: string;
-  last_message_at: string | null;
-}
-
-export interface ChatMessageModel {
-  id: number;
-  session_id: number;
-  role: "user" | "assistant" | "tool_result";
-  content: string;
-  tool_calls: unknown[] | null;
-  tool_results: unknown[] | null;
-  input_tokens: number;
-  output_tokens: number;
-  message_metadata: Record<string, unknown> | null;
-  created_at: string;
-}
-
-export interface ToolExecution {
-  id: number;
-  session_id: number;
-  message_id: number | null;
-  tool_name: string;
-  tool_call_id: string;
-  tool_input: Record<string, unknown>;
-  tool_output: Record<string, unknown>;
-  status: "success" | "error" | "partial";
-  error_message: string | null;
-  execution_time_ms: number | null;
-  credits_consumed: number;
-  cost_usd: number;
-  created_at: string;
-}
-
-export interface SessionSummary {
-  session_id: number;
-  session_uuid: string;
-  message_count: number;
-  tool_stats: Record<string, number>;
-  total_claude_input_tokens: number;
-  total_claude_output_tokens: number;
-  total_apollo_credits: number;
-  total_cost_usd: number;
-  status: SessionStatus;
-  created_at: string;
-  last_message_at: string | null;
-}
-
-export interface SessionWithMessages {
-  session: ChatSession;
-  messages: ChatMessageModel[];
-  summary: SessionSummary;
-}
-
-export interface SessionListItem {
-  session_uuid: string;
-  title: string | null;
-  status: SessionStatus;
-  client_tag: string | null;
-  created_at: string;
-  last_message_at: string | null;
-  total_cost_usd: number;
-  message_count: number;
-}
-
-export interface SessionListResponse {
-  sessions: SessionListItem[];
-  limit: number;
-  offset: number;
-}
-
-export interface CreateSessionRequest {
-  client_tag?: string;
-  title?: string;
-  ai_agent_id?: number;
-}
-
-export interface ChatStreamRequest {
-  message: string;
-  file_content?: string;
-}
-
-export interface SessionResponse {
-  session_uuid: string;
-  title: string | null;
-  status: SessionStatus;
-  client_tag: string | null;
-  created_at: string;
-  last_message_at: string | null;
-  total_cost_usd: number;
-  total_claude_input_tokens: number;
-  total_claude_output_tokens: number;
-  total_apollo_credits: number;
-}
-
-export interface SSETextEvent {
-  type: "text";
-  content: string;
-}
-
-export interface SSEToolStartEvent {
-  type: "tool_start";
-  tool: string;
-  input: Record<string, unknown>;
-}
-
-export interface SSEToolCompleteEvent {
-  type: "tool_complete";
-  tool: string;
-  summary: Record<string, unknown>;
-}
-
-export interface SSEDoneEvent {
-  type: "done";
-}
-
-export interface SSEErrorEvent {
-  type: "error";
-  error: string;
-  message: string;
-}
-
-export type SSEEvent =
-  | SSETextEvent
-  | SSEToolStartEvent
-  | SSEToolCompleteEvent
-  | SSEDoneEvent
-  | SSEErrorEvent;
-
 // === AI Agents System ===
-
-export interface AIAgent {
-  id: number;
-  name: string;
-  client_tag: string;
-  description: string | null;
-  icp_config: Record<string, any>;
-  signals_config: Record<string, any> | null;
-  knowledge_base_text: string | null;
-  knowledge_base_source: string | null;
-  knowledge_base_files: Array<{filename: string; upload_date: string; size: number}> | null;
-  apollo_credits_allocated: number;
-  apollo_credits_consumed: number;
-  last_credits_reset: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  created_by: number | null;
-  credits_remaining: number;
-  credits_percentage_used: number;
-}
-
-export interface AIAgentCreate {
-  name: string;
-  client_tag: string;
-  description?: string;
-  icp_config: Record<string, any>;
-  signals_config?: Record<string, any>;
-  apollo_credits_allocated?: number;
-}
-
-export interface AIAgentUpdate {
-  name?: string;
-  client_tag?: string;
-  description?: string;
-  icp_config?: Record<string, any>;
-  signals_config?: Record<string, any>;
-  apollo_credits_allocated?: number;
-  is_active?: boolean;
-}
-
-export interface AIAgentStats {
-  agent_id: number;
-  agent_name: string;
-  client_tag: string;
-  total_leads: number;
-  total_people: number;
-  total_companies: number;
-  apollo_credits_allocated: number;
-  apollo_credits_consumed: number;
-  apollo_credits_remaining: number;
-  apollo_credits_percentage_used: number;
-  lists_created: number;
-  campaigns_connected: number;
-  signals_detected: number;
-}
 
 export interface LeadList {
   id: number;
@@ -966,28 +527,6 @@ export interface AddListToCampaignResponse {
   message: string;
 }
 
-export interface AIAgentApolloSearchRequest {
-  per_page?: number;
-  auto_create_list?: boolean;
-  list_name?: string;
-}
-
-export interface ApolloSearchResult {
-  list_id: number | null;
-  list_name: string | null;
-  results_count: number;
-  people_count: number;
-  companies_count: number;
-  credits_consumed: number;
-  credits_remaining: number;
-}
-
-export interface EnrichEstimate {
-  total_leads: number;
-  apollo_credits_needed: number;
-  estimated_cost_usd: number;
-}
-
 export interface BulkOperationResult {
   people_affected: number;
   companies_affected: number;
@@ -1030,15 +569,6 @@ export interface LeadSyncResponse {
   message: string;
 }
 
-export interface DailyAnalyticsEntry {
-  date: string;
-  emails_sent: number;
-  opens: number;
-  clicks: number;
-  replies: number;
-  bounces: number;
-}
-
 // === Detail Dialog Types ===
 
 export interface CampaignSummary {
@@ -1069,59 +599,6 @@ export interface CompanyDetailResponse {
 }
 
 // --- Bandi Monitor ---
-
-export type BandoSource = "mimit" | "invitalia" | "mase" | "fasi" | "unioncamere" | "incentivi_gov";
-export type BandoStatus = "new" | "analyzed" | "expired" | "archived";
-
-export interface Bando {
-  id: number;
-  source: BandoSource;
-  source_url: string;
-  title: string;
-  raw_description: string | null;
-  published_at: string | null;
-  status: BandoStatus;
-  ai_summary: string | null;
-  target_companies: string | null;
-  ateco_codes: string[] | null;
-  opening_date: string | null;
-  deadline: string | null;
-  amount_min: number | null;
-  amount_max: number | null;
-  funding_type: string | null;
-  regions: string[] | null;
-  sectors: string[] | null;
-  fetched_at: string;
-  analyzed_at: string | null;
-  created_at: string;
-}
-
-export interface BandoListResponse {
-  bandi: Bando[];
-  total: number;
-}
-
-export interface BandoStats {
-  total: number;
-  new_count: number;
-  analyzed_count: number;
-  expiring_soon: number;
-  sources_breakdown: Record<string, number>;
-}
-
-export interface FetchBandiResponse {
-  fetched: number;
-  analyzed: number;
-  errors: number;
-  message: string;
-}
-
-export interface BandoMatch {
-  company_id: number;
-  name: string;
-  industry: string | null;
-  match_reason: string;
-}
 
 // ── Prospecting Tools ──────────────────────────────────────────────
 

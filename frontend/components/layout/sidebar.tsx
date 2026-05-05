@@ -11,12 +11,9 @@ import {
   BarChart3,
   PieChart,
   Settings,
-  Bot,
   LogOut,
   Search,
   Menu,
-  Landmark,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,15 +26,12 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/prospecting", label: "Prospecting", icon: Search },
-  { href: "/ai-agents", label: "AI Agents", icon: Bot },
   { href: "/leads", label: "Leads", icon: Users },
-  { href: "/enrichment-tasks", label: "Enrichment", icon: Sparkles },
-  { href: "/usage", label: "Usage", icon: BarChart3 },
+  { href: "/prospecting", label: "Prospecting", icon: Search },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
   { href: "/responses", label: "Replies", icon: MessageSquareReply },
   { href: "/replies-analytics", label: "Replies Analytics", icon: PieChart },
-  { href: "/bandi", label: "Bandi", icon: Landmark },
+  { href: "/usage", label: "Usage", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

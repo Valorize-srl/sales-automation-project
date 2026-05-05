@@ -1240,6 +1240,76 @@ async def find_people_at_company(
     }
 
 
+@router.post("/{company_id}/find-and-import-decision-makers")
+async def find_and_import_decision_makers(
+    company_id: int,
+    body: FindPeopleRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """One-shot: Apollo-search decision makers at this company AND persist
+    them as Person records linked to the company. Replaces the legacy
+    find-people + apollo-import chain that lived under /api/chat/apollo.
+    """
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    apollo = ApolloService()
+    try:
+        raw = await apollo.search_people(
+            person_titles=body.titles or None,
+            person_seniorities=body.seniorities or None,
+            organization_keywords=[company.name],
+            per_page=body.per_page,
+        )
+    except ApolloAPIError as e:
+        raise HTTPException(e.status_code, e.detail)
+
+    results = apollo.format_people_results(raw)
+
+    existing_emails_result = await db.execute(
+        select(Person.email).where(Person.email.isnot(None))
+    )
+    existing_emails = {r[0].lower() for r in existing_emails_result.all() if r[0]}
+
+    imported_count = 0
+    skipped_dup = 0
+    for item in results:
+        email = (item.get("email") or "").strip().lower() or None
+        if email and email in existing_emails:
+            skipped_dup += 1
+            continue
+        first_name = (item.get("first_name") or "").strip() or "Unknown"
+        last_name = (item.get("last_name") or "").strip() or "Unknown"
+        person = Person(
+            first_name=first_name[:100],
+            last_name=last_name[:100],
+            email=email,
+            phone=item.get("phone"),
+            company_id=company.id,
+            company_name=company.name,
+            linkedin_url=item.get("linkedin_url"),
+            title=item.get("title"),
+            industry=item.get("industry"),
+            location=item.get("location"),
+            client_tag=company.client_tag,
+        )
+        db.add(person)
+        if email:
+            existing_emails.add(email)
+        imported_count += 1
+
+    await db.flush()
+
+    return {
+        "company_id": company_id,
+        "company_name": company.name,
+        "candidates": len(results),
+        "imported_count": imported_count,
+        "duplicates_skipped": skipped_dup,
+    }
+
+
 @router.post("/{company_id}/find-decision-makers-linkedin")
 async def find_decision_makers_via_linkedin(
     company_id: int,
