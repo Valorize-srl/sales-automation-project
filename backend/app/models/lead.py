@@ -21,7 +21,6 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    icp_id: Mapped[int] = mapped_column(ForeignKey("icps.id", ondelete="CASCADE"), nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -51,5 +50,4 @@ class Lead(Base):
     )
 
     # Relationships
-    icp: Mapped["ICP"] = relationship(back_populates="leads")
     email_responses: Mapped[list["EmailResponse"]] = relationship(back_populates="lead", cascade="all, delete-orphan")

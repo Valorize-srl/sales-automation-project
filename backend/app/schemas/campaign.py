@@ -26,7 +26,6 @@ class EmailStepInput(BaseModel):
 
 class CampaignCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    icp_id: Optional[int] = None
     create_on_instantly: bool = True
     # Schedule
     schedule_timezone: str = "Europe/Belgrade"
@@ -49,7 +48,6 @@ class CampaignCreate(BaseModel):
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    icp_id: Optional[int] = None
     status: Optional[str] = None
     subject_lines: Optional[str] = None
     email_templates: Optional[str] = None
@@ -57,8 +55,6 @@ class CampaignUpdate(BaseModel):
 
 class CampaignResponse(BaseModel):
     id: int
-    icp_id: Optional[int] = None
-    icp_name: Optional[str] = None
     instantly_campaign_id: Optional[str] = None
     name: str
     status: str
@@ -68,8 +64,6 @@ class CampaignResponse(BaseModel):
     total_opened: int
     total_replied: int
     created_at: datetime
-    ai_agent_id: Optional[int] = None
-    ai_agent_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -93,18 +87,6 @@ class LeadUploadRequest(BaseModel):
 class LeadUploadResponse(BaseModel):
     pushed: int
     errors: int
-
-
-class EmailTemplateGenerateRequest(BaseModel):
-    icp_id: Optional[int] = None
-    additional_context: Optional[str] = None
-    num_subject_lines: int = Field(default=3, ge=1, le=10)
-    num_steps: int = Field(default=3, ge=1, le=5)
-
-
-class EmailTemplateGenerateResponse(BaseModel):
-    subject_lines: list[str]
-    email_steps: list[dict[str, Any]]
 
 
 class EmailAccountOut(BaseModel):

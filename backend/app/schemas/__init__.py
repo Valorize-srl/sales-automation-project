@@ -1,5 +1,3 @@
-from app.schemas.icp import ICPCreate, ICPUpdate, ICPResponse, ICPListResponse
-from app.schemas.chat import ChatRequest, ChatMessage
 from app.schemas.lead import (
     LeadCreate,
     LeadResponse,
@@ -17,8 +15,6 @@ from app.schemas.campaign import (
     InstantlySyncResponse,
     LeadUploadRequest,
     LeadUploadResponse,
-    EmailTemplateGenerateRequest,
-    EmailTemplateGenerateResponse,
 )
 from app.schemas.response import (
     EmailResponseOut,
@@ -30,12 +26,6 @@ from app.schemas.response import (
 )
 
 __all__ = [
-    "ICPCreate",
-    "ICPUpdate",
-    "ICPResponse",
-    "ICPListResponse",
-    "ChatRequest",
-    "ChatMessage",
     "LeadCreate",
     "LeadResponse",
     "LeadListResponse",
@@ -50,8 +40,6 @@ __all__ = [
     "InstantlySyncResponse",
     "LeadUploadRequest",
     "LeadUploadResponse",
-    "EmailTemplateGenerateRequest",
-    "EmailTemplateGenerateResponse",
     "EmailResponseOut",
     "EmailResponseListResponse",
     "FetchRepliesRequest",

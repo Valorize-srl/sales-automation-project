@@ -4,8 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, Text, DateTime, JSON, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Integer, String, Text, DateTime, JSON
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.db.database import Base
@@ -23,14 +23,6 @@ class LeadList(Base):
 
     # Primary Key
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-
-    # Foreign Key to AI Agent (optional — lists can exist independently)
-    ai_agent_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        ForeignKey("ai_agents.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
 
     # Basic Info
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -54,12 +46,6 @@ class LeadList(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
-    )
-
-    # Relationships
-    ai_agent: Mapped[Optional["AIAgent"]] = relationship(
-        "AIAgent",
-        back_populates="lead_lists",
     )
 
     def __repr__(self) -> str:
