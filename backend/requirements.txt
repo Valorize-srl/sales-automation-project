@@ -16,8 +16,8 @@ pydantic-settings>=2.6.0
 celery[redis]>=5.4.0
 redis>=5.2.0
 
-# AI
-anthropic>=0.39.0
+# AI — >=1.0 needed for web_search_20260209 server-side tool
+anthropic>=1.0.0
 
 # MCP (Model Context Protocol) server
 mcp>=1.2.0

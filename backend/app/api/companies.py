@@ -1224,6 +1224,14 @@ class SaveScrapedDataRequest(BaseModel):
     phone: Optional[str] = None
 
 
+class FindDMViaLinkedInRequest(BaseModel):
+    """Find decision makers via Google -> LinkedIn (no LinkedIn auth required).
+    Powered by Claude's built-in web_search tool — see services/linkedin_via_claude.py.
+    """
+    target_titles: list[str]
+    max_results: int = 5
+
+
 @router.post("/{company_id}/save-scraped", response_model=CompanyResponse)
 async def save_scraped_data(
     company_id: int,
@@ -1414,6 +1422,97 @@ async def find_people_at_company(
         "company_name": company.name,
         "results": results,
         "total": total,
+    }
+
+
+@router.post("/{company_id}/find-decision-makers-linkedin")
+async def find_decision_makers_via_linkedin(
+    company_id: int,
+    body: FindDMViaLinkedInRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Find decision makers at this company via Google -> LinkedIn (no LinkedIn auth).
+
+    Uses Claude's built-in web_search tool to dork Google for
+    `site:linkedin.com/in/ "<company>"` style queries, parses the SERP entries
+    into name/title/url tuples, filters by the user-supplied target titles,
+    and persists the results as Person records linked to the company.
+
+    Email is left null (LinkedIn-only contact) — enrich later via Apollo /
+    site scrape to fill in.
+    """
+    from app.services.linkedin_via_claude import find_company_employees_via_linkedin
+
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    titles = [t.strip() for t in (body.target_titles or []) if t.strip()]
+    if not titles:
+        raise HTTPException(400, "target_titles is required")
+    max_results = max(1, min(body.max_results or 5, 20))
+
+    try:
+        candidates = await find_company_employees_via_linkedin(
+            company_name=company.name,
+            target_titles=titles,
+            max_results=max_results,
+            company_linkedin_url=company.linkedin_url,
+        )
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"LinkedIn discovery failed: {e}")
+
+    # Persist as Person records, dedup by linkedin_url scoped to this company
+    existing_urls_result = await db.execute(
+        select(Person.linkedin_url).where(
+            Person.company_id == company_id,
+            Person.linkedin_url.isnot(None),
+        )
+    )
+    existing_urls = {row[0] for row in existing_urls_result.all()}
+
+    imported: list[Person] = []
+    for c in candidates:
+        if c.linkedin_url in existing_urls:
+            continue
+        existing_urls.add(c.linkedin_url)
+        person = Person(
+            first_name=c.first_name,
+            last_name=c.last_name,
+            company_id=company.id,
+            company_name=company.name,
+            email=None,
+            linkedin_url=c.linkedin_url,
+            title=c.title,
+            location=c.location,
+            client_tag=company.client_tag,
+        )
+        db.add(person)
+        imported.append(person)
+
+    if imported:
+        await db.commit()
+        for p in imported:
+            await db.refresh(p)
+
+    return {
+        "company_id": company_id,
+        "company_name": company.name,
+        "candidates_found": len(candidates),
+        "imported_count": len(imported),
+        "people": [
+            {
+                "id": p.id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "title": p.title,
+                "linkedin_url": p.linkedin_url,
+                "location": p.location,
+            }
+            for p in imported
+        ],
     }
 
 

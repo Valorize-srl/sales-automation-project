@@ -18,7 +18,7 @@ class PersonCSVMapping(BaseModel):
 class PersonCreate(BaseModel):
     first_name: str
     last_name: str
-    email: str
+    email: Optional[str] = None
     company_name: Optional[str] = None
     linkedin_url: Optional[str] = None
     phone: Optional[str] = None
@@ -50,7 +50,7 @@ class PersonResponse(BaseModel):
     last_name: str
     company_id: Optional[int]
     company_name: Optional[str]
-    email: str
+    email: Optional[str] = None
     linkedin_url: Optional[str]
     phone: Optional[str]
     title: Optional[str] = None

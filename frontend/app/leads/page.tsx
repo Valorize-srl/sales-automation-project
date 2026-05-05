@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
@@ -9,6 +9,7 @@ import { CompaniesCSVDialog } from "@/components/leads/companies-csv-dialog";
 import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
 import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
+import { LinkedInFindDMDialog } from "@/components/leads/linkedin-find-dm-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -46,6 +47,9 @@ export default function LeadsPage() {
   const [bulkScrapeOpen, setBulkScrapeOpen] = useState(false);
   const [bulkScrapeCompanies, setBulkScrapeCompanies] = useState<Company[]>([]);
   const [bulkScrapePreparing, setBulkScrapePreparing] = useState(false);
+  const [linkedInDMOpen, setLinkedInDMOpen] = useState(false);
+  const [linkedInDMCompanies, setLinkedInDMCompanies] = useState<Company[]>([]);
+  const [linkedInDMPreparing, setLinkedInDMPreparing] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
     mode: "single" | "bulk";
     companyIds: number[];
@@ -189,6 +193,41 @@ export default function LeadsPage() {
       setBulkScrapeCompanies(companies);
     }
     setBulkScrapeOpen(true);
+  };
+
+  /**
+   * Resolve the full set of companies for the LinkedIn-find-DM dialog. Same
+   * pattern as openBulkScrape: selectAllMatching paginates through the server.
+   */
+  const openLinkedInDM = async () => {
+    if (selectAllMatching) {
+      setLinkedInDMPreparing(true);
+      try {
+        const PAGE_SIZE = 200;
+        const acc: Company[] = [];
+        let p = 1;
+        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+        acc.push(...first.companies);
+        while (p < first.total_pages) {
+          p += 1;
+          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+          acc.push(...next.companies);
+        }
+        setLinkedInDMCompanies(acc);
+        setLinkedInDMOpen(true);
+      } catch (e) {
+        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+      } finally {
+        setLinkedInDMPreparing(false);
+      }
+      return;
+    }
+    if (selectedIds.size > 0) {
+      setLinkedInDMCompanies(companies.filter((c) => selectedIds.has(c.id)));
+    } else {
+      setLinkedInDMCompanies(companies);
+    }
+    setLinkedInDMOpen(true);
   };
 
   // --- Selection ---
@@ -453,6 +492,12 @@ export default function LeadsPage() {
                 <Globe className="h-3.5 w-3.5" /> {bulkScrapePreparing ? "Preparo…" : "Scrapa siti"}
               </Button>
               <Button size="sm" variant="outline" className="gap-1.5"
+                disabled={linkedInDMPreparing}
+                onClick={openLinkedInDM}>
+                <Linkedin className="h-3.5 w-3.5 text-[#0A66C2]" />
+                {linkedInDMPreparing ? "Preparo…" : "Trova DM (LinkedIn)"}
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={async () => {
                   const ids = await resolveSelectedIds();
                   setPushToCampaignTarget({ mode: "bulk", companyIds: ids });
@@ -508,6 +553,13 @@ export default function LeadsPage() {
             open={bulkScrapeOpen}
             onOpenChange={setBulkScrapeOpen}
             companies={bulkScrapeCompanies}
+            onCompleted={() => loadCompanies(page)}
+          />
+
+          <LinkedInFindDMDialog
+            open={linkedInDMOpen}
+            onOpenChange={setLinkedInDMOpen}
+            companies={linkedInDMCompanies}
             onCompleted={() => loadCompanies(page)}
           />
 

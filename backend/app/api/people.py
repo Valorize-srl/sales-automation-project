@@ -353,7 +353,7 @@ async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(ge
 
     # Fetch existing emails for deduplication
     existing_result = await db.execute(select(Person.email))
-    existing_emails = {row[0].lower() for row in existing_result.all()}
+    existing_emails = {row[0].lower() for row in existing_result.all() if row[0]}
 
     # Pre-load company lookup maps to avoid N+1 queries
     company_name_result = await db.execute(
