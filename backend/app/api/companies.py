@@ -1,6 +1,7 @@
 from typing import Optional
 """Companies API - manage company records with CSV import and people matching."""
 import logging
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel
@@ -1462,7 +1463,21 @@ async def find_decision_makers_via_linkedin(
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     except Exception as e:
-        raise HTTPException(502, f"LinkedIn discovery failed: {e}")
+        # Surface Anthropic / web_search errors as plain text so the frontend
+        # dialog can show the actual cause (e.g. "credit balance is too low",
+        # "rate limit exceeded") instead of "API error: 502".
+        msg = str(e)
+        # Try to extract the message field from Anthropic's error envelope:
+        # "Error code: 400 - {'type': 'error', 'error': {'type': '...', 'message': 'Your credit ...'}}"
+        m = re.search(r"'message':\s*'([^']+)'", msg) or re.search(r'"message":\s*"([^"]+)"', msg)
+        if m:
+            msg = m.group(1)
+        if "credit balance is too low" in msg.lower():
+            msg = "Credito Anthropic esaurito — ricarica su console.anthropic.com/settings/billing"
+        elif "rate_limit" in msg.lower() or "rate limit" in msg.lower():
+            msg = f"Rate limit Anthropic — riprova fra qualche secondo ({msg})"
+        logger.warning("LinkedIn DM finder failed for company_id=%s: %s", company_id, e)
+        raise HTTPException(502, msg)
 
     # Persist as Person records, dedup by linkedin_url scoped to this company
     existing_urls_result = await db.execute(
