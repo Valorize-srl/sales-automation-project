@@ -227,6 +227,34 @@ const FIXED_COLUMNS: ColumnDef[] = [
     },
   },
   {
+    id: "dm_linkedin", label: "LinkedIn DM", iconKind: "multi", maxWidth: "260px",
+    renderCell: (c) => {
+      const dms = (c.decision_makers || []).filter((d) => d.linkedin_url);
+      if (dms.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+      const fmtName = (d: typeof dms[0]) =>
+        [d.first_name, d.last_name].filter(Boolean).join(" ") || "Profilo";
+      return (
+        <div className="flex flex-wrap gap-1">
+          {dms.slice(0, 2).map((d) => (
+            <a
+              key={d.id}
+              href={d.linkedin_url!}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={d.linkedin_url!}
+              className="inline-flex items-center gap-1 text-[10px] font-normal px-1.5 py-0.5 rounded border border-[#0A66C2]/30 bg-[#0A66C2]/5 text-[#0A66C2] hover:bg-[#0A66C2]/10 hover:underline max-w-[140px]"
+            >
+              <Linkedin className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">{fmtName(d)}</span>
+            </a>
+          ))}
+          {dms.length > 2 && <Badge variant="outline" className="text-[10px]">+{dms.length - 2}</Badge>}
+        </div>
+      );
+    },
+  },
+  {
     id: "work_emails", label: "Email Lavoro", iconKind: "multi", maxWidth: "260px",
     renderCell: (c) => {
       const emails = c.work_emails || [];
