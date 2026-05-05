@@ -1,15 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Search, Users, Building2, Zap, MapPin, Globe, Bot, MessageSquare, Linkedin } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useState } from "react";
+import { Search, Users, Building2, Zap, MapPin, Globe, Linkedin } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ToolCard } from "@/components/tools/tool-card";
 import { ApolloPeopleForm } from "@/components/tools/apollo-people-form";
@@ -19,10 +11,6 @@ import { GoogleMapsForm } from "@/components/tools/google-maps-form";
 import { WebsiteScraperForm } from "@/components/tools/website-scraper-form";
 import { LinkedInPeopleForm } from "@/components/tools/linkedin-people-form";
 import { LinkedInCompaniesForm } from "@/components/tools/linkedin-companies-form";
-import { ClaudePanel } from "@/components/tools/claude-panel";
-import { MiniChat } from "@/components/tools/mini-chat";
-import { AIAgent } from "@/types";
-import { api } from "@/lib/api";
 
 type ToolId =
   | "apollo-people"
@@ -86,40 +74,24 @@ const TOOLS: { id: ToolId; name: string; description: string; icon: typeof Searc
 ];
 
 export default function ProspectingPage() {
-  const [agents, setAgents] = useState<AIAgent[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
-  const [agentsLoading, setAgentsLoading] = useState(true);
-
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
-  const [claudeOpen, setClaudeOpen] = useState(false);
-
-  // Load agents
-  useEffect(() => {
-    api.getAIAgents({ is_active: true })
-      .then((data) => setAgents(data.agents || []))
-      .catch((err) => console.error("Failed to load agents:", err))
-      .finally(() => setAgentsLoading(false));
-  }, []);
-
-  const clientTag = agents.find((a) => a.id === Number(selectedAgentId))?.client_tag;
-  const agentId = selectedAgentId ? Number(selectedAgentId) : undefined;
 
   const renderToolForm = () => {
     switch (activeTool) {
       case "apollo-people":
-        return <ApolloPeopleForm clientTag={clientTag} />;
+        return <ApolloPeopleForm />;
       case "apollo-companies":
-        return <ApolloCompaniesForm clientTag={clientTag} />;
+        return <ApolloCompaniesForm />;
       case "apollo-enrich":
-        return <ApolloEnrichForm clientTag={clientTag} />;
+        return <ApolloEnrichForm />;
       case "google-maps":
-        return <GoogleMapsForm clientTag={clientTag} />;
+        return <GoogleMapsForm />;
       case "website-scraper":
-        return <WebsiteScraperForm clientTag={clientTag} />;
+        return <WebsiteScraperForm />;
       case "linkedin-people":
-        return <LinkedInPeopleForm clientTag={clientTag} />;
+        return <LinkedInPeopleForm />;
       case "linkedin-companies":
-        return <LinkedInCompaniesForm clientTag={clientTag} />;
+        return <LinkedInCompaniesForm />;
       default:
         return null;
     }
@@ -129,7 +101,6 @@ export default function ProspectingPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-48px)]">
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-1 pb-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -140,35 +111,8 @@ export default function ProspectingPage() {
             Cerca lead, arricchisci dati, importa contatti
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {!agentsLoading && agents.length > 0 && (
-            <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-              <SelectTrigger className="w-[200px] h-9">
-                <Bot className="h-4 w-4 mr-1.5 flex-shrink-0" />
-                <SelectValue placeholder="Seleziona agente" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={String(agent.id)}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setClaudeOpen(true)}
-            className="gap-1.5"
-          >
-            <MessageSquare className="h-4 w-4" />
-            Chiedi a Claude
-          </Button>
-        </div>
       </div>
 
-      {/* Tool Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-1">
         {TOOLS.map((tool) => (
           <ToolCard
@@ -182,7 +126,6 @@ export default function ProspectingPage() {
         ))}
       </div>
 
-      {/* Tool Drawer (right side) */}
       <Sheet open={!!activeTool} onOpenChange={(open) => !open && setActiveTool(null)}>
         <SheetContent side="right" className="w-[500px] sm:w-[600px] p-0 flex flex-col">
           <SheetHeader className="p-4 border-b">
@@ -193,15 +136,9 @@ export default function ProspectingPage() {
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-4">
             {renderToolForm()}
-            {activeTool && (
-              <MiniChat agentId={agentId} toolContext={activeToolMeta?.name} />
-            )}
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Claude Chat Panel (left side) */}
-      <ClaudePanel open={claudeOpen} onOpenChange={setClaudeOpen} agentId={agentId} />
     </div>
   );
 }
