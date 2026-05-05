@@ -22,7 +22,7 @@ class Person(Base):
         index=True,
     )
     company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     linkedin_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

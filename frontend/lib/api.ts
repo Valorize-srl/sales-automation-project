@@ -562,6 +562,32 @@ class ApiClient {
     return { imported_count: imp.imported ?? 0, candidates: results.length };
   }
 
+  /** Find decision makers via Google -> LinkedIn (no LinkedIn auth — powered by
+   * Claude's web_search). Persists matches as Person records linked to the company. */
+  async findDecisionMakersViaLinkedIn(
+    companyId: number,
+    targetTitles: string[],
+    maxResults: number = 5,
+  ): Promise<{
+    company_id: number;
+    company_name: string;
+    candidates_found: number;
+    imported_count: number;
+    people: Array<{
+      id: number;
+      first_name: string;
+      last_name: string;
+      title: string | null;
+      linkedin_url: string;
+      location: string | null;
+    }>;
+  }> {
+    return this.post(`/companies/${companyId}/find-decision-makers-linkedin`, {
+      target_titles: targetTitles,
+      max_results: maxResults,
+    });
+  }
+
   async bulkTagCompanies(company_ids: number[], tags_to_add?: string[], tags_to_remove?: string[]): Promise<{ companies_tagged: number; message: string }> {
     return this.post("/companies/bulk-tag", { company_ids, tags_to_add, tags_to_remove });
   }
