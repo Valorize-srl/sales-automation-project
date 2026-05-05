@@ -144,7 +144,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Sales Automation API",
-    description="B2B outreach automation platform with AI-powered ICP parsing and campaign management",
+    description="B2B outreach automation platform — companies-first dashboard with Apollo & LinkedIn DM discovery and Instantly campaigns",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/docs",

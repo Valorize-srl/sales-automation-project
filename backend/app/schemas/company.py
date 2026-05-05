@@ -93,16 +93,6 @@ class CompanyResponse(BaseModel):
     enrichment_source: Optional[str] = None
     enrichment_date: Optional[datetime] = None
     enrichment_status: Optional[str] = None
-    # ICP scoring fields
-    icp_score: Optional[int] = None
-    priority_tier: Optional[str] = None
-    lifecycle_stage: Optional[str] = None
-    revenue_band: Optional[str] = None
-    employee_count_band: Optional[str] = None
-    industry_standardized: Optional[str] = None
-    reason_summary: Optional[str] = None
-    last_scored_at: Optional[datetime] = None
-    scored_with_icp_id: Optional[int] = None
     created_at: datetime
     people_count: int = 0
 
@@ -154,21 +144,3 @@ class FindPeopleRequest(BaseModel):
     per_page: int = 25
 
 
-# ---- Lead Planner & Scorer ----
-
-class CompanyScoreRequest(BaseModel):
-    """Trigger ICP scoring on a set of companies (or all if company_ids is null)."""
-    icp_id: int
-    company_ids: Optional[list[int]] = None
-
-
-class CompanyScoreResponse(BaseModel):
-    icp_id: int
-    scored_count: int
-    tier_a: int
-    tier_b: int
-    tier_c: int
-    enrichment_tasks_created: int
-    input_tokens: int
-    output_tokens: int
-    cost_usd: float

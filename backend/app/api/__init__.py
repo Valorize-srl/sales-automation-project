@@ -1,9 +1,6 @@
 from fastapi import APIRouter
 
 from app.api import (
-    chat,
-    icps,
-    leads,
     campaigns,
     analytics,
     responses,
@@ -12,24 +9,17 @@ from app.api import (
     companies,
     usage,
     settings,
-    ai_agents,
     lead_lists,
     prospecting_tools,
-    bandi,
     tools,
     api_keys,
-    enrichment_tasks,
     activity,
     scraper,
 )
 
 api_router = APIRouter()
 
-api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
-api_router.include_router(icps.router, prefix="/icps", tags=["icps"])
-api_router.include_router(ai_agents.router, prefix="/ai-agents", tags=["ai-agents"])
 api_router.include_router(lead_lists.router, prefix="/lead-lists", tags=["lead-lists"])
-api_router.include_router(leads.router, prefix="/leads", tags=["leads"])
 api_router.include_router(people.router, prefix="/people", tags=["people"])
 api_router.include_router(companies.router, prefix="/companies", tags=["companies"])
 api_router.include_router(campaigns.router, prefix="/campaigns", tags=["campaigns"])
@@ -39,9 +29,7 @@ api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(prospecting_tools.router, prefix="/prospecting-tools", tags=["prospecting-tools"])
-api_router.include_router(bandi.router, prefix="/bandi", tags=["bandi"])
 api_router.include_router(tools.router, prefix="/tools", tags=["tools"])
 api_router.include_router(api_keys.router, prefix="/admin/api-keys", tags=["admin"])
-api_router.include_router(enrichment_tasks.router, prefix="/enrichment-tasks", tags=["enrichment-tasks"])
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"])
 api_router.include_router(scraper.router, prefix="/scraper", tags=["scraper"])

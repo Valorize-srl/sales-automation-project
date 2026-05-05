@@ -13,14 +13,11 @@ from app.db.database import get_db
 from app.models.campaign import Campaign, CampaignStatus
 from app.models.analytics import Analytics
 from app.models.email_response import EmailResponse, MessageDirection, ResponseStatus
-from app.models.icp import ICP
 from app.models.lead import Lead
 from app.models.lead_list import LeadList
 from app.models.person import Person
 from app.models.company import Company
 from app.models.campaign_lead_list import CampaignLeadList
-from app.models.ai_agent_campaign import AIAgentCampaign
-from app.models.ai_agent import AIAgent
 from app.services.instantly import instantly_service, InstantlyAPIError
 from app.schemas.campaign import (
     CampaignCreate,
@@ -30,36 +27,17 @@ from app.schemas.campaign import (
     InstantlySyncResponse,
     LeadUploadRequest,
     LeadUploadResponse,
-    EmailTemplateGenerateRequest,
-    EmailTemplateGenerateResponse,
     EmailAccountListResponse,
     EmailAccountOut,
     PushSequencesResponse,
 )
-from app.services.email_generator import email_generator_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 async def _campaign_to_response(campaign: Campaign, db: AsyncSession) -> CampaignResponse:
-    resp = CampaignResponse.model_validate(campaign)
-    resp.icp_name = campaign.icp.name if campaign.icp else None
-
-    # Load AI agent info if campaign has one associated
-    agent_assoc_result = await db.execute(
-        select(AIAgentCampaign, AIAgent)
-        .join(AIAgent, AIAgentCampaign.ai_agent_id == AIAgent.id)
-        .where(AIAgentCampaign.campaign_id == campaign.id)
-        .limit(1)
-    )
-    agent_assoc = agent_assoc_result.first()
-    if agent_assoc:
-        _, agent = agent_assoc
-        resp.ai_agent_id = agent.id
-        resp.ai_agent_name = agent.name
-
-    return resp
+    return CampaignResponse.model_validate(campaign)
 
 
 # --- CRUD ---
@@ -67,7 +45,6 @@ async def _campaign_to_response(campaign: Campaign, db: AsyncSession) -> Campaig
 
 @router.get("", response_model=CampaignListResponse)
 async def list_campaigns(
-    icp_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None, description="Search campaigns by name"),
     status: Optional[CampaignStatus] = Query(None, description="Filter by campaign status"),
     include_deleted: bool = Query(False, description="Include soft-deleted campaigns"),
@@ -76,13 +53,10 @@ async def list_campaigns(
     """List campaigns with optional filters."""
     query = (
         select(Campaign)
-        .options(selectinload(Campaign.icp))
         .order_by(Campaign.created_at.desc())
     )
     if not include_deleted:
         query = query.where(Campaign.deleted_at.is_(None))
-    if icp_id is not None:
-        query = query.where(Campaign.icp_id == icp_id)
     if search:
         query = query.where(Campaign.name.ilike(f"%{search}%"))
     if status is not None:
@@ -101,11 +75,6 @@ async def create_campaign(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new campaign locally and optionally on Instantly."""
-    if data.icp_id:
-        icp_result = await db.execute(select(ICP).where(ICP.id == data.icp_id))
-        if not icp_result.scalar_one_or_none():
-            raise HTTPException(404, "ICP not found")
-
     instantly_campaign_id = None
     if data.create_on_instantly:
         try:
@@ -178,14 +147,12 @@ async def create_campaign(
 
     campaign = Campaign(
         name=data.name,
-        icp_id=data.icp_id,
         instantly_campaign_id=instantly_campaign_id,
         email_templates=email_templates_json,
         status=CampaignStatus.DRAFT,
     )
     db.add(campaign)
     await db.flush()
-    await db.refresh(campaign, attribute_names=["icp"])
     return await _campaign_to_response(campaign, db)
 
 
@@ -240,8 +207,7 @@ async def get_campaign(campaign_id: int, db: AsyncSession = Depends(get_db)):
     """Get a single campaign by ID."""
     result = await db.execute(
         select(Campaign)
-        .options(selectinload(Campaign.icp))
-        .where(Campaign.id == campaign_id)
+                .where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
@@ -258,8 +224,7 @@ async def update_campaign(
     """Update a campaign."""
     result = await db.execute(
         select(Campaign)
-        .options(selectinload(Campaign.icp))
-        .where(Campaign.id == campaign_id)
+                .where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
@@ -273,7 +238,6 @@ async def update_campaign(
             setattr(campaign, key, value)
 
     await db.flush()
-    await db.refresh(campaign, attribute_names=["icp"])
     return await _campaign_to_response(campaign, db)
 
 
@@ -388,7 +352,6 @@ async def sync_campaigns(db: AsyncSession = Depends(get_db)):
                     new_campaign = Campaign(
                         name=ic_name,
                         instantly_campaign_id=ic_id,
-                        icp_id=None,
                         status=_map_instantly_status(ic.get("status")),
                     )
                     db.add(new_campaign)
@@ -413,8 +376,7 @@ async def sync_campaign_metrics(
     """Pull latest metrics from Instantly for a single campaign."""
     result = await db.execute(
         select(Campaign)
-        .options(selectinload(Campaign.icp))
-        .where(Campaign.id == campaign_id)
+                .where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
@@ -452,8 +414,7 @@ async def sync_campaign_metrics(
             ))
 
         await db.flush()
-        await db.refresh(campaign, attribute_names=["icp"])
-
+    
     except InstantlyAPIError as e:
         raise HTTPException(
             502, f"Failed to get analytics from Instantly: {e.detail}"
@@ -467,8 +428,7 @@ async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
     """Bulk sync metrics from Instantly for all active/linked campaigns. Used by auto-polling."""
     result = await db.execute(
         select(Campaign)
-        .options(selectinload(Campaign.icp))
-        .where(
+                .where(
             Campaign.instantly_campaign_id.isnot(None),
             Campaign.deleted_at.is_(None),
             Campaign.status.in_([CampaignStatus.ACTIVE, CampaignStatus.PAUSED, CampaignStatus.SCHEDULED]),
@@ -542,8 +502,7 @@ async def activate_campaign(
     """Activate campaign on Instantly."""
     result = await db.execute(
         select(Campaign)
-        .options(selectinload(Campaign.icp))
-        .where(Campaign.id == campaign_id)
+                .where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
@@ -555,7 +514,6 @@ async def activate_campaign(
         await instantly_service.activate_campaign(campaign.instantly_campaign_id)
         campaign.status = CampaignStatus.ACTIVE
         await db.flush()
-        await db.refresh(campaign, attribute_names=["icp"])
     except InstantlyAPIError as e:
         raise HTTPException(
             502, f"Failed to activate campaign on Instantly: {e.detail}"
@@ -571,8 +529,7 @@ async def pause_campaign(
     """Pause campaign on Instantly."""
     result = await db.execute(
         select(Campaign)
-        .options(selectinload(Campaign.icp))
-        .where(Campaign.id == campaign_id)
+                .where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
@@ -584,7 +541,6 @@ async def pause_campaign(
         await instantly_service.pause_campaign(campaign.instantly_campaign_id)
         campaign.status = CampaignStatus.PAUSED
         await db.flush()
-        await db.refresh(campaign, attribute_names=["icp"])
     except InstantlyAPIError as e:
         raise HTTPException(
             502, f"Failed to pause campaign on Instantly: {e.detail}"
@@ -946,62 +902,6 @@ async def push_sequences_to_instantly(
     )
 
 
-# --- Email Template Generation ---
-
-
-@router.post(
-    "/{campaign_id}/generate-templates",
-    response_model=EmailTemplateGenerateResponse,
-)
-async def generate_email_templates(
-    campaign_id: int,
-    data: EmailTemplateGenerateRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """Use Claude to generate email templates based on ICP data."""
-    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
-    campaign = result.scalar_one_or_none()
-    if not campaign:
-        raise HTTPException(404, "Campaign not found")
-
-    icp_id = data.icp_id or campaign.icp_id
-    icp_data = {}
-    if icp_id:
-        icp_result = await db.execute(select(ICP).where(ICP.id == icp_id))
-        icp = icp_result.scalar_one_or_none()
-        if icp:
-            icp_data = {
-                "industry": icp.industry,
-                "company_size": icp.company_size,
-                "job_titles": icp.job_titles,
-                "geography": icp.geography,
-                "revenue_range": icp.revenue_range,
-                "keywords": icp.keywords,
-                "description": icp.description,
-            }
-
-    if not icp_data:
-        raise HTTPException(
-            400, "No ICP found. Please specify an ICP for template generation."
-        )
-
-    templates = await email_generator_service.generate_templates(
-        icp_data=icp_data,
-        num_subject_lines=data.num_subject_lines,
-        num_steps=data.num_steps,
-        additional_context=data.additional_context,
-    )
-
-    campaign.subject_lines = json.dumps(templates.get("subject_lines", []))
-    campaign.email_templates = json.dumps(templates.get("email_steps", []))
-    await db.flush()
-
-    return EmailTemplateGenerateResponse(
-        subject_lines=templates.get("subject_lines", []),
-        email_steps=templates.get("email_steps", []),
-    )
-
-
 # --- Webhooks ---
 
 
@@ -1114,7 +1014,6 @@ async def sync_leads_from_instantly(
                         last_name=lead_data.get("last_name", ""),
                         company=lead_data.get("company_name", ""),
                         source="instantly",
-                        icp_id=campaign.icp_id,
                     )
                     db.add(new_lead)
                     await db.flush()

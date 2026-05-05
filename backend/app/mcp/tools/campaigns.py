@@ -211,37 +211,3 @@ def register(mcp: FastMCP) -> None:
                 return {"error": "instantly_error", "status_code": e.status_code, "detail": e.detail}
         return {"overall": overall, "daily": daily}
 
-    @mcp.tool()
-    async def generate_email_template(
-        industry: Optional[str] = None,
-        company_size: Optional[str] = None,
-        job_titles: Optional[str] = None,
-        geography: Optional[str] = None,
-        revenue_range: Optional[str] = None,
-        keywords: Optional[str] = None,
-        description: Optional[str] = None,
-        num_subject_lines: int = 3,
-        num_steps: int = 3,
-        additional_context: Optional[str] = None,
-    ) -> dict[str, Any]:
-        """Generate Instantly-ready email templates with Claude.
-
-        Returns `{subject_lines: [...], email_steps: [{subject, body, delay_days}, ...]}`.
-        """
-        from app.services.email_generator import email_generator_service
-
-        icp_data = {
-            "industry": industry,
-            "company_size": company_size,
-            "job_titles": job_titles,
-            "geography": geography,
-            "revenue_range": revenue_range,
-            "keywords": keywords,
-            "description": description,
-        }
-        return await email_generator_service.generate_templates(
-            icp_data=icp_data,
-            num_subject_lines=num_subject_lines,
-            num_steps=num_steps,
-            additional_context=additional_context,
-        )

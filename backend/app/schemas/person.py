@@ -4,17 +4,6 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class PersonCSVMapping(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    company_name: Optional[str] = None
-    email: Optional[str] = None
-    linkedin_url: Optional[str] = None
-    phone: Optional[str] = None
-    industry: Optional[str] = None
-    location: Optional[str] = None
-
-
 class PersonCreate(BaseModel):
     first_name: str
     last_name: str
@@ -69,27 +58,3 @@ class PersonListResponse(BaseModel):
     page: int = 1
     page_size: int = 50
     total_pages: int = 1
-
-
-class PersonCSVUploadResponse(BaseModel):
-    headers: list[str]
-    mapping: PersonCSVMapping
-    rows: list[dict]
-    preview_rows: list[dict]
-    total_rows: int
-    unmapped_headers: list[str]
-
-
-class PersonCSVImportRequest(BaseModel):
-    mapping: PersonCSVMapping
-    rows: list[dict]
-    defaults: Optional[dict[str, str]] = None
-    # Backward compat
-    industry: Optional[str] = None
-    client_tag: Optional[str] = None
-
-
-class PersonCSVImportResponse(BaseModel):
-    imported: int
-    duplicates_skipped: int
-    errors: int

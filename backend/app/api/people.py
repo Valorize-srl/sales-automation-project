@@ -1,15 +1,13 @@
-from typing import Optional
-"""People API - manage person records with CSV import and company matching."""
-import json
+"""People API - manage person records (CRUD only; CSV import was removed in
+favour of companies-first workflow with DM enrichment)."""
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
-import anthropic
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func as sa_func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.db.database import get_db
 from app.models.company import Company
 from app.models.person import Person
@@ -20,53 +18,10 @@ from app.schemas.person import (
     PersonUpdate,
     PersonResponse,
     PersonListResponse,
-    PersonCSVMapping,
-    PersonCSVUploadResponse,
-    PersonCSVImportRequest,
-    PersonCSVImportResponse,
 )
-from app.services.csv_mapper import csv_mapper_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-PERSON_FIELDS = ["first_name", "last_name", "company_name", "email", "linkedin_url", "phone", "industry", "location"]
-
-PERSON_MAPPING_SYSTEM_PROMPT = """You are a data mapping assistant. You receive CSV column headers \
-and sample data, and must map them to person/contact database fields.
-
-Person fields to map:
-- first_name: The person's first/given name
-- last_name: The person's last/family/surname
-- company_name: Company or organization the person works for
-- email: Email address (required)
-- linkedin_url: LinkedIn profile URL
-- phone: Phone/telephone number
-- industry: Industry sector or category
-- location: Location (city, country or region)
-
-Rules:
-- Map each CSV column to the most appropriate person field
-- If a CSV has a single "name" or "full_name" column, map it to first_name and set last_name to null
-- The email field is the most important - always try to identify it
-- If a column clearly does not match any person field, set it to null
-- Use the map_columns tool to return your mapping"""
-
-PERSON_MAPPING_TOOL = {
-    "name": "map_columns",
-    "description": "Map CSV column headers to person database fields",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            field: {
-                "type": ["string", "null"],
-                "description": f"CSV column name that maps to {field}",
-            }
-            for field in PERSON_FIELDS
-        },
-        "required": PERSON_FIELDS,
-    },
-}
 
 
 async def _find_matching_company(db: AsyncSession, company_name: Optional[str], email: Optional[str]) -> Optional[int]:
@@ -293,164 +248,6 @@ async def delete_person(person_id: int, db: AsyncSession = Depends(get_db)):
                        payload={"name": f"{person.first_name} {person.last_name}", "email": person.email},
                        actor="user")
     await db.delete(person)
-
-
-@router.post("/csv/upload", response_model=PersonCSVUploadResponse)
-async def upload_csv(file: UploadFile = File(...)):
-    """Upload a CSV file and auto-map columns with Claude."""
-    filename = file.filename or ""
-    if not filename.lower().endswith(".csv"):
-        raise HTTPException(400, "Only CSV files are supported")
-    if file.size and file.size > 5 * 1024 * 1024:
-        raise HTTPException(400, "File too large. Maximum size is 5MB.")
-
-    content = await file.read()
-    headers, rows = csv_mapper_service.parse_csv(content)
-    if not headers or not rows:
-        raise HTTPException(400, "CSV file is empty or has no data rows")
-
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    sample_text = f"CSV Headers: {headers}\n\nSample data (first 3 rows):\n"
-    for i, row in enumerate(rows[:3]):
-        sample_text += f"Row {i + 1}: {json.dumps(row)}\n"
-
-    message = await client.messages.create(
-        model="claude-sonnet-4-5-20250929",
-        max_tokens=512,
-        system=PERSON_MAPPING_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": sample_text}],
-        tools=[PERSON_MAPPING_TOOL],
-    )
-    mapping_dict = {field: None for field in PERSON_FIELDS}
-    for block in message.content:
-        if block.type == "tool_use" and block.name == "map_columns":
-            mapping_dict = block.input
-            break
-
-    mapping = PersonCSVMapping(**mapping_dict)
-    mapped_columns = {v for v in mapping_dict.values() if v}
-    unmapped = [h for h in headers if h not in mapped_columns]
-
-    return PersonCSVUploadResponse(
-        headers=headers,
-        mapping=mapping,
-        rows=rows,
-        preview_rows=rows[:5],
-        total_rows=len(rows),
-        unmapped_headers=unmapped,
-    )
-
-
-@router.post("/csv/import", response_model=PersonCSVImportResponse)
-async def import_csv(data: PersonCSVImportRequest, db: AsyncSession = Depends(get_db)):
-    """Import people from CSV with confirmed column mapping and company matching."""
-    if not data.mapping.email:
-        raise HTTPException(400, "Email column mapping is required")
-
-    imported = 0
-    duplicates_skipped = 0
-    errors = 0
-
-    # Fetch existing emails for deduplication
-    existing_result = await db.execute(select(Person.email))
-    existing_emails = {row[0].lower() for row in existing_result.all() if row[0]}
-
-    # Pre-load company lookup maps to avoid N+1 queries
-    company_name_result = await db.execute(
-        select(Company.id, sa_func.lower(Company.name).label("name_lower"))
-    )
-    company_name_map: dict[str, int] = {row.name_lower: row.id for row in company_name_result.all()}
-
-    company_domain_result = await db.execute(
-        select(Company.id, Company.email_domain)
-        .where(Company.email_domain.isnot(None))
-    )
-    company_domain_map: dict[str, int] = {row.email_domain.lower(): row.id for row in company_domain_result.all()}
-
-    # Merge defaults: new "defaults" dict takes priority, fallback to old fields
-    defs = dict(data.defaults or {})
-    if data.industry and "industry" not in defs:
-        defs["industry"] = data.industry
-    if data.client_tag and "client_tag" not in defs:
-        defs["client_tag"] = data.client_tag
-
-    # Column max lengths (from model)
-    LIMITS = {"first_name": 100, "last_name": 100, "email": 255, "company_name": 255,
-              "linkedin_url": 500, "phone": 50, "industry": 255, "location": 255, "client_tag": 200}
-
-    def _val(row: dict, mapping_col: Optional[str], field: str) -> Optional[str]:
-        limit = LIMITS.get(field, 0)
-        v = _clean(row, mapping_col)
-        if v:
-            return v[:limit] if limit and len(v) > limit else v
-        d = defs.get(field)
-        if d:
-            return d[:limit] if limit and len(d) > limit else d
-        return None
-
-    for row in data.rows:
-        try:
-            email = _clean(row, data.mapping.email)
-            if not email:
-                errors += 1
-                continue
-            email = email.lower()[:255]
-            if email in existing_emails:
-                duplicates_skipped += 1
-                continue
-
-            first_name = _val(row, data.mapping.first_name, "first_name") or ""
-            last_name = _val(row, data.mapping.last_name, "last_name") or ""
-
-            # Split full name if needed
-            if not last_name and " " in first_name:
-                parts = first_name.split(" ", 1)
-                first_name, last_name = parts[0], parts[1]
-
-            company_name = _val(row, data.mapping.company_name, "company_name")
-            # In-memory company lookup (no DB query per row)
-            company_id = None
-            if company_name:
-                company_id = company_name_map.get(company_name.lower().strip())
-            if not company_id and email and "@" in email:
-                domain = email.split("@", 1)[1].lower().strip()
-                company_id = company_domain_map.get(domain)
-
-            person = Person(
-                first_name=(first_name or "Unknown")[:100],
-                last_name=(last_name or "Unknown")[:100],
-                email=email,
-                company_id=company_id,
-                company_name=company_name,
-                linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
-                phone=_val(row, data.mapping.phone, "phone"),
-                industry=_val(row, data.mapping.industry, "industry"),
-                location=_val(row, data.mapping.location, "location"),
-                client_tag=_val(row, None, "client_tag"),
-            )
-            db.add(person)
-            existing_emails.add(email)
-            imported += 1
-
-            if imported % 500 == 0:
-                await db.flush()
-
-        except Exception:
-            errors += 1
-            continue
-
-    await db.flush()
-    return PersonCSVImportResponse(imported=imported, duplicates_skipped=duplicates_skipped, errors=errors)
-
-
-def _clean(row: dict, column_name: Optional[str]) -> Optional[str]:
-    if not column_name:
-        return None
-    val = row.get(column_name)
-    if not val:
-        return None
-    val = str(val).strip()
-    return val or None
 
 
 # ==============================================================================
