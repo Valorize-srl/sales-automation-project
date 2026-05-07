@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin, Download } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin, Download, Mail, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
@@ -10,6 +10,7 @@ import { CompanyDetailDialog } from "@/components/leads/company-detail-dialog";
 import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
 import { LinkedInFindDMDialog } from "@/components/leads/linkedin-find-dm-dialog";
+import { FindymailEnrichDialog } from "@/components/leads/findymail-enrich-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -50,6 +51,10 @@ export default function LeadsPage() {
   const [linkedInDMOpen, setLinkedInDMOpen] = useState(false);
   const [linkedInDMCompanies, setLinkedInDMCompanies] = useState<Company[]>([]);
   const [linkedInDMPreparing, setLinkedInDMPreparing] = useState(false);
+  const [findymailOpen, setFindymailOpen] = useState(false);
+  const [findymailCompanies, setFindymailCompanies] = useState<Company[]>([]);
+  const [findymailPreparing, setFindymailPreparing] = useState(false);
+  const [enrichMenuOpen, setEnrichMenuOpen] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
     mode: "single" | "bulk";
@@ -165,6 +170,7 @@ export default function LeadsPage() {
    * - no selection: scrape just the current page.
    */
   const openBulkScrape = async () => {
+    setEnrichMenuOpen(false);
     if (selectAllMatching) {
       setBulkScrapePreparing(true);
       try {
@@ -201,6 +207,7 @@ export default function LeadsPage() {
    * pattern as openBulkScrape: selectAllMatching paginates through the server.
    */
   const openLinkedInDM = async () => {
+    setEnrichMenuOpen(false);
     if (selectAllMatching) {
       setLinkedInDMPreparing(true);
       try {
@@ -229,6 +236,39 @@ export default function LeadsPage() {
       setLinkedInDMCompanies(companies);
     }
     setLinkedInDMOpen(true);
+  };
+
+  /** Findymail email enrichment — same selection resolution pattern. */
+  const openFindymail = async () => {
+    setEnrichMenuOpen(false);
+    if (selectAllMatching) {
+      setFindymailPreparing(true);
+      try {
+        const PAGE_SIZE = 200;
+        const acc: Company[] = [];
+        let p = 1;
+        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+        acc.push(...first.companies);
+        while (p < first.total_pages) {
+          p += 1;
+          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+          acc.push(...next.companies);
+        }
+        setFindymailCompanies(acc);
+        setFindymailOpen(true);
+      } catch (e) {
+        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+      } finally {
+        setFindymailPreparing(false);
+      }
+      return;
+    }
+    if (selectedIds.size > 0) {
+      setFindymailCompanies(companies.filter((c) => selectedIds.has(c.id)));
+    } else {
+      setFindymailCompanies(companies);
+    }
+    setFindymailOpen(true);
   };
 
   /**
@@ -538,17 +578,65 @@ export default function LeadsPage() {
                   </>
                 )}
               </div>
-              <Button size="sm" variant="outline" className="gap-1.5"
-                disabled={bulkScrapePreparing}
-                onClick={openBulkScrape}>
-                <Globe className="h-3.5 w-3.5" /> {bulkScrapePreparing ? "Preparo…" : "Scrapa siti"}
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5"
-                disabled={linkedInDMPreparing}
-                onClick={openLinkedInDM}>
-                <Linkedin className="h-3.5 w-3.5 text-[#0A66C2]" />
-                {linkedInDMPreparing ? "Preparo…" : "Trova DM (LinkedIn)"}
-              </Button>
+              <div className="relative">
+                <Button size="sm" variant="outline" className="gap-1.5"
+                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing}
+                  onClick={() => setEnrichMenuOpen(!enrichMenuOpen)}>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing
+                    ? "Preparo…"
+                    : "Arricchisci"}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+                {enrichMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setEnrichMenuOpen(false)} />
+                    <div className="absolute left-0 top-9 z-40 w-72 rounded-md border bg-popover shadow-md py-1">
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
+                        onClick={openBulkScrape}
+                      >
+                        <Globe className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight">Scrapa siti web</p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Estrai email + LinkedIn dalle pagine del sito aziendale
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
+                        onClick={openLinkedInDM}
+                      >
+                        <Linkedin className="h-4 w-4 text-[#0A66C2] shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight">Trova DM via LinkedIn</p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Cerca decision maker su Google + LinkedIn — niente login
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
+                        onClick={openFindymail}
+                      >
+                        <Mail className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight flex items-center gap-1.5">
+                            Trova email DM
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
+                              Findymail
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Per ogni DM senza email: lookup via LinkedIn URL o nome+dominio
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={async () => {
                   const ids = await resolveSelectedIds();
@@ -615,6 +703,12 @@ export default function LeadsPage() {
             onCompleted={() => loadCompanies(page)}
           />
 
+          <FindymailEnrichDialog
+            open={findymailOpen}
+            onOpenChange={setFindymailOpen}
+            companies={findymailCompanies}
+            onCompleted={() => loadCompanies(page)}
+          />
 
           <CompanyDetailDialog
             company={detailCompany}

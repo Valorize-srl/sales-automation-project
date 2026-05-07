@@ -1415,6 +1415,114 @@ async def find_decision_makers_via_linkedin(
     }
 
 
+@router.post("/{company_id}/findymail-enrich-decision-makers")
+async def findymail_enrich_decision_makers(
+    company_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """For every Person linked to this company that has no email but has a
+    `linkedin_url` (or full name + the company's email_domain), call
+    Findymail to fetch the professional email and persist it on the Person.
+
+    Powered by https://findymail.com — chains naturally after the LinkedIn
+    DM finder (which provides the linkedin_url).
+
+    Returns counts and the list of newly-enriched people.
+    """
+    from app.services.findymail import FindymailService, FindymailError
+
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    people_result = await db.execute(
+        select(Person).where(Person.company_id == company_id)
+    )
+    people = list(people_result.scalars().all())
+
+    candidates = [
+        p for p in people
+        if (not p.email or not p.email.strip())
+        and (p.linkedin_url or (p.first_name and p.last_name and (company.email_domain or _domain_from_website(company.website))))
+    ]
+    if not candidates:
+        return {
+            "company_id": company_id,
+            "company_name": company.name,
+            "checked": 0,
+            "enriched_count": 0,
+            "skipped_no_email_found": 0,
+            "people": [],
+        }
+
+    try:
+        service = FindymailService()
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    fallback_domain = (company.email_domain or _domain_from_website(company.website) or "").strip().lower() or None
+    enriched: list[Person] = []
+    not_found = 0
+    for person in candidates:
+        try:
+            contact = None
+            if person.linkedin_url:
+                contact = await service.find_email_by_linkedin(person.linkedin_url)
+            if not contact and fallback_domain and person.first_name and person.last_name:
+                full_name = f"{person.first_name} {person.last_name}".strip()
+                contact = await service.find_email_by_name(full_name, fallback_domain)
+        except FindymailError as e:
+            # Hard error (auth/credits/rate-limit): stop the loop and report.
+            raise HTTPException(502, e.detail)
+
+        if not contact:
+            not_found += 1
+            continue
+        person.email = (contact.get("email") or "").strip()[:255] or None
+        # Backfill Person.title and location from Findymail if we don't have them
+        if not person.title and contact.get("job_title"):
+            person.title = str(contact["job_title"])[:255]
+        if not person.location and contact.get("city"):
+            loc_parts = [contact.get("city"), contact.get("region"), contact.get("country")]
+            person.location = ", ".join(p for p in loc_parts if p)[:255]
+        enriched.append(person)
+
+    if enriched:
+        await db.commit()
+        for p in enriched:
+            await db.refresh(p)
+
+    return {
+        "company_id": company_id,
+        "company_name": company.name,
+        "checked": len(candidates),
+        "enriched_count": len(enriched),
+        "skipped_no_email_found": not_found,
+        "people": [
+            {
+                "id": p.id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "title": p.title,
+                "email": p.email,
+                "linkedin_url": p.linkedin_url,
+            }
+            for p in enriched
+        ],
+    }
+
+
+def _domain_from_website(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    s = url.strip().lower()
+    if s.startswith("http://"): s = s[7:]
+    elif s.startswith("https://"): s = s[8:]
+    if s.startswith("www."): s = s[4:]
+    s = s.split("/", 1)[0]
+    return s or None
+
+
 # ==============================================================================
 # Bulk Operations
 # ==============================================================================
