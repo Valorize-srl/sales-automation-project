@@ -245,6 +245,8 @@ class ApiClient {
   ): Promise<{
     company_id: number;
     company_name: string;
+    domain?: string | null;
+    domain_resolved_via?: "db" | "linkedin";
     candidates_found: number;
     imported_count: number;
     duplicates_skipped: number;

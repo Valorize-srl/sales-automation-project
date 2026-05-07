@@ -104,6 +104,49 @@ class FindymailService:
             return None
         return await self._post("/search/name", {"name": name, "domain": domain})
 
+    async def lookup_company_domain(self, *, linkedin_url: Optional[str] = None,
+                                    website: Optional[str] = None,
+                                    name: Optional[str] = None) -> Optional[str]:
+        """Resolve a company's email domain via Findymail's /search/company.
+
+        Used as a fallback when our DB has only a LinkedIn company URL (no
+        website / email_domain). Findymail accepts any of {linkedin_url,
+        website, domain, name} and returns `{name, domain, ...}`.
+        """
+        body: dict = {}
+        if linkedin_url:
+            body["linkedin_url"] = linkedin_url
+        elif website:
+            body["website"] = website
+        elif name:
+            body["name"] = name
+        else:
+            return None
+        url = f"{self.BASE_URL}/search/company"
+        async with httpx.AsyncClient(timeout=self.TIMEOUT_SECONDS) as client:
+            try:
+                resp = await client.post(url, headers=self._headers(), json=body)
+            except httpx.RequestError as e:
+                raise FindymailError(0, f"network error: {e}") from e
+        if resp.status_code == 404:
+            return None
+        if resp.status_code in (401, 403):
+            raise FindymailError(resp.status_code, "Findymail API key invalid or unauthorised")
+        if resp.status_code == 402:
+            raise FindymailError(402, "Findymail credit balance exhausted")
+        if resp.status_code == 429:
+            raise FindymailError(429, "Findymail rate limit exceeded")
+        if resp.status_code >= 400:
+            return None
+        try:
+            data = resp.json()
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        domain = (data.get("domain") or "").strip().lower()
+        return domain or None
+
     async def find_contacts_by_domain_and_roles(
         self, domain: str, roles: list[str]
     ) -> list[dict]:
