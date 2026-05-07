@@ -103,3 +103,47 @@ class FindymailService:
         if not name or not domain:
             return None
         return await self._post("/search/name", {"name": name, "domain": domain})
+
+    async def find_contacts_by_domain_and_roles(
+        self, domain: str, roles: list[str]
+    ) -> list[dict]:
+        """Find decision makers AT a company matching the given job titles.
+
+        Findymail's `/search/domain` returns each contact with name +
+        first_name + email + domain. Costs 1 credit per contact returned.
+
+        Returns the full `contacts` list (possibly empty). Raises
+        FindymailError on auth/credit/rate errors.
+        """
+        if not domain or not roles:
+            return []
+        url = f"{self.BASE_URL}/search/domain"
+        async with httpx.AsyncClient(timeout=self.TIMEOUT_SECONDS) as client:
+            try:
+                resp = await client.post(
+                    url,
+                    headers=self._headers(),
+                    json={"domain": domain, "roles": roles},
+                )
+            except httpx.RequestError as e:
+                raise FindymailError(0, f"network error: {e}") from e
+
+        if resp.status_code == 404:
+            return []
+        if resp.status_code in (401, 403):
+            raise FindymailError(resp.status_code, "Findymail API key invalid or unauthorised")
+        if resp.status_code == 402:
+            raise FindymailError(402, "Findymail credit balance exhausted")
+        if resp.status_code == 429:
+            raise FindymailError(429, "Findymail rate limit exceeded")
+        if resp.status_code >= 400:
+            raise FindymailError(resp.status_code, resp.text[:300])
+
+        try:
+            data = resp.json()
+        except ValueError:
+            return []
+        contacts = data.get("contacts") if isinstance(data, dict) else None
+        if not isinstance(contacts, list):
+            return []
+        return [c for c in contacts if isinstance(c, dict) and c.get("email")]

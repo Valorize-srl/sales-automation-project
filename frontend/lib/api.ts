@@ -235,6 +235,33 @@ class ApiClient {
     return { imported_count: r.imported_count, candidates: r.candidates };
   }
 
+  /** Findymail "find by role": given target_titles + the company's domain
+   * (derived from email_domain or website), Findymail returns name + email
+   * for each contact at that company matching the roles. Persists each new
+   * contact as a Person record (dedup by email/linkedin_url). */
+  async findDecisionMakersViaFindymail(
+    companyId: number,
+    targetTitles: string[],
+  ): Promise<{
+    company_id: number;
+    company_name: string;
+    candidates_found: number;
+    imported_count: number;
+    duplicates_skipped: number;
+    people: Array<{
+      id: number;
+      first_name: string;
+      last_name: string;
+      title: string | null;
+      email: string | null;
+      linkedin_url: string | null;
+    }>;
+  }> {
+    return this.post(`/companies/${companyId}/findymail-find-decision-makers`, {
+      target_titles: targetTitles,
+    });
+  }
+
   /** Findymail enrichment: for every Person linked to this company without an
    * email, look up the address via Findymail (linkedin_url first, name+domain
    * fallback) and persist on Person. */

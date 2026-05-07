@@ -11,6 +11,7 @@ import { PersonDetailDialog } from "@/components/leads/person-detail-dialog";
 import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
 import { LinkedInFindDMDialog } from "@/components/leads/linkedin-find-dm-dialog";
 import { FindymailEnrichDialog } from "@/components/leads/findymail-enrich-dialog";
+import { FindymailFindDMDialog } from "@/components/leads/findymail-find-dm-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -54,6 +55,9 @@ export default function LeadsPage() {
   const [findymailOpen, setFindymailOpen] = useState(false);
   const [findymailCompanies, setFindymailCompanies] = useState<Company[]>([]);
   const [findymailPreparing, setFindymailPreparing] = useState(false);
+  const [findymailFindOpen, setFindymailFindOpen] = useState(false);
+  const [findymailFindCompanies, setFindymailFindCompanies] = useState<Company[]>([]);
+  const [findymailFindPreparing, setFindymailFindPreparing] = useState(false);
   const [enrichMenuOpen, setEnrichMenuOpen] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
@@ -269,6 +273,40 @@ export default function LeadsPage() {
       setFindymailCompanies(companies);
     }
     setFindymailOpen(true);
+  };
+
+  /** Findymail find-by-role — finds DMs matching given titles (1 round-trip
+   * per company, returns name+email directly). Same selection logic. */
+  const openFindymailFindDM = async () => {
+    setEnrichMenuOpen(false);
+    if (selectAllMatching) {
+      setFindymailFindPreparing(true);
+      try {
+        const PAGE_SIZE = 200;
+        const acc: Company[] = [];
+        let p = 1;
+        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+        acc.push(...first.companies);
+        while (p < first.total_pages) {
+          p += 1;
+          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+          acc.push(...next.companies);
+        }
+        setFindymailFindCompanies(acc);
+        setFindymailFindOpen(true);
+      } catch (e) {
+        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+      } finally {
+        setFindymailFindPreparing(false);
+      }
+      return;
+    }
+    if (selectedIds.size > 0) {
+      setFindymailFindCompanies(companies.filter((c) => selectedIds.has(c.id)));
+    } else {
+      setFindymailFindCompanies(companies);
+    }
+    setFindymailFindOpen(true);
   };
 
   /**
@@ -580,10 +618,10 @@ export default function LeadsPage() {
               </div>
               <div className="relative">
                 <Button size="sm" variant="outline" className="gap-1.5"
-                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing}
+                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing}
                   onClick={() => setEnrichMenuOpen(!enrichMenuOpen)}>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing
+                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing
                     ? "Preparo…"
                     : "Arricchisci"}
                   <ChevronDown className="h-3 w-3 opacity-60" />
@@ -618,12 +656,29 @@ export default function LeadsPage() {
                       </button>
                       <button
                         className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
+                        onClick={openFindymailFindDM}
+                      >
+                        <Sparkles className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight flex items-center gap-1.5">
+                            Cerca DM per ruolo
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
+                              Findymail
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Trova nome + email direttamente sul dominio aziendale dato un job title
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
                         onClick={openFindymail}
                       >
                         <Mail className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium leading-tight flex items-center gap-1.5">
-                            Trova email DM
+                            Trova email per DM esistenti
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
                               Findymail
                             </span>
@@ -707,6 +762,13 @@ export default function LeadsPage() {
             open={findymailOpen}
             onOpenChange={setFindymailOpen}
             companies={findymailCompanies}
+            onCompleted={() => loadCompanies(page)}
+          />
+
+          <FindymailFindDMDialog
+            open={findymailFindOpen}
+            onOpenChange={setFindymailFindOpen}
+            companies={findymailFindCompanies}
             onCompleted={() => loadCompanies(page)}
           />
 

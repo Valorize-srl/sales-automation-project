@@ -1523,6 +1523,126 @@ def _domain_from_website(url: Optional[str]) -> Optional[str]:
     return s or None
 
 
+class FindymailFindDMRequest(BaseModel):
+    """Find decision makers at a company by job titles via Findymail."""
+    target_titles: list[str]
+
+
+@router.post("/{company_id}/findymail-find-decision-makers")
+async def findymail_find_decision_makers(
+    company_id: int,
+    body: FindymailFindDMRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Find decision makers at this company matching `target_titles` via
+    Findymail's POST /search/domain. Returns nome+email+linkedin in one shot
+    (1 Findymail credit per contact returned).
+
+    Persists each new contact as a Person record linked to the company,
+    deduplicating by email AND linkedin_url within the company.
+    """
+    from app.services.findymail import FindymailService, FindymailError
+
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    titles = [t.strip() for t in (body.target_titles or []) if t.strip()]
+    if not titles:
+        raise HTTPException(400, "target_titles is required")
+
+    domain = (company.email_domain or _domain_from_website(company.website) or "").strip().lower()
+    if not domain:
+        raise HTTPException(
+            400,
+            "Company has no email_domain or website to derive a domain from. "
+            "Aggiungi un sito web all'azienda prima di lanciare Findymail.",
+        )
+
+    try:
+        service = FindymailService()
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    try:
+        contacts = await service.find_contacts_by_domain_and_roles(domain, titles)
+    except FindymailError as e:
+        raise HTTPException(502, e.detail)
+
+    # Dedup against existing Persons for this company (by email or linkedin_url)
+    existing_result = await db.execute(
+        select(Person.email, Person.linkedin_url).where(Person.company_id == company_id)
+    )
+    existing_emails: set[str] = set()
+    existing_li: set[str] = set()
+    for em, li in existing_result.all():
+        if em: existing_emails.add(em.lower())
+        if li: existing_li.add(li)
+
+    imported: list[Person] = []
+    skipped_dup = 0
+    for c in contacts:
+        email = (c.get("email") or "").strip().lower()[:255] or None
+        full_name = (c.get("name") or "").strip()
+        first_name = (c.get("first_name") or "").strip()
+        if not first_name and full_name:
+            first_name = full_name.split(" ", 1)[0]
+        last_name = ""
+        if full_name:
+            parts = full_name.split(" ", 1)
+            if len(parts) == 2:
+                last_name = parts[1]
+        last_name = last_name.strip() or "Unknown"
+        first_name = first_name.strip() or "Unknown"
+
+        linkedin_url = (c.get("linkedin_url") or c.get("linkedinUrl") or "").strip() or None
+        if email and email in existing_emails:
+            skipped_dup += 1
+            continue
+        if linkedin_url and linkedin_url in existing_li:
+            skipped_dup += 1
+            continue
+
+        person = Person(
+            first_name=first_name[:100],
+            last_name=last_name[:100],
+            company_id=company.id,
+            company_name=company.name,
+            email=email,
+            linkedin_url=linkedin_url,
+            title=(c.get("job_title") or c.get("jobTitle") or "").strip()[:255] or None,
+            client_tag=company.client_tag,
+        )
+        db.add(person)
+        imported.append(person)
+        if email: existing_emails.add(email)
+        if linkedin_url: existing_li.add(linkedin_url)
+
+    if imported:
+        await db.commit()
+        for p in imported:
+            await db.refresh(p)
+
+    return {
+        "company_id": company_id,
+        "company_name": company.name,
+        "candidates_found": len(contacts),
+        "imported_count": len(imported),
+        "duplicates_skipped": skipped_dup,
+        "people": [
+            {
+                "id": p.id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "title": p.title,
+                "email": p.email,
+                "linkedin_url": p.linkedin_url,
+            }
+            for p in imported
+        ],
+    }
+
+
 # ==============================================================================
 # Bulk Operations
 # ==============================================================================
