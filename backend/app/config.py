@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Apify
     apify_api_token: str = ""
 
+    # Findymail (email enrichment from LinkedIn URL or name+domain)
+    findymail_api_key: str = ""
+
     # Webhooks
     webhook_base_url: str = ""
 

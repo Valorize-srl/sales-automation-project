@@ -235,6 +235,27 @@ class ApiClient {
     return { imported_count: r.imported_count, candidates: r.candidates };
   }
 
+  /** Findymail enrichment: for every Person linked to this company without an
+   * email, look up the address via Findymail (linkedin_url first, name+domain
+   * fallback) and persist on Person. */
+  async findymailEnrichDecisionMakers(companyId: number): Promise<{
+    company_id: number;
+    company_name: string;
+    checked: number;
+    enriched_count: number;
+    skipped_no_email_found: number;
+    people: Array<{
+      id: number;
+      first_name: string;
+      last_name: string;
+      title: string | null;
+      email: string | null;
+      linkedin_url: string | null;
+    }>;
+  }> {
+    return this.post(`/companies/${companyId}/findymail-enrich-decision-makers`);
+  }
+
   /** Find decision makers via Google -> LinkedIn (no LinkedIn auth — powered by
    * Claude's web_search). Persists matches as Person records linked to the company. */
   async findDecisionMakersViaLinkedIn(
