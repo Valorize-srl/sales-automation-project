@@ -1476,44 +1476,112 @@ async def bulk_export_companies(
     company_ids: list[int],
     db: AsyncSession = Depends(get_db),
 ):
-    """Export selected companies to CSV."""
+    """Export selected companies to CSV.
+
+    One row per company, with the same columns the Clay-style /leads table
+    shows: anagrafica + revenue/employees + emails (incl. generic_emails) +
+    LinkedIn + lists membership + decision-maker chips (joined) + every
+    custom_fields key present in the selection (one column each).
+    """
     import csv
     import io
+    import json as _json
+    from fastapi import Response
 
-    result = await db.execute(select(Company).where(Company.id.in_(company_ids)))
+    if not company_ids:
+        raise HTTPException(400, "company_ids is required")
+
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.lists), selectinload(Company.people))
+        .where(Company.id.in_(company_ids))
+        .order_by(Company.name.asc())
+    )
     companies = list(result.scalars().all())
+
+    # Discover the union of custom_fields keys across the selection so we can
+    # emit one column per key instead of dumping a JSON blob.
+    cf_keys: list[str] = sorted({
+        k
+        for c in companies
+        if isinstance(c.custom_fields, dict)
+        for k in c.custom_fields.keys()
+    })
 
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # Write header
-    writer.writerow([
-        "Name", "Website", "Email", "Phone", "LinkedIn",
-        "Location", "Industry", "Description", "Tags"
-    ])
+    base_header = [
+        "id", "name", "website", "linkedin_url",
+        "industry", "province", "location",
+        "revenue", "employee_count",
+        "email", "generic_emails", "work_emails",
+        "phone", "client_tag", "notes",
+        "lists", "decision_makers",
+        "created_at",
+    ]
+    writer.writerow(base_header + [f"cf:{k}" for k in cf_keys])
 
-    # Write companies
+    def _generic_emails(c: Company) -> str:
+        raw = c.generic_emails
+        if not raw:
+            return ""
+        if isinstance(raw, list):
+            return ", ".join(raw)
+        try:
+            return ", ".join(_json.loads(raw)) if raw else ""
+        except Exception:
+            return str(raw)
+
+    def _dm_chip(p) -> str:
+        """Join name (title) <email> linkedin into one human-readable token."""
+        bits = []
+        name = " ".join([p.first_name or "", p.last_name or ""]).strip()
+        if name:
+            bits.append(name)
+        if p.title:
+            bits.append(f"({p.title})")
+        if p.email:
+            bits.append(f"<{p.email}>")
+        if p.linkedin_url:
+            bits.append(p.linkedin_url)
+        return " ".join(bits)
+
     for company in companies:
+        people = company.people or []
+        work_emails = [p.email for p in people if p.email]
+        dm_str = " | ".join(_dm_chip(p) for p in people)
+        lists_str = ", ".join(ll.name for ll in (company.lists or []))
+        cf = company.custom_fields if isinstance(company.custom_fields, dict) else {}
+
         writer.writerow([
+            company.id,
             company.name or "",
             company.website or "",
-            company.email or "",
-            company.phone or "",
             company.linkedin_url or "",
-            company.location or "",
             company.industry or "",
-            company.description or "",
-            ",".join(company.tags) if company.tags else "",
-        ])
+            company.province or "",
+            company.location or "",
+            company.revenue if company.revenue is not None else "",
+            company.employee_count if company.employee_count is not None else "",
+            company.email or "",
+            _generic_emails(company),
+            ", ".join(work_emails),
+            company.phone or "",
+            company.client_tag or "",
+            (company.notes or "").replace("\n", " ").replace("\r", " "),
+            lists_str,
+            dm_str,
+            company.created_at.isoformat() if company.created_at else "",
+        ] + [str(cf.get(k, "")) for k in cf_keys])
 
     csv_content = output.getvalue()
     output.close()
 
-    from fastapi import Response
     return Response(
         content=csv_content,
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": f"attachment; filename=companies_export_{len(companies)}.csv"
+            "Content-Disposition": f'attachment; filename="companies_export_{len(companies)}.csv"',
         },
     )
