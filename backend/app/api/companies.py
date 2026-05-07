@@ -1563,11 +1563,27 @@ async def findymail_find_decision_makers(
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 
-    domain = (company.email_domain or _domain_from_website(company.website) or "").strip().lower() or None
+    # Resolution order:
+    #   1. company.website  → real corporate domain (most reliable)
+    #   2. company.email_domain  → may be a PEC domain (legalmail.it, pec.it, …)
+    #      for Italian companies, which is useless for Findymail. Used only
+    #      when website is missing AND the email_domain doesn't look like a PEC.
+    #   3. lookup_company_domain(linkedin_url=…)  via Findymail /search/company
+    PEC_DOMAINS = {
+        "legalmail.it", "pec.it", "postacert.it", "postacertificata.it",
+        "registerpec.it", "arubapec.it", "pec-poste.it", "pec.aruba.it",
+    }
+    website_domain = _domain_from_website(company.website)
+    email_domain = (company.email_domain or "").strip().lower() or None
+    is_pec = email_domain in PEC_DOMAINS or (
+        email_domain and any(email_domain.endswith(suffix) for suffix in (".pec.it", ".legalmail.it"))
+    )
 
-    # Fallback: no website/email_domain on the record but we have a company
-    # LinkedIn URL → ask Findymail's /search/company to resolve the domain.
-    domain_resolved_via = "db"
+    domain = website_domain or (None if is_pec else email_domain)
+    domain_resolved_via = "db" if domain else None
+
+    # Fallback: no clean domain in the DB but we have a company LinkedIn URL
+    # → ask Findymail's /search/company to resolve it.
     if not domain and company.linkedin_url:
         try:
             domain = await service.lookup_company_domain(linkedin_url=company.linkedin_url)
@@ -1576,11 +1592,12 @@ async def findymail_find_decision_makers(
             raise HTTPException(502, e.detail)
 
     if not domain:
-        raise HTTPException(
-            400,
-            "L'azienda non ha né sito web né LinkedIn URL aziendale: "
-            "impossibile dedurre un dominio per la ricerca Findymail.",
-        )
+        msg = ("L'azienda non ha né sito web né LinkedIn URL aziendale: "
+               "impossibile dedurre un dominio per la ricerca Findymail.")
+        if is_pec and not website_domain and not company.linkedin_url:
+            msg = (f"L'unico dominio noto è una PEC ({email_domain}) — non utilizzabile per "
+                   "Findymail. Aggiungi sito web o LinkedIn URL aziendale.")
+        raise HTTPException(400, msg)
 
     try:
         contacts = await service.find_contacts_by_domain_and_roles(domain, titles)
