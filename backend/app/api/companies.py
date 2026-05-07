@@ -1550,19 +1550,37 @@ async def findymail_find_decision_makers(
     titles = [t.strip() for t in (body.target_titles or []) if t.strip()]
     if not titles:
         raise HTTPException(400, "target_titles is required")
-
-    domain = (company.email_domain or _domain_from_website(company.website) or "").strip().lower()
-    if not domain:
+    # Findymail's /search/domain accepts max 3 roles per request.
+    if len(titles) > 3:
         raise HTTPException(
             400,
-            "Company has no email_domain or website to derive a domain from. "
-            "Aggiungi un sito web all'azienda prima di lanciare Findymail.",
+            f"Findymail accetta massimo 3 ruoli per ricerca (ne hai indicati {len(titles)}). "
+            "Riduci la lista o lancia ricerche separate.",
         )
 
     try:
         service = FindymailService()
     except RuntimeError as e:
         raise HTTPException(500, str(e))
+
+    domain = (company.email_domain or _domain_from_website(company.website) or "").strip().lower() or None
+
+    # Fallback: no website/email_domain on the record but we have a company
+    # LinkedIn URL → ask Findymail's /search/company to resolve the domain.
+    domain_resolved_via = "db"
+    if not domain and company.linkedin_url:
+        try:
+            domain = await service.lookup_company_domain(linkedin_url=company.linkedin_url)
+            domain_resolved_via = "linkedin"
+        except FindymailError as e:
+            raise HTTPException(502, e.detail)
+
+    if not domain:
+        raise HTTPException(
+            400,
+            "L'azienda non ha né sito web né LinkedIn URL aziendale: "
+            "impossibile dedurre un dominio per la ricerca Findymail.",
+        )
 
     try:
         contacts = await service.find_contacts_by_domain_and_roles(domain, titles)
@@ -1626,6 +1644,8 @@ async def findymail_find_decision_makers(
     return {
         "company_id": company_id,
         "company_name": company.name,
+        "domain": domain,
+        "domain_resolved_via": domain_resolved_via,  # 'db' | 'linkedin'
         "candidates_found": len(contacts),
         "imported_count": len(imported),
         "duplicates_skipped": skipped_dup,

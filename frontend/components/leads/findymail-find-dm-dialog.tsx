@@ -27,6 +27,8 @@ interface CompanyRowState {
   candidates_found: number;
   imported_count: number;
   duplicates_skipped: number;
+  domain?: string | null;
+  domain_resolved_via?: "db" | "linkedin";
   people: FoundPerson[];
   error?: string;
   expanded: boolean;
@@ -61,9 +63,13 @@ export function FindymailFindDMDialog({
   const parseTitles = (s: string): string[] =>
     s.split(/[,\n;]+/).map((t) => t.trim()).filter(Boolean);
 
+  const titlesParsed = parseTitles(titlesInput);
+  const tooManyTitles = titlesParsed.length > 3;
+  const canStart = titlesParsed.length > 0 && !tooManyTitles && companies.length > 0;
+
   const start = async () => {
-    const titles = parseTitles(titlesInput);
-    if (titles.length === 0 || companies.length === 0) return;
+    if (!canStart) return;
+    const titles = titlesParsed.slice(0, 3);
 
     const initial: CompanyRowState[] = companies.map((c) => ({
       company: c,
@@ -90,6 +96,8 @@ export function FindymailFindDMDialog({
           candidates_found: r.candidates_found,
           imported_count: r.imported_count,
           duplicates_skipped: r.duplicates_skipped,
+          domain: r.domain,
+          domain_resolved_via: r.domain_resolved_via,
           people: r.people,
           expanded: r.imported_count > 0 || r.candidates_found > 0,
         };
@@ -137,27 +145,36 @@ export function FindymailFindDMDialog({
           {!running && !done && (
             <div className="space-y-3">
               <div className="rounded-md border bg-muted/40 p-3 text-xs space-y-1.5 text-muted-foreground">
-                <p>
-                  Findymail cerca persone con i ruoli che indichi <strong>direttamente sul dominio dell&apos;azienda</strong> e
-                  ritorna nome + email in un solo passaggio (no scraping LinkedIn separato).
-                </p>
-                <p>
-                  Costo: <span className="font-medium">~1 credito per contatto trovato</span>. Le aziende senza website/dominio
-                  vengono saltate con errore esplicito.
+                <p className="font-medium text-foreground">Come funziona</p>
+                <ol className="list-decimal pl-5 space-y-0.5">
+                  <li>Per ogni azienda, Findymail prende il <strong>dominio</strong> (da <code className="text-[10px] px-1 rounded bg-muted">website</code> aziendale) o, se manca, lo deduce dal <strong>LinkedIn URL aziendale</strong>.</li>
+                  <li>Cerca persone con i ruoli indicati direttamente sul dominio.</li>
+                  <li>Restituisce nome + email per ogni match e li salva come Person nel database.</li>
+                </ol>
+                <p className="pt-1">
+                  Costo: <span className="font-medium">~1 credito Findymail per contatto trovato</span>. Le aziende senza website né LinkedIn URL aziendale vengono saltate.
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">
-                  Job title / ruoli <span className="text-muted-foreground">(separati da virgola)</span>
+                <label className="text-xs font-medium flex items-center justify-between">
+                  <span>Job title / ruoli <span className="text-muted-foreground">(separati da virgola, max 3)</span></span>
+                  <span className={`tabular-nums ${tooManyTitles ? "text-red-600" : "text-muted-foreground"}`}>
+                    {titlesParsed.length}/3
+                  </span>
                 </label>
                 <Input
                   value={titlesInput}
                   onChange={(e) => setTitlesInput(e.target.value)}
                   placeholder="es. CEO, Sales Director, Procurement Manager"
-                  className="text-sm"
+                  className={`text-sm ${tooManyTitles ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                   autoFocus
                 />
+                {tooManyTitles && (
+                  <p className="text-[11px] text-red-600">
+                    Findymail accetta massimo 3 ruoli per ricerca. Riduci la lista o lancia ricerche separate.
+                  </p>
+                )}
               </div>
 
               <div className="rounded-md border bg-card p-3 text-sm">
@@ -175,7 +192,7 @@ export function FindymailFindDMDialog({
               ) : (
                 <Button
                   onClick={start}
-                  disabled={parseTitles(titlesInput).length === 0}
+                  disabled={!canStart}
                   className="gap-2 bg-[#E8662C] hover:bg-[#E8662C]/90 text-white"
                 >
                   <Sparkles className="h-4 w-4" />
@@ -227,6 +244,16 @@ export function FindymailFindDMDialog({
                     <div className="px-3 pb-3 space-y-2 border-t pt-2">
                       {row.status === "error" && (
                         <p className="text-xs text-red-600 dark:text-red-400">{row.error}</p>
+                      )}
+                      {row.status === "done" && row.domain && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Dominio cercato: <code className="px-1 rounded bg-muted">{row.domain}</code>
+                          {row.domain_resolved_via === "linkedin" && (
+                            <span className="ml-1.5 inline-flex items-center gap-0.5 px-1 rounded bg-[#0A66C2]/10 text-[#0A66C2] text-[9px]">
+                              <Linkedin className="h-2 w-2" /> dedotto da LinkedIn
+                            </span>
+                          )}
+                        </p>
                       )}
                       {row.status === "done" && row.people.length === 0 && (
                         <p className="text-xs text-muted-foreground italic">
