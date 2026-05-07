@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
@@ -50,6 +50,7 @@ export default function LeadsPage() {
   const [linkedInDMOpen, setLinkedInDMOpen] = useState(false);
   const [linkedInDMCompanies, setLinkedInDMCompanies] = useState<Company[]>([]);
   const [linkedInDMPreparing, setLinkedInDMPreparing] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
     mode: "single" | "bulk";
     companyIds: number[];
@@ -228,6 +229,44 @@ export default function LeadsPage() {
       setLinkedInDMCompanies(companies);
     }
     setLinkedInDMOpen(true);
+  };
+
+  /**
+   * Export current selection (or all matching, or current page) as CSV.
+   * Backend emits one row per company with all Clay-table columns + DMs +
+   * lists + custom fields.
+   */
+  const exportCsv = async () => {
+    setExportingCsv(true);
+    try {
+      let ids: number[];
+      if (selectAllMatching) {
+        ids = await api.getCompanyIdsFiltered(effectiveFilters);
+      } else if (selectedIds.size > 0) {
+        ids = Array.from(selectedIds);
+      } else {
+        ids = companies.map((c) => c.id);
+      }
+      if (ids.length === 0) {
+        showFlash("err", "Niente da esportare");
+        return;
+      }
+      const blob = await api.bulkExportCompanies(ids);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `miriade_companies_${stamp}_${ids.length}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showFlash("ok", `Esportate ${ids.length} aziende`);
+    } catch (e) {
+      showFlash("err", `Export fallito: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setExportingCsv(false);
+    }
   };
 
   // --- Selection ---
@@ -415,6 +454,19 @@ export default function LeadsPage() {
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCsvOpen(true)}>
                 <Upload className="h-3.5 w-3.5" /> Import CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1.5"
+                disabled={total === 0 || exportingCsv}
+                onClick={exportCsv}
+                title={
+                  selectAllMatching
+                    ? `Esporta ${total} aziende matching`
+                    : selectedIds.size > 0
+                    ? `Esporta ${selectedIds.size} selezionate`
+                    : `Esporta pagina (${companies.length})`
+                }>
+                <Download className="h-3.5 w-3.5" />
+                {exportingCsv ? "Esporto…" : "Export CSV"}
               </Button>
               <Button size="sm" className="gap-1.5" disabled={total === 0 || bulkScrapePreparing}
                 onClick={openBulkScrape}>
