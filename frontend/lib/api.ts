@@ -534,6 +534,24 @@ class ApiClient {
     return this.put(`/companies/${companyId}`, data);
   }
 
+  /** Quick-create a Person record linked directly to a company (used by the
+   * Clay table's "+ Nuovo DM" affordance on the Decision Makers cell). */
+  async createCompanyPerson(
+    companyId: number,
+    data: { first_name: string; last_name: string; email?: string | null; title?: string | null; linkedin_url?: string | null; phone?: string | null },
+  ): Promise<{
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string | null;
+    title: string | null;
+    linkedin_url: string | null;
+    phone: string | null;
+    company_id: number;
+  }> {
+    return this.post(`/companies/${companyId}/people`, data);
+  }
+
   async getCompany(companyId: number): Promise<import("@/types").Company> {
     return this.get(`/companies/${companyId}`);
   }

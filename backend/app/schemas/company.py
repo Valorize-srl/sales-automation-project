@@ -62,6 +62,9 @@ class CompanyUpdate(BaseModel):
     revenue: Optional[int] = None
     employee_count: Optional[int] = None
     custom_fields: Optional[dict] = None
+    # Replaces the entire generic_emails list when provided. Stored as a
+    # JSON-encoded string in the DB; the API handler does the json.dumps.
+    generic_emails: Optional[list[str]] = None
 
 
 class CompanyResponse(BaseModel):

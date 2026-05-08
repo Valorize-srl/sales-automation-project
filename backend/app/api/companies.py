@@ -1,5 +1,6 @@
 from typing import Optional
 """Companies API - manage company records with CSV import and people matching."""
+import json
 import logging
 import re
 
@@ -670,6 +671,23 @@ async def update_company(company_id: int, data: CompanyUpdate, db: AsyncSession 
     if "email" in updates:
         updates["email_domain"] = _extract_domain(updates["email"])
 
+    # generic_emails is stored as JSON-encoded text in the DB. Pydantic gives us
+    # a Python list; encode before assignment. Empty list → NULL.
+    if "generic_emails" in updates:
+        emails = updates["generic_emails"] or []
+        # Dedup while keeping order, strip whitespace
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for e in emails:
+            if not isinstance(e, str): continue
+            t = e.strip()
+            if not t: continue
+            low = t.lower()
+            if low in seen: continue
+            seen.add(low)
+            cleaned.append(t)
+        updates["generic_emails"] = json.dumps(cleaned) if cleaned else None
+
     for field, value in updates.items():
         setattr(company, field, value)
 
@@ -1082,6 +1100,16 @@ class PushToCampaignRequest(BaseModel):
     campaign_id: int
 
 
+class CreateCompanyPersonRequest(BaseModel):
+    """Quick-create a Person record linked directly to a company."""
+    first_name: str
+    last_name: str
+    email: Optional[str] = None
+    title: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    phone: Optional[str] = None
+
+
 class SaveScrapedDataRequest(BaseModel):
     """Persist the result of a website scrape into the company record."""
     emails: list[str] = []
@@ -1254,6 +1282,55 @@ async def push_company_decision_makers_to_campaign(
         "campaign_name": campaign.name,
         "uploaded": len(leads),
         "instantly_result": result,
+    }
+
+
+@router.post("/{company_id}/people", status_code=201)
+async def create_company_person(
+    company_id: int,
+    body: CreateCompanyPersonRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Quick-create a Person record linked to this company. Used by the Clay
+    table's "+ Nuovo DM" affordance on the Decision Makers cell.
+    """
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    first_name = (body.first_name or "").strip() or "Unknown"
+    last_name = (body.last_name or "").strip() or "Unknown"
+    email = (body.email or "").strip().lower() or None
+    if email:
+        existing = await db.execute(
+            select(Person.id).where(Person.email == email).limit(1)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(409, f"Esiste già un contatto con email {email}")
+
+    person = Person(
+        first_name=first_name[:100],
+        last_name=last_name[:100],
+        company_id=company.id,
+        company_name=company.name,
+        email=email,
+        title=(body.title or "").strip()[:255] or None,
+        linkedin_url=(body.linkedin_url or "").strip() or None,
+        phone=(body.phone or "").strip()[:50] or None,
+        client_tag=company.client_tag,
+    )
+    db.add(person)
+    await db.flush()
+    await db.refresh(person)
+    return {
+        "id": person.id,
+        "first_name": person.first_name,
+        "last_name": person.last_name,
+        "email": person.email,
+        "title": person.title,
+        "linkedin_url": person.linkedin_url,
+        "phone": person.phone,
+        "company_id": person.company_id,
     }
 
 

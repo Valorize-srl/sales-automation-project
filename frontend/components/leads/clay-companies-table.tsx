@@ -46,6 +46,17 @@ interface Props {
     field: EditableCompanyField,
     value: string | number | null,
   ) => Promise<void> | void;
+  /** Replace a company's primary email + generic_emails list. */
+  onCompanyEmailsSave: (
+    companyId: number,
+    primary: string | null,
+    generic: string[],
+  ) => Promise<void> | void;
+  /** Create a new Person linked to the company (used by the "+ Nuovo DM" button). */
+  onCreateCompanyPerson: (
+    companyId: number,
+    payload: { first_name: string; last_name: string; email?: string | null; title?: string | null; linkedin_url?: string | null },
+  ) => Promise<void> | void;
   onAddCustomFieldKey: () => void;
   rowsPerPage: number;
   pageIndex: number;
@@ -89,6 +100,17 @@ interface CellCtx {
     companyId: number,
     field: EditableCompanyField,
     value: string | number | null,
+  ) => Promise<void> | void;
+  /** Save a company's primary email + generic_emails list as a whole. */
+  onCompanyEmailsSave: (
+    companyId: number,
+    primary: string | null,
+    generic: string[],
+  ) => Promise<void> | void;
+  /** Create a Person record linked to the company; UI refreshes after save. */
+  onCreateCompanyPerson: (
+    companyId: number,
+    payload: { first_name: string; last_name: string; email?: string | null; title?: string | null; linkedin_url?: string | null },
   ) => Promise<void> | void;
 }
 
@@ -260,16 +282,26 @@ const FIXED_COLUMNS: ColumnDef[] = [
   },
   {
     id: "company_emails", label: "Email Aziendali", iconKind: "multi", maxWidth: "260px",
-    renderCell: (c) => {
+    renderCell: (c, ctx) => {
       const emails = COMPANY_EMAILS(c);
-      if (emails.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+      const trigger = emails.length === 0
+        ? <span className="text-muted-foreground text-xs">— click per aggiungere</span>
+        : (
+          <div className="flex flex-wrap gap-1">
+            {emails.slice(0, 2).map((e) => (
+              <Badge key={e} variant="secondary" className="text-[10px] font-normal px-1.5">{e}</Badge>
+            ))}
+            {emails.length > 2 && <Badge variant="outline" className="text-[10px]">+{emails.length - 2}</Badge>}
+          </div>
+        );
       return (
-        <div className="flex flex-wrap gap-1">
-          {emails.slice(0, 2).map((e) => (
-            <Badge key={e} variant="secondary" className="text-[10px] font-normal px-1.5">{e}</Badge>
-          ))}
-          {emails.length > 2 && <Badge variant="outline" className="text-[10px]">+{emails.length - 2}</Badge>}
-        </div>
+        <EmailListEditor
+          companyId={c.id}
+          primary={c.email ?? null}
+          generic={c.generic_emails ?? []}
+          onSave={ctx.onCompanyEmailsSave}
+          trigger={trigger}
+        />
       );
     },
   },
@@ -279,16 +311,18 @@ const FIXED_COLUMNS: ColumnDef[] = [
       const dms = c.decision_makers || [];
       if (dms.length === 0 && c.people_count > 0) {
         return (
-          <button onClick={() => ctx.onCompanyClick(c)}>
-            <Badge variant="outline" className="cursor-pointer hover:bg-accent gap-1">
-              <Users className="h-3 w-3" /> {c.people_count}
-            </Badge>
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => ctx.onCompanyClick(c)}>
+              <Badge variant="outline" className="cursor-pointer hover:bg-accent gap-1">
+                <Users className="h-3 w-3" /> {c.people_count}
+              </Badge>
+            </button>
+            <NewDMQuickButton companyId={c.id} onCreate={ctx.onCreateCompanyPerson} />
+          </div>
         );
       }
-      if (dms.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
       return (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {dms.slice(0, 3).map((dm) => {
             const fullName = `${dm.first_name ?? ""} ${dm.last_name ?? ""}`.trim() || dm.email || `#${dm.id}`;
             return (
@@ -305,6 +339,7 @@ const FIXED_COLUMNS: ColumnDef[] = [
             );
           })}
           {dms.length > 3 && <Badge variant="outline" className="text-[10px]">+{dms.length - 3}</Badge>}
+          <NewDMQuickButton companyId={c.id} onCreate={ctx.onCreateCompanyPerson} />
         </div>
       );
     },
@@ -582,6 +617,226 @@ function EditableCell({
   );
 }
 
+/**
+ * EmailListEditor — popover trigger for the "Email Aziendali" cell.
+ *
+ * Click the trigger area → opens an absolute-positioned panel with:
+ *   - the primary `email` field (the one stored on Company.email)
+ *   - the additional `generic_emails` as removable chips
+ *   - an input to add a new email
+ *   - "Salva" button → commits via onSave(primary, generic[])
+ */
+function EmailListEditor({
+  companyId,
+  primary,
+  generic,
+  onSave,
+  trigger,
+}: {
+  companyId: number;
+  primary: string | null;
+  generic: string[];
+  onSave: (companyId: number, primary: string | null, generic: string[]) => Promise<void> | void;
+  trigger: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftPrimary, setDraftPrimary] = useState(primary ?? "");
+  const [draftGeneric, setDraftGeneric] = useState<string[]>(generic);
+  const [newEmail, setNewEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => {
+    setDraftPrimary(primary ?? "");
+    setDraftGeneric(generic);
+    setNewEmail("");
+  };
+
+  const openPanel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    reset();
+    setOpen(true);
+  };
+
+  const addEmail = () => {
+    const t = newEmail.trim();
+    if (!t) return;
+    if (draftGeneric.some((e) => e.toLowerCase() === t.toLowerCase()) || (draftPrimary && draftPrimary.toLowerCase() === t.toLowerCase())) {
+      setNewEmail("");
+      return;
+    }
+    setDraftGeneric([...draftGeneric, t]);
+    setNewEmail("");
+  };
+
+  const commit = async () => {
+    setSaving(true);
+    try {
+      await onSave(companyId, draftPrimary.trim() || null, draftGeneric);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative w-full">
+      <button
+        type="button"
+        className="text-left w-full hover:bg-accent/40 rounded px-1.5 -mx-1.5 -my-0.5 py-0.5 group flex items-center"
+        onClick={openPanel}
+        title="Modifica email aziendali"
+      >
+        <div className="flex-1 min-w-0">{trigger}</div>
+        <Pencil className="h-3 w-3 ml-1 shrink-0 opacity-0 group-hover:opacity-50 text-muted-foreground transition-opacity" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-9 z-40 w-80 rounded-md border bg-popover shadow-md p-3 space-y-2.5">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-muted-foreground">Email primaria</label>
+              <Input
+                value={draftPrimary}
+                onChange={(e) => setDraftPrimary(e.target.value)}
+                placeholder="info@azienda.it"
+                className="h-8 text-sm"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+            {draftGeneric.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-muted-foreground">Altre email</label>
+                <div className="flex flex-wrap gap-1">
+                  {draftGeneric.map((em) => (
+                    <span
+                      key={em}
+                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-muted border"
+                    >
+                      {em}
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); setDraftGeneric(draftGeneric.filter((x) => x !== em)); }}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <Input
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="Aggiungi email"
+                className="h-8 text-sm flex-1"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addEmail(); } }}
+              />
+              <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs"
+                onClick={(e) => { e.stopPropagation(); addEmail(); }}>
+                Aggiungi
+              </Button>
+            </div>
+            <div className="flex justify-end gap-2 pt-1 border-t">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(false)} disabled={saving}>
+                Annulla
+              </Button>
+              <Button size="sm" className="h-7 text-xs" onClick={commit} disabled={saving}>
+                {saving ? "Salvo…" : "Salva"}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * NewDMQuickButton — small "+ DM" button inline at the end of the
+ * Decision Makers chip list. Opens a popover with first/last/email/title/li
+ * and creates a Person record on save.
+ */
+function NewDMQuickButton({
+  companyId,
+  onCreate,
+}: {
+  companyId: number;
+  onCreate: (
+    companyId: number,
+    payload: { first_name: string; last_name: string; email?: string | null; title?: string | null; linkedin_url?: string | null },
+  ) => Promise<void> | void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [first, setFirst] = useState("");
+  const [last, setLast] = useState("");
+  const [email, setEmail] = useState("");
+  const [title, setTitle] = useState("");
+  const [linkedin, setLinkedin] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => {
+    setFirst(""); setLast(""); setEmail(""); setTitle(""); setLinkedin("");
+  };
+  const canSave = first.trim().length > 0 && last.trim().length > 0;
+
+  const commit = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await onCreate(companyId, {
+        first_name: first.trim(),
+        last_name: last.trim(),
+        email: email.trim() || null,
+        title: title.trim() || null,
+        linkedin_url: linkedin.trim() || null,
+      });
+      reset();
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        title="Aggiungi decision maker"
+        className="inline-flex items-center gap-0.5 rounded-md border border-dashed bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+        onClick={(e) => { e.stopPropagation(); reset(); setOpen(true); }}
+      >
+        <Plus className="h-2.5 w-2.5" /> DM
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-7 z-40 w-72 rounded-md border bg-popover shadow-md p-3 space-y-2">
+            <p className="text-xs font-medium">Nuovo decision maker</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <Input placeholder="Nome" value={first} onChange={(e) => setFirst(e.target.value)} className="h-8 text-xs" onClick={(e) => e.stopPropagation()} />
+              <Input placeholder="Cognome" value={last} onChange={(e) => setLast(e.target.value)} className="h-8 text-xs" onClick={(e) => e.stopPropagation()} />
+            </div>
+            <Input placeholder="Ruolo (es. CEO)" value={title} onChange={(e) => setTitle(e.target.value)} className="h-8 text-xs" onClick={(e) => e.stopPropagation()} />
+            <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="h-8 text-xs" onClick={(e) => e.stopPropagation()} />
+            <Input placeholder="LinkedIn URL" value={linkedin} onChange={(e) => setLinkedin(e.target.value)} className="h-8 text-xs" onClick={(e) => e.stopPropagation()} />
+            <div className="flex justify-end gap-2 pt-1 border-t">
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(false)} disabled={saving}>
+                Annulla
+              </Button>
+              <Button size="sm" className="h-7 text-xs" onClick={commit} disabled={!canSave || saving}>
+                {saving ? "Salvo…" : "Crea"}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
 function EditableCustomCell({
   companyId, fieldKey, initial, onSave,
 }: {
@@ -631,7 +886,8 @@ function EditableCustomCell({
 export function ClayCompaniesTable({
   companies, loading, search, onSearchChange,
   selectedIds, onToggleSelect, onToggleSelectAll,
-  customFieldKeys, onCompanyClick, onPersonClick, onAction, onCustomFieldSave, onCompanyFieldSave, onAddCustomFieldKey,
+  customFieldKeys, onCompanyClick, onPersonClick, onAction, onCustomFieldSave, onCompanyFieldSave,
+  onCompanyEmailsSave, onCreateCompanyPerson, onAddCustomFieldKey,
   rowsPerPage, pageIndex, total, allLists,
   selectAllMatching, onSelectAllMatching,
 }: Props) {
@@ -640,8 +896,8 @@ export function ClayCompaniesTable({
     [allLists],
   );
   const ctx: CellCtx = useMemo(
-    () => ({ listsById, onCompanyClick, onPersonClick, onCustomFieldSave, onCompanyFieldSave }),
-    [listsById, onCompanyClick, onPersonClick, onCustomFieldSave, onCompanyFieldSave],
+    () => ({ listsById, onCompanyClick, onPersonClick, onCustomFieldSave, onCompanyFieldSave, onCompanyEmailsSave, onCreateCompanyPerson }),
+    [listsById, onCompanyClick, onPersonClick, onCustomFieldSave, onCompanyFieldSave, onCompanyEmailsSave, onCreateCompanyPerson],
   );
 
   const [busyRows, setBusyRows] = useState<Set<number>>(new Set());

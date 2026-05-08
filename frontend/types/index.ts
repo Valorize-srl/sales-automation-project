@@ -128,16 +128,20 @@ export interface PersonUpdate {
 }
 
 export interface CompanyUpdate {
-  name?: string;
-  email?: string;
-  phone?: string;
-  linkedin_url?: string;
-  industry?: string;
-  location?: string;
-  signals?: string;
-  website?: string;
-  client_tag?: string;
-  notes?: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  industry?: string | null;
+  location?: string | null;
+  province?: string | null;
+  signals?: string | null;
+  website?: string | null;
+  client_tag?: string | null;
+  notes?: string | null;
+  revenue?: number | null;
+  employee_count?: number | null;
+  generic_emails?: string[] | null;
 }
 
 export type PriorityTier = "A" | "B" | "C";
