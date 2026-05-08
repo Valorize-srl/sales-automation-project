@@ -111,6 +111,7 @@ const FIXED_COLUMNS: ColumnDef[] = [
     id: "name", label: "Nome Azienda", iconKind: "text",
     renderCell: (c, ctx) => (
       <EditableCell
+        mode="pencil"
         value={c.name}
         onSave={(v) => ctx.onCompanyFieldSave(c.id, "name", v)}
         pencilTitle="Rinomina"
@@ -192,6 +193,7 @@ const FIXED_COLUMNS: ColumnDef[] = [
       );
       return (
         <EditableCell
+          mode="pencil"
           value={c.website ?? null}
           onSave={(v) => ctx.onCompanyFieldSave(c.id, "website", v)}
           display={display}
@@ -228,6 +230,7 @@ const FIXED_COLUMNS: ColumnDef[] = [
       );
       return (
         <EditableCell
+          mode="pencil"
           value={c.linkedin_url ?? null}
           onSave={(v) => ctx.onCompanyFieldSave(c.id, "linkedin_url", v)}
           display={display}
@@ -465,21 +468,31 @@ function ActionMenu({
 }
 
 /**
- * EditableCell — wraps a display node with a hover pencil icon that toggles
- * an inline Input. Used for top-level company fields (name/website/industry/…).
+ * EditableCell — inline-editable wrapper around a display node.
  *
- * For text fields the `value` is a string; for numeric fields, set
- * `type="number"` and `value` is a number — the input strips invalid input
- * and `null` is sent to the backend for empty values.
+ * Two modes (auto-detected from the `mode` prop):
+ *
+ * - "click"   : the entire cell area is the edit trigger. Used when the cell
+ *               has no other primary action (industry, province, location,
+ *               revenue, employee_count, …). On hover the cell highlights so
+ *               the user can see it's clickable.
+ * - "pencil"  : the display keeps its own primary action (e.g. open detail
+ *               dialog, follow external link); a small pencil appears on
+ *               hover and is the explicit edit affordance.
+ *
+ * For numeric cells (`type="number"`), invalid input is dropped and an empty
+ * draft is sent to the backend as `null`.
  */
 function EditableCell({
   type = "text",
+  mode = "click",
   value,
   display,
   onSave,
   pencilTitle = "Modifica",
 }: {
   type?: "text" | "number";
+  mode?: "click" | "pencil";
   value: string | number | null | undefined;
   display: React.ReactNode;
   onSave: (newValue: string | number | null) => Promise<void> | void;
@@ -491,7 +504,7 @@ function EditableCell({
   );
   const [saving, setSaving] = useState(false);
 
-  const startEditing = (e: React.MouseEvent) => {
+  const startEditing = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     setDraft(value === null || value === undefined ? "" : String(value));
     setEditing(true);
@@ -537,13 +550,30 @@ function EditableCell({
       />
     );
   }
+
+  if (mode === "click") {
+    // Whole-cell click target. Hover highlight + small pencil hint on the right.
+    return (
+      <button
+        type="button"
+        className="group relative w-full text-left min-h-[24px] flex items-center hover:bg-accent/40 rounded px-1.5 -mx-1.5 -my-0.5 py-0.5"
+        onClick={startEditing}
+        title={pencilTitle}
+      >
+        <div className="flex-1 min-w-0">{display}</div>
+        <Pencil className="h-3 w-3 ml-1 shrink-0 opacity-0 group-hover:opacity-50 text-muted-foreground transition-opacity" />
+      </button>
+    );
+  }
+
+  // pencil mode — display keeps its own onClick; pencil is the only edit trigger.
   return (
     <div className="group relative w-full flex items-center min-h-[24px]">
       <div className="flex-1 min-w-0">{display}</div>
       <button
         type="button"
         title={pencilTitle}
-        className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity"
+        className="opacity-30 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity"
         onClick={startEditing}
       >
         <Pencil className="h-3 w-3" />

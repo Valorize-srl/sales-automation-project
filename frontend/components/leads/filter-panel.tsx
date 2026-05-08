@@ -213,11 +213,13 @@ export function FilterPanel({ filters, onFiltersChange, industries, customFieldK
 
         {/* Presence flags */}
         {[
-          { key: "has_email", label: "Has email" },
-          { key: "has_phone", label: "Has phone" },
-          { key: "has_linkedin", label: "Has LinkedIn" },
-          { key: "has_website", label: "Has website" },
-          { key: "has_score", label: "Has score" },
+          { key: "has_email", label: "Email aziendale" },
+          { key: "has_phone", label: "Telefono" },
+          { key: "has_linkedin", label: "LinkedIn aziendale" },
+          { key: "has_website", label: "Sito web" },
+          { key: "has_decision_makers", label: "Decision Makers" },
+          { key: "has_dm_with_email", label: "DM con email" },
+          { key: "has_dm_with_linkedin", label: "DM con LinkedIn" },
         ].map(({ key, label }) => (
           <div key={key} className="space-y-1">
             <label className="text-muted-foreground">{label}</label>
