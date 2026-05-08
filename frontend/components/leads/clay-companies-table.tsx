@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Search, Filter as FilterIcon, ArrowUpDown, MoreHorizontal,
-  UserPlus, Sparkles, Trash2, ExternalLink, Plus, Loader2, X, Users, Mail, Type, Hash, Linkedin,
+  UserPlus, Sparkles, Trash2, ExternalLink, Plus, Loader2, X, Users, Mail, Type, Hash, Linkedin, Pencil,
   GripVertical,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,16 @@ import {
 import { Company, LeadList } from "@/types";
 
 type ActionId = "find_dm" | "enrich" | "push_to_campaign" | "delete";
+
+export type EditableCompanyField =
+  | "name"
+  | "website"
+  | "linkedin_url"
+  | "industry"
+  | "province"
+  | "location"
+  | "revenue"
+  | "employee_count";
 
 interface Props {
   companies: Company[];
@@ -30,6 +40,12 @@ interface Props {
   onPersonClick?: (personId: number) => void;
   onAction: (companyId: number, action: ActionId) => Promise<void> | void;
   onCustomFieldSave: (companyId: number, key: string, value: string) => Promise<void> | void;
+  /** Inline edit of a top-level Company field (name/website/industry/...). */
+  onCompanyFieldSave: (
+    companyId: number,
+    field: EditableCompanyField,
+    value: string | number | null,
+  ) => Promise<void> | void;
   onAddCustomFieldKey: () => void;
   rowsPerPage: number;
   pageIndex: number;
@@ -69,6 +85,11 @@ interface CellCtx {
   onCompanyClick: (c: Company) => void;
   onPersonClick?: (personId: number) => void;
   onCustomFieldSave: (companyId: number, key: string, value: string) => void;
+  onCompanyFieldSave: (
+    companyId: number,
+    field: EditableCompanyField,
+    value: string | number | null,
+  ) => Promise<void> | void;
 }
 
 interface ColumnDef {
@@ -89,44 +110,72 @@ const FIXED_COLUMNS: ColumnDef[] = [
   {
     id: "name", label: "Nome Azienda", iconKind: "text",
     renderCell: (c, ctx) => (
-      <button
-        className="text-primary hover:underline text-left flex items-center gap-1.5 max-w-[260px] truncate font-medium"
-        onClick={() => ctx.onCompanyClick(c)}
-        title={c.name}
-      >
-        <span className="truncate">{c.name}</span>
-        {c.website && <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />}
-      </button>
+      <EditableCell
+        value={c.name}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "name", v)}
+        pencilTitle="Rinomina"
+        display={
+          <button
+            className="text-primary hover:underline text-left flex items-center gap-1.5 max-w-[260px] truncate font-medium"
+            onClick={(e) => { e.stopPropagation(); ctx.onCompanyClick(c); }}
+            title={c.name}
+          >
+            <span className="truncate">{c.name}</span>
+            {c.website && <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />}
+          </button>
+        }
+      />
     ),
   },
   {
     id: "revenue", label: "Fatturato", iconKind: "number", align: "right",
-    renderCell: (c) => <span className="tabular-nums">{fmtRevenue(c.revenue)}</span>,
+    renderCell: (c, ctx) => (
+      <EditableCell
+        type="number"
+        value={c.revenue ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "revenue", v)}
+        display={<span className="tabular-nums">{fmtRevenue(c.revenue)}</span>}
+      />
+    ),
   },
   {
     id: "employee_count", label: "Dipendenti", iconKind: "number", align: "right",
-    renderCell: (c) => <span className="tabular-nums">{fmtCount(c.employee_count)}</span>,
+    renderCell: (c, ctx) => (
+      <EditableCell
+        type="number"
+        value={c.employee_count ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "employee_count", v)}
+        display={<span className="tabular-nums">{fmtCount(c.employee_count)}</span>}
+      />
+    ),
   },
   {
     id: "industry", label: "Settore", iconKind: "text", maxWidth: "200px",
-    renderCell: (c) => (
-      <span className="text-sm truncate block" title={c.industry || undefined}>
-        {c.industry || "—"}
-      </span>
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.industry ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "industry", v)}
+        display={
+          <span className="text-sm truncate block" title={c.industry || undefined}>
+            {c.industry || <span className="text-muted-foreground text-xs">—</span>}
+          </span>
+        }
+      />
     ),
   },
   {
     id: "website", label: "Sito Web", iconKind: "text", maxWidth: "220px",
-    renderCell: (c) => {
-      if (!c.website) return <span className="text-muted-foreground text-xs">—</span>;
-      let display = c.website;
-      try {
-        const u = new URL(c.website.startsWith("http") ? c.website : `https://${c.website}`);
-        display = u.hostname.replace(/^www\./, "") + (u.pathname !== "/" ? u.pathname : "");
-      } catch {
-        // keep raw display
+    renderCell: (c, ctx) => {
+      let displayUrl = c.website || "";
+      if (c.website) {
+        try {
+          const u = new URL(c.website.startsWith("http") ? c.website : `https://${c.website}`);
+          displayUrl = u.hostname.replace(/^www\./, "") + (u.pathname !== "/" ? u.pathname : "");
+        } catch {
+          // keep raw display
+        }
       }
-      return (
+      const display = c.website ? (
         <a
           href={c.website.startsWith("http") ? c.website : `https://${c.website}`}
           target="_blank"
@@ -135,24 +184,34 @@ const FIXED_COLUMNS: ColumnDef[] = [
           title={c.website}
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="truncate">{display}</span>
+          <span className="truncate">{displayUrl}</span>
           <ExternalLink className="h-3 w-3 shrink-0" />
         </a>
+      ) : (
+        <span className="text-muted-foreground text-xs">—</span>
+      );
+      return (
+        <EditableCell
+          value={c.website ?? null}
+          onSave={(v) => ctx.onCompanyFieldSave(c.id, "website", v)}
+          display={display}
+        />
       );
     },
   },
   {
     id: "linkedin_url", label: "LinkedIn azienda", iconKind: "text", maxWidth: "220px",
-    renderCell: (c) => {
-      if (!c.linkedin_url) return <span className="text-muted-foreground text-xs">—</span>;
-      let display = c.linkedin_url;
-      try {
-        const u = new URL(c.linkedin_url.startsWith("http") ? c.linkedin_url : `https://${c.linkedin_url}`);
-        display = (u.pathname.replace(/^\/+|\/+$/g, "") || u.hostname).replace(/^company\//, "");
-      } catch {
-        // keep raw display
+    renderCell: (c, ctx) => {
+      let displayUrl = c.linkedin_url || "";
+      if (c.linkedin_url) {
+        try {
+          const u = new URL(c.linkedin_url.startsWith("http") ? c.linkedin_url : `https://${c.linkedin_url}`);
+          displayUrl = (u.pathname.replace(/^\/+|\/+$/g, "") || u.hostname).replace(/^company\//, "");
+        } catch {
+          // keep raw display
+        }
       }
-      return (
+      const display = c.linkedin_url ? (
         <a
           href={c.linkedin_url.startsWith("http") ? c.linkedin_url : `https://${c.linkedin_url}`}
           target="_blank"
@@ -162,18 +221,39 @@ const FIXED_COLUMNS: ColumnDef[] = [
           onClick={(e) => e.stopPropagation()}
         >
           <Linkedin className="h-3 w-3 shrink-0" />
-          <span className="truncate">{display}</span>
+          <span className="truncate">{displayUrl}</span>
         </a>
+      ) : (
+        <span className="text-muted-foreground text-xs">—</span>
+      );
+      return (
+        <EditableCell
+          value={c.linkedin_url ?? null}
+          onSave={(v) => ctx.onCompanyFieldSave(c.id, "linkedin_url", v)}
+          display={display}
+        />
       );
     },
   },
   {
     id: "province", label: "Provincia", iconKind: "text",
-    renderCell: (c) => <span className="text-sm">{c.province || "—"}</span>,
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.province ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "province", v)}
+        display={<span className="text-sm">{c.province || <span className="text-muted-foreground text-xs">—</span>}</span>}
+      />
+    ),
   },
   {
     id: "location", label: "Città", iconKind: "text",
-    renderCell: (c) => <span className="text-sm">{c.location || "—"}</span>,
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.location ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "location", v)}
+        display={<span className="text-sm">{c.location || <span className="text-muted-foreground text-xs">—</span>}</span>}
+      />
+    ),
   },
   {
     id: "company_emails", label: "Email Aziendali", iconKind: "multi", maxWidth: "260px",
@@ -384,6 +464,94 @@ function ActionMenu({
   );
 }
 
+/**
+ * EditableCell — wraps a display node with a hover pencil icon that toggles
+ * an inline Input. Used for top-level company fields (name/website/industry/…).
+ *
+ * For text fields the `value` is a string; for numeric fields, set
+ * `type="number"` and `value` is a number — the input strips invalid input
+ * and `null` is sent to the backend for empty values.
+ */
+function EditableCell({
+  type = "text",
+  value,
+  display,
+  onSave,
+  pencilTitle = "Modifica",
+}: {
+  type?: "text" | "number";
+  value: string | number | null | undefined;
+  display: React.ReactNode;
+  onSave: (newValue: string | number | null) => Promise<void> | void;
+  pencilTitle?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(
+    value === null || value === undefined ? "" : String(value)
+  );
+  const [saving, setSaving] = useState(false);
+
+  const startEditing = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraft(value === null || value === undefined ? "" : String(value));
+    setEditing(true);
+  };
+
+  const commit = async () => {
+    let parsed: string | number | null;
+    if (type === "number") {
+      const t = draft.trim();
+      if (t === "") parsed = null;
+      else {
+        const n = Number(t.replace(",", "."));
+        parsed = Number.isFinite(n) ? n : null;
+      }
+    } else {
+      parsed = draft.trim() || null;
+    }
+    if (parsed === (value ?? null)) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      await onSave(parsed);
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <Input
+        autoFocus
+        type={type === "number" ? "number" : "text"}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          else if (e.key === "Escape") setEditing(false);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="h-7 text-sm w-full"
+        disabled={saving}
+      />
+    );
+  }
+  return (
+    <div className="group relative w-full flex items-center min-h-[24px]">
+      <div className="flex-1 min-w-0">{display}</div>
+      <button
+        type="button"
+        title={pencilTitle}
+        className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-opacity"
+        onClick={startEditing}
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 function EditableCustomCell({
   companyId, fieldKey, initial, onSave,
 }: {
@@ -433,7 +601,7 @@ function EditableCustomCell({
 export function ClayCompaniesTable({
   companies, loading, search, onSearchChange,
   selectedIds, onToggleSelect, onToggleSelectAll,
-  customFieldKeys, onCompanyClick, onPersonClick, onAction, onCustomFieldSave, onAddCustomFieldKey,
+  customFieldKeys, onCompanyClick, onPersonClick, onAction, onCustomFieldSave, onCompanyFieldSave, onAddCustomFieldKey,
   rowsPerPage, pageIndex, total, allLists,
   selectAllMatching, onSelectAllMatching,
 }: Props) {
@@ -442,8 +610,8 @@ export function ClayCompaniesTable({
     [allLists],
   );
   const ctx: CellCtx = useMemo(
-    () => ({ listsById, onCompanyClick, onPersonClick, onCustomFieldSave }),
-    [listsById, onCompanyClick, onPersonClick, onCustomFieldSave],
+    () => ({ listsById, onCompanyClick, onPersonClick, onCustomFieldSave, onCompanyFieldSave }),
+    [listsById, onCompanyClick, onPersonClick, onCustomFieldSave, onCompanyFieldSave],
   );
 
   const [busyRows, setBusyRows] = useState<Set<number>>(new Set());
