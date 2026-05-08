@@ -481,6 +481,9 @@ export interface CompanyFilters {
   has_linkedin?: boolean;
   has_website?: boolean;
   has_score?: boolean;
+  has_decision_makers?: boolean;
+  has_dm_with_email?: boolean;
+  has_dm_with_linkedin?: boolean;
   revenue_min?: number;
   revenue_max?: number;
   employee_count_min?: number;

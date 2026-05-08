@@ -280,6 +280,9 @@ def _build_company_filter_query(
     employee_count_min,
     employee_count_max,
     decision_maker_name_contains=None,
+    has_decision_makers=None,
+    has_dm_with_email=None,
+    has_dm_with_linkedin=None,
     filters=None,
 ):
     """Build the SQLAlchemy SELECT for /companies (and /companies/ids).
@@ -339,6 +342,41 @@ def _build_company_filter_query(
         q = q.where(Company.website.isnot(None), Company.website != "")
     elif has_website is False:
         q = q.where(or_(Company.website.is_(None), Company.website == ""))
+
+    # Decision-maker presence filters (correlated EXISTS on people table)
+    if has_decision_makers is not None:
+        any_dm = (
+            select(Person.company_id)
+            .where(Person.company_id == Company.id)
+            .correlate(Company)
+            .exists()
+        )
+        q = q.where(any_dm) if has_decision_makers else q.where(~any_dm)
+    if has_dm_with_email is not None:
+        dm_with_email = (
+            select(Person.company_id)
+            .where(
+                Person.company_id == Company.id,
+                Person.email.isnot(None),
+                Person.email != "",
+            )
+            .correlate(Company)
+            .exists()
+        )
+        q = q.where(dm_with_email) if has_dm_with_email else q.where(~dm_with_email)
+    if has_dm_with_linkedin is not None:
+        dm_with_li = (
+            select(Person.company_id)
+            .where(
+                Person.company_id == Company.id,
+                Person.linkedin_url.isnot(None),
+                Person.linkedin_url != "",
+            )
+            .correlate(Company)
+            .exists()
+        )
+        q = q.where(dm_with_li) if has_dm_with_linkedin else q.where(~dm_with_li)
+
     if revenue_min is not None:
         q = q.where(Company.revenue >= revenue_min)
     if revenue_max is not None:
@@ -390,6 +428,9 @@ async def list_company_ids(
     has_phone: Optional[bool] = Query(None),
     has_linkedin: Optional[bool] = Query(None),
     has_website: Optional[bool] = Query(None),
+    has_decision_makers: Optional[bool] = Query(None),
+    has_dm_with_email: Optional[bool] = Query(None),
+    has_dm_with_linkedin: Optional[bool] = Query(None),
     revenue_min: Optional[int] = Query(None),
     revenue_max: Optional[int] = Query(None),
     employee_count_min: Optional[int] = Query(None),
@@ -409,6 +450,9 @@ async def list_company_ids(
         location=location,
         list_id=list_id, has_email=has_email, has_phone=has_phone,
         has_linkedin=has_linkedin, has_website=has_website,
+        has_decision_makers=has_decision_makers,
+        has_dm_with_email=has_dm_with_email,
+        has_dm_with_linkedin=has_dm_with_linkedin,
         revenue_min=revenue_min, revenue_max=revenue_max,
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
         decision_maker_name_contains=decision_maker_name_contains, filters=filters,
@@ -430,6 +474,9 @@ async def list_companies(
     has_phone: Optional[bool] = Query(None),
     has_linkedin: Optional[bool] = Query(None),
     has_website: Optional[bool] = Query(None),
+    has_decision_makers: Optional[bool] = Query(None, description="Filter by presence of any Person linked to the company"),
+    has_dm_with_email: Optional[bool] = Query(None, description="Filter by presence of a DM with a populated email"),
+    has_dm_with_linkedin: Optional[bool] = Query(None, description="Filter by presence of a DM with a populated linkedin_url"),
     revenue_min: Optional[int] = Query(None),
     revenue_max: Optional[int] = Query(None),
     employee_count_min: Optional[int] = Query(None),
@@ -454,6 +501,9 @@ async def list_companies(
         location=location,
         list_id=list_id, has_email=has_email, has_phone=has_phone,
         has_linkedin=has_linkedin, has_website=has_website,
+        has_decision_makers=has_decision_makers,
+        has_dm_with_email=has_dm_with_email,
+        has_dm_with_linkedin=has_dm_with_linkedin,
         revenue_min=revenue_min, revenue_max=revenue_max,
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
         decision_maker_name_contains=decision_maker_name_contains, filters=filters,
