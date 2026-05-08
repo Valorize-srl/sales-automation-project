@@ -496,6 +496,20 @@ export default function LeadsPage() {
     }
   };
 
+  /** Inline edit of a top-level Company field from the Clay table cells. */
+  const handleCompanyFieldSave = async (
+    companyId: number,
+    field: "name" | "website" | "linkedin_url" | "industry" | "province" | "location" | "revenue" | "employee_count",
+    value: string | number | null,
+  ) => {
+    try {
+      const updated = await api.updateCompany(companyId, { [field]: value });
+      setCompanies((cs) => cs.map((c) => (c.id === companyId ? updated : c)));
+    } catch (e) {
+      showFlash("err", `Save fallito: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
   const handleAddCustomFieldKey = () => {
     const key = prompt("Nome della nuova colonna (es. \"Note CEO\", \"Status follow-up\")")?.trim();
     if (!key) return;
@@ -722,6 +736,7 @@ export default function LeadsPage() {
             onPersonClick={handleDetailCompanyPersonClick}
             onAction={handleAction}
             onCustomFieldSave={handleCustomFieldSave}
+            onCompanyFieldSave={handleCompanyFieldSave}
             onAddCustomFieldKey={handleAddCustomFieldKey}
             rowsPerPage={50}
             pageIndex={page - 1}
