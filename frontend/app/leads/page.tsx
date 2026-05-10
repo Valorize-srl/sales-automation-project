@@ -510,6 +510,38 @@ export default function LeadsPage() {
     }
   };
 
+  /** Replace a company's email + generic_emails list (Email Aziendali popover). */
+  const handleCompanyEmailsSave = async (
+    companyId: number,
+    primary: string | null,
+    generic: string[],
+  ) => {
+    try {
+      const updated = await api.updateCompany(companyId, {
+        email: primary,
+        generic_emails: generic,
+      });
+      setCompanies((cs) => cs.map((c) => (c.id === companyId ? updated : c)));
+    } catch (e) {
+      showFlash("err", `Save email fallito: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  /** Quick-create a Person linked to a company (Decision Makers "+ DM"). */
+  const handleCreateCompanyPerson = async (
+    companyId: number,
+    payload: { first_name: string; last_name: string; email?: string | null; title?: string | null; linkedin_url?: string | null },
+  ) => {
+    try {
+      await api.createCompanyPerson(companyId, payload);
+      showFlash("ok", `Decision maker "${payload.first_name} ${payload.last_name}" creato`);
+      // Reload current page so the new chip + work_emails column update.
+      loadCompanies(page);
+    } catch (e) {
+      showFlash("err", `Creazione DM fallita: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
   const handleAddCustomFieldKey = () => {
     const key = prompt("Nome della nuova colonna (es. \"Note CEO\", \"Status follow-up\")")?.trim();
     if (!key) return;
@@ -737,6 +769,8 @@ export default function LeadsPage() {
             onAction={handleAction}
             onCustomFieldSave={handleCustomFieldSave}
             onCompanyFieldSave={handleCompanyFieldSave}
+            onCompanyEmailsSave={handleCompanyEmailsSave}
+            onCreateCompanyPerson={handleCreateCompanyPerson}
             onAddCustomFieldKey={handleAddCustomFieldKey}
             rowsPerPage={50}
             pageIndex={page - 1}
