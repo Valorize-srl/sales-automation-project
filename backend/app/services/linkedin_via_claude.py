@@ -77,7 +77,7 @@ async def find_company_employees_via_linkedin(
     target_titles: list[str],
     max_results: int = 5,
     company_linkedin_url: Optional[str] = None,
-    max_searches: int = 6,
+    max_searches: int = 3,
 ) -> list[LinkedInCandidate]:
     """Ask Claude (with web_search) to find LinkedIn profiles of people working at
     `company_name` whose role matches one of `target_titles`. No LinkedIn auth.
@@ -92,33 +92,25 @@ async def find_company_employees_via_linkedin(
     titles_str = ", ".join(t.strip() for t in target_titles if t.strip())
     li_hint = f"\nKnown company LinkedIn page: {company_linkedin_url}" if company_linkedin_url else ""
 
-    prompt = f"""Find people who currently work at the company "{company_name}" and whose role matches one of these titles: {titles_str}.{li_hint}
+    prompt = f"""Find LinkedIn public profiles of people who currently work at "{company_name}" with one of these roles: {titles_str}.{li_hint}
 
-Use the web_search tool with Google-dork queries targeting LinkedIn public profiles. Examples:
-  site:linkedin.com/in/ "{company_name}"
-  site:linkedin.com/in/ "{company_name}" "{target_titles[0]}"
-(repeat for each target title — at most {max_searches} searches total.)
+BUDGET: at most {max_searches} web_search calls — work efficiently. Stop as soon as you have {max_results} good matches.
 
-Each Google result for linkedin.com/in/<slug> typically has a title formatted like:
-    "First Last - Role - Company | LinkedIn"
-Extract from each result:
-  - first_name (the first word of the person's name)
-  - last_name (the rest)
-  - title (the role, e.g. "CEO" — NOT the company)
-  - linkedin_url (the linkedin.com/in/ URL, exactly as it appears)
-  - location (if visible in the SERP snippet)
+Use Google-dork queries. Recommended single broad query:
+  site:linkedin.com/in/ "{company_name}" ({" OR ".join(f'"{t}"' for t in target_titles[:3])})
+If empty, fallback to one or two more specific queries.
 
-Constraints:
-  - ONLY include profiles where the SERP clearly shows the person currently works at "{company_name}".
-  - Skip duplicates (same linkedin_url).
-  - Skip profiles for companies with similar but different names (e.g. "Acme Inc" vs "Acme Group Srl").
-  - Cap at {max_results} most relevant matches.
-  - If no matches are found, return an empty array [].
+Each SERP entry has a title formatted as "First Last - Role - Company | LinkedIn". Extract:
+  - first_name, last_name
+  - title (the role; NEVER the company name)
+  - linkedin_url (exactly as in the SERP)
+  - location (if visible)
 
-Output: ONLY a raw JSON array (no prose, no markdown fences), schema:
-[
-  {{"first_name": "...", "last_name": "...", "title": "...", "linkedin_url": "https://www.linkedin.com/in/...", "location": "..."}}
-]
+ONLY include profiles clearly tied to "{company_name}" — skip similar-but-different companies.
+Skip duplicates. Cap at {max_results} matches. If none, return [].
+
+Output ONLY a raw JSON array (no prose, no fences):
+[{{"first_name":"...","last_name":"...","title":"...","linkedin_url":"https://www.linkedin.com/in/...","location":"..."}}]
 """
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
