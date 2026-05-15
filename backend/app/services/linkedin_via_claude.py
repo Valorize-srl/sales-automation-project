@@ -113,11 +113,16 @@ Output ONLY a raw JSON array (no prose, no fences):
 [{{"first_name":"...","last_name":"...","title":"...","linkedin_url":"https://www.linkedin.com/in/...","location":"..."}}]
 """
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    # max_retries=0 — under bulk usage the SDK's default exponential-backoff
+    # retries on 429 chew up the Railway edge's ~60s timeout (it sees the
+    # in-flight request as just one slow request and returns 500). We'd rather
+    # fail fast on rate limit so the dialog can surface a clear "riprova" message
+    # for that row and keep moving.
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=0)
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-5-20250929",
-            max_tokens=2000,
+            max_tokens=1500,
             tools=[{
                 "type": "web_search_20260209",
                 "name": "web_search",
@@ -125,6 +130,9 @@ Output ONLY a raw JSON array (no prose, no fences):
             }],
             messages=[{"role": "user", "content": prompt}],
         )
+    except anthropic.RateLimitError as e:
+        logger.warning("Anthropic rate limit during LinkedIn discovery: %s", e)
+        raise
     except anthropic.APIError as e:
         logger.error("Anthropic API error during LinkedIn discovery: %s", e)
         raise
