@@ -1477,16 +1477,25 @@ async def find_decision_makers_via_linkedin(
         # Surface Anthropic / web_search errors as plain text so the frontend
         # dialog can show the actual cause (e.g. "credit balance is too low",
         # "rate limit exceeded") instead of "API error: 502".
+        import anthropic as _anthropic
         msg = str(e)
         # Try to extract the message field from Anthropic's error envelope:
         # "Error code: 400 - {'type': 'error', 'error': {'type': '...', 'message': 'Your credit ...'}}"
         m = re.search(r"'message':\s*'([^']+)'", msg) or re.search(r'"message":\s*"([^"]+)"', msg)
         if m:
             msg = m.group(1)
+        # Map common Anthropic SDK exceptions to HTTP status codes that the
+        # frontend can render. RateLimitError is the most common one in batch
+        # usage; we surface 429 directly so the dialog can show "riprova".
+        if isinstance(e, _anthropic.RateLimitError):
+            logger.warning("LinkedIn DM finder rate-limited for company_id=%s", company_id)
+            raise HTTPException(429, "Rate limit Anthropic — aspetta qualche secondo prima di rilanciare la prossima azienda.")
         if "credit balance is too low" in msg.lower():
             msg = "Credito Anthropic esaurito — ricarica su console.anthropic.com/settings/billing"
-        elif "rate_limit" in msg.lower() or "rate limit" in msg.lower():
-            msg = f"Rate limit Anthropic — riprova fra qualche secondo ({msg})"
+            raise HTTPException(402, msg)
+        if "rate_limit" in msg.lower() or "rate limit" in msg.lower():
+            msg = "Rate limit Anthropic — riprova fra qualche secondo"
+            raise HTTPException(429, msg)
         logger.warning("LinkedIn DM finder failed for company_id=%s: %s", company_id, e)
         raise HTTPException(502, msg)
 
