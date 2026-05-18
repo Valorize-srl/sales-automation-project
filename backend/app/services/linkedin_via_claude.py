@@ -77,7 +77,7 @@ async def find_company_employees_via_linkedin(
     target_titles: list[str],
     max_results: int = 5,
     company_linkedin_url: Optional[str] = None,
-    max_searches: int = 3,
+    max_searches: int = 2,
 ) -> list[LinkedInCandidate]:
     """Ask Claude (with web_search) to find LinkedIn profiles of people working at
     `company_name` whose role matches one of `target_titles`. No LinkedIn auth.
@@ -92,46 +92,38 @@ async def find_company_employees_via_linkedin(
     titles_str = ", ".join(t.strip() for t in target_titles if t.strip())
     li_hint = f"\nKnown company LinkedIn page: {company_linkedin_url}" if company_linkedin_url else ""
 
-    prompt = f"""Find LinkedIn public profiles of people who currently work at "{company_name}" with one of these roles: {titles_str}.{li_hint}
+    or_clause = " OR ".join(f'"{t}"' for t in target_titles[:3])
+    prompt = f"""Run ONE web_search with the query:
+  site:linkedin.com/in/ "{company_name}" ({or_clause})
 
-BUDGET: at most {max_searches} web_search calls — work efficiently. Stop as soon as you have {max_results} good matches.
+Hard cap: {max_searches} total web_search calls.{li_hint}
 
-Use Google-dork queries. Recommended single broad query:
-  site:linkedin.com/in/ "{company_name}" ({" OR ".join(f'"{t}"' for t in target_titles[:3])})
-If empty, fallback to one or two more specific queries.
+Each SERP entry for linkedin.com/in/<slug> has a title like
+"First Last - Role - Company | LinkedIn". From each result extract:
+  - first_name, last_name, title (the role, NOT the company), linkedin_url, location
 
-Each SERP entry has a title formatted as "First Last - Role - Company | LinkedIn". Extract:
-  - first_name, last_name
-  - title (the role; NEVER the company name)
-  - linkedin_url (exactly as in the SERP)
-  - location (if visible)
-
-ONLY include profiles clearly tied to "{company_name}" — skip similar-but-different companies.
-Skip duplicates. Cap at {max_results} matches. If none, return [].
+Include only profiles clearly at "{company_name}". Skip near-duplicates and similar-but-different companies. Cap at {max_results} matches.
 
 Output ONLY a raw JSON array (no prose, no fences):
 [{{"first_name":"...","last_name":"...","title":"...","linkedin_url":"https://www.linkedin.com/in/...","location":"..."}}]
+
+If nothing useful, output [].
 """
 
-    # max_retries=0 — see commit history. SDK retries chew the Railway edge
-    # ~60s timeout. Fail fast on 429 so the dialog can move on.
-    # Hard httpx timeout=28s — Railway edge typically caps at 30s; anything
-    # over that comes back as a 5xx to the browser. Better to surface a clean
-    # timeout error than a generic gateway error.
+    # Haiku 4.5 does NOT support web_search_20260209 (returns 400) — must
+    # stay on Sonnet for this flow.
+    # max_retries=0: SDK retries on 429 burn through Railway edge timeout.
+    # httpx timeout=55s: Railway hobby tier proxies cap around 60s; clean
+    # client-side timeout is better than a gateway-truncated 5xx.
     client = anthropic.AsyncAnthropic(
         api_key=settings.anthropic_api_key,
         max_retries=0,
-        timeout=28.0,
+        timeout=55.0,
     )
     try:
         response = await client.messages.create(
-            # Haiku 4.5 — this is a small SERP-parsing task; the deeper Sonnet
-            # model gave 40-60s wall-clock per call which exceeded the Railway
-            # edge timeout. Haiku runs the same web_search tool and parses the
-            # SERP JSON just as well in a fraction of the time (typically
-            # under 20s end to end).
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
+            model="claude-sonnet-4-5-20250929",
+            max_tokens=1200,
             tools=[{
                 "type": "web_search_20260209",
                 "name": "web_search",
