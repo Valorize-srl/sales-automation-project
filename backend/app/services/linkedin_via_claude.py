@@ -113,15 +113,24 @@ Output ONLY a raw JSON array (no prose, no fences):
 [{{"first_name":"...","last_name":"...","title":"...","linkedin_url":"https://www.linkedin.com/in/...","location":"..."}}]
 """
 
-    # max_retries=0 — under bulk usage the SDK's default exponential-backoff
-    # retries on 429 chew up the Railway edge's ~60s timeout (it sees the
-    # in-flight request as just one slow request and returns 500). We'd rather
-    # fail fast on rate limit so the dialog can surface a clear "riprova" message
-    # for that row and keep moving.
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, max_retries=0)
+    # max_retries=0 — see commit history. SDK retries chew the Railway edge
+    # ~60s timeout. Fail fast on 429 so the dialog can move on.
+    # Hard httpx timeout=28s — Railway edge typically caps at 30s; anything
+    # over that comes back as a 5xx to the browser. Better to surface a clean
+    # timeout error than a generic gateway error.
+    client = anthropic.AsyncAnthropic(
+        api_key=settings.anthropic_api_key,
+        max_retries=0,
+        timeout=28.0,
+    )
     try:
         response = await client.messages.create(
-            model="claude-sonnet-4-5-20250929",
+            # Haiku 4.5 — this is a small SERP-parsing task; the deeper Sonnet
+            # model gave 40-60s wall-clock per call which exceeded the Railway
+            # edge timeout. Haiku runs the same web_search tool and parses the
+            # SERP JSON just as well in a fraction of the time (typically
+            # under 20s end to end).
+            model="claude-haiku-4-5-20251001",
             max_tokens=1500,
             tools=[{
                 "type": "web_search_20260209",
