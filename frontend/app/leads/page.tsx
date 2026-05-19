@@ -12,6 +12,7 @@ import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
 import { LinkedInFindDMDialog } from "@/components/leads/linkedin-find-dm-dialog";
 import { FindymailEnrichDialog } from "@/components/leads/findymail-enrich-dialog";
 import { FindymailFindDMDialog } from "@/components/leads/findymail-find-dm-dialog";
+import { FindymailFindDMViaLinkedInDialog } from "@/components/leads/findymail-find-dm-via-linkedin-dialog";
 import { FindymailFindCompanyInfoDialog } from "@/components/leads/findymail-find-company-info-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
@@ -59,6 +60,9 @@ export default function LeadsPage() {
   const [findymailFindOpen, setFindymailFindOpen] = useState(false);
   const [findymailFindCompanies, setFindymailFindCompanies] = useState<Company[]>([]);
   const [findymailFindPreparing, setFindymailFindPreparing] = useState(false);
+  const [findymailLiOpen, setFindymailLiOpen] = useState(false);
+  const [findymailLiCompanies, setFindymailLiCompanies] = useState<Company[]>([]);
+  const [findymailLiPreparing, setFindymailLiPreparing] = useState(false);
   const [findymailCoOpen, setFindymailCoOpen] = useState(false);
   const [findymailCoCompanies, setFindymailCoCompanies] = useState<Company[]>([]);
   const [findymailCoPreparing, setFindymailCoPreparing] = useState(false);
@@ -345,6 +349,40 @@ export default function LeadsPage() {
       setFindymailFindCompanies(companies);
     }
     setFindymailFindOpen(true);
+  };
+
+  /** Findymail "find DM via LinkedIn" — chains /search/employees → /search/linkedin
+   * to return name + LinkedIn URL + email in one shot. Same selection logic. */
+  const openFindymailFindDMViaLinkedIn = async () => {
+    setEnrichMenuOpen(false);
+    if (selectAllMatching) {
+      setFindymailLiPreparing(true);
+      try {
+        const PAGE_SIZE = 200;
+        const acc: Company[] = [];
+        let p = 1;
+        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+        acc.push(...first.companies);
+        while (p < first.total_pages) {
+          p += 1;
+          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+          acc.push(...next.companies);
+        }
+        setFindymailLiCompanies(acc);
+        setFindymailLiOpen(true);
+      } catch (e) {
+        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+      } finally {
+        setFindymailLiPreparing(false);
+      }
+      return;
+    }
+    if (selectedIds.size > 0) {
+      setFindymailLiCompanies(companies.filter((c) => selectedIds.has(c.id)));
+    } else {
+      setFindymailLiCompanies(companies);
+    }
+    setFindymailLiOpen(true);
   };
 
   /**
@@ -702,10 +740,10 @@ export default function LeadsPage() {
               </div>
               <div className="relative">
                 <Button size="sm" variant="outline" className="gap-1.5"
-                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailCoPreparing}
+                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailLiPreparing || findymailCoPreparing}
                   onClick={() => setEnrichMenuOpen(!enrichMenuOpen)}>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailCoPreparing
+                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailLiPreparing || findymailCoPreparing
                     ? "Preparo…"
                     : "Arricchisci"}
                   <ChevronDown className="h-3 w-3 opacity-60" />
@@ -769,6 +807,23 @@ export default function LeadsPage() {
                           </p>
                           <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
                             Trova nome + email direttamente sul dominio aziendale dato un job title
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
+                        onClick={openFindymailFindDMViaLinkedIn}
+                      >
+                        <Sparkles className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight flex items-center gap-1.5">
+                            Cerca DM completi (LinkedIn + email)
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
+                              Findymail
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Trova fino a N dipendenti via LinkedIn aziendale + recupera la loro email. Output più completo, costa di più.
                           </p>
                         </div>
                       </button>
@@ -874,6 +929,14 @@ export default function LeadsPage() {
             open={findymailFindOpen}
             onOpenChange={setFindymailFindOpen}
             companies={findymailFindCompanies}
+            onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
+            onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
+          />
+
+          <FindymailFindDMViaLinkedInDialog
+            open={findymailLiOpen}
+            onOpenChange={setFindymailLiOpen}
+            companies={findymailLiCompanies}
             onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
             onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
           />
