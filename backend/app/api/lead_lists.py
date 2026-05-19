@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.db.database import get_db
 from app.models.company import Company, company_lead_list
 from app.models.lead_list import LeadList
+from app.models.person import Person
 from app.schemas.lead_list import (
     LeadListCreate,
     LeadListUpdate,
@@ -58,7 +59,9 @@ async def list_all_lists(
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
 ):
-    """List all lead lists with optional filtering by AI Agent."""
+    """List all lead lists with the per-list `dm_with_email_count` rollup
+    (count of distinct Person rows with a populated email linked to any
+    company in this list via the M2M)."""
     service = LeadListService(db)
     lists = await service.list_all_lists(
         ai_agent_id=ai_agent_id,
@@ -66,7 +69,41 @@ async def list_all_lists(
         limit=limit,
     )
 
-    return LeadListListResponse(lists=lists, total=len(lists))
+    # One aggregate query for all lists in the response: for each lead list,
+    # count distinct people who (a) are linked to a company that's a member of
+    # the list, (b) have a non-empty email.
+    list_ids = [ll.id for ll in lists]
+    dm_counts: dict[int, int] = {}
+    if list_ids:
+        result = await db.execute(
+            select(
+                company_lead_list.c.lead_list_id,
+                sa_func.count(sa_func.distinct(Person.id)),
+            )
+            .select_from(
+                company_lead_list.join(
+                    Person, Person.company_id == company_lead_list.c.company_id
+                )
+            )
+            .where(
+                company_lead_list.c.lead_list_id.in_(list_ids),
+                Person.email.isnot(None),
+                Person.email != "",
+            )
+            .group_by(company_lead_list.c.lead_list_id)
+        )
+        dm_counts = {row[0]: int(row[1]) for row in result.all()}
+
+    items = []
+    for ll in lists:
+        resp = LeadListResponse.model_validate(ll)
+        resp.dm_with_email_count = dm_counts.get(ll.id, 0)
+        # total_leads is also a derived field — fill it explicitly so we
+        # don't rely on the ORM's @property being picked up by Pydantic.
+        resp.total_leads = (ll.people_count or 0) + (ll.companies_count or 0)
+        items.append(resp)
+
+    return LeadListListResponse(lists=items, total=len(items))
 
 
 @router.get("/{list_id}", response_model=LeadListResponse)

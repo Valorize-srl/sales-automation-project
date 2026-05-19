@@ -42,6 +42,10 @@ class LeadListResponse(BaseModel):
 
     # Calculated property
     total_leads: int = Field(default=0, description="Total leads (people + companies)")
+    # Count of distinct Person rows linked (via Company → company_lead_list) to
+    # this list, where Person.email is populated. Useful as a "ready-to-push"
+    # counter for outreach campaigns.
+    dm_with_email_count: int = Field(default=0, description="Decision makers with a populated email in this list")
 
     model_config = {"from_attributes": True}
 

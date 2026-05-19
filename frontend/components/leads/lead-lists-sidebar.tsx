@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Users, Tag, Loader2, Edit2 } from "lucide-react";
+import { Plus, Trash2, Users, Tag, Loader2, Edit2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { LeadList } from "@/types";
@@ -116,7 +116,18 @@ export function LeadListsSidebar({ selectedListId, onSelectList, refreshKey }: P
                 title="Click per cambiare colore"
               />
               <span className="flex-1 truncate">{ll.name}</span>
-              <span className="text-[10px] text-muted-foreground tabular-nums">{ll.companies_count}</span>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground tabular-nums shrink-0">
+                <span title={`${ll.companies_count} aziende`}>{ll.companies_count}</span>
+                {(ll.dm_with_email_count ?? 0) > 0 && (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60"
+                    title={`${ll.dm_with_email_count} decision maker con email`}
+                  >
+                    <Mail className="h-2.5 w-2.5" />
+                    {ll.dm_with_email_count}
+                  </span>
+                )}
+              </div>
               <div className="hidden group-hover:flex items-center">
                 <button
                   className="text-muted-foreground hover:text-foreground p-0.5"

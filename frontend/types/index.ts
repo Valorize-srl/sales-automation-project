@@ -465,6 +465,9 @@ export interface LeadList {
   filters_snapshot: Record<string, unknown> | null;
   people_count: number;
   companies_count: number;
+  /** Distinct DMs (Person rows) with a populated email that belong to any
+   * company in this list — i.e. the "ready-to-push" count for outreach. */
+  dm_with_email_count: number;
   created_at: string;
   updated_at: string;
   total_leads: number;
