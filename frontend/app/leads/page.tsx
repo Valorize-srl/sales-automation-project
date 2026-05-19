@@ -866,7 +866,7 @@ export default function LeadsPage() {
             open={findymailOpen}
             onOpenChange={setFindymailOpen}
             companies={findymailCompanies}
-            onCompleted={() => loadCompanies(page)}
+            onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
             onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
           />
 
@@ -874,7 +874,7 @@ export default function LeadsPage() {
             open={findymailFindOpen}
             onOpenChange={setFindymailFindOpen}
             companies={findymailFindCompanies}
-            onCompleted={() => loadCompanies(page)}
+            onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
             onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
           />
 
