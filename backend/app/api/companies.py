@@ -1664,6 +1664,100 @@ class FindymailFindDMRequest(BaseModel):
     target_titles: list[str]
 
 
+@router.post("/{company_id}/findymail-find-company-info")
+async def findymail_find_company_info(
+    company_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Fill missing company fields by looking up the company on Findymail's
+    /search/company. Findymail accepts any of {linkedin_url, website, domain,
+    name} as input; we send whatever we have, preferring the most precise
+    signal (website > linkedin > name).
+
+    Backfills (does NOT overwrite existing values):
+      - linkedin_url           (the canonical /company/<slug> URL)
+      - industry, location, email_domain
+
+    Returns the fields that were populated so the UI can show them.
+    """
+    from app.services.findymail import FindymailService, FindymailError
+
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    try:
+        service = FindymailService()
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    website = (company.website or "").strip() or None
+    li = (company.linkedin_url or "").strip() or None
+    name = (company.name or "").strip() or None
+
+    try:
+        info = await service.lookup_company_info(
+            website=website if website else None,
+            linkedin_url=li if (li and not website) else None,
+            name=name if (not website and not li) else None,
+        )
+    except FindymailError as e:
+        raise HTTPException(502, e.detail)
+
+    if not info:
+        return {
+            "company_id": company.id,
+            "company_name": company.name,
+            "found": False,
+            "updated_fields": [],
+            "matched": None,
+        }
+
+    matched = {
+        "name": info.get("name"),
+        "domain": info.get("domain"),
+        "linkedin_url": info.get("linkedin_url"),
+        "industry": info.get("industry"),
+        "company_size": info.get("company_size"),
+        "city": info.get("city"),
+        "region": info.get("region"),
+        "country": info.get("country"),
+    }
+
+    updated_fields: list[str] = []
+    new_li = (info.get("linkedin_url") or "").strip() or None
+    if new_li and not company.linkedin_url:
+        company.linkedin_url = new_li[:500]
+        updated_fields.append("linkedin_url")
+    new_industry = (info.get("industry") or "").strip() or None
+    if new_industry and not company.industry:
+        company.industry = new_industry[:255]
+        updated_fields.append("industry")
+    new_domain = (info.get("domain") or "").strip().lower() or None
+    if new_domain and not company.email_domain:
+        company.email_domain = new_domain[:100]
+        updated_fields.append("email_domain")
+    # Compose a location string when missing
+    if not company.location:
+        loc_parts = [info.get("city"), info.get("region"), info.get("country")]
+        loc = ", ".join(p for p in loc_parts if p) or None
+        if loc:
+            company.location = loc[:255]
+            updated_fields.append("location")
+
+    if updated_fields:
+        await db.commit()
+        await db.refresh(company)
+
+    return {
+        "company_id": company.id,
+        "company_name": company.name,
+        "found": True,
+        "updated_fields": updated_fields,
+        "matched": matched,
+    }
+
+
 @router.post("/{company_id}/findymail-find-decision-makers")
 async def findymail_find_decision_makers(
     company_id: int,

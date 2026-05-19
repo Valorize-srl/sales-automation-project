@@ -104,20 +104,23 @@ class FindymailService:
             return None
         return await self._post("/search/name", {"name": name, "domain": domain})
 
-    async def lookup_company_domain(self, *, linkedin_url: Optional[str] = None,
-                                    website: Optional[str] = None,
-                                    name: Optional[str] = None) -> Optional[str]:
-        """Resolve a company's email domain via Findymail's /search/company.
+    async def lookup_company_info(self, *, linkedin_url: Optional[str] = None,
+                                  website: Optional[str] = None,
+                                  name: Optional[str] = None,
+                                  domain: Optional[str] = None) -> Optional[dict]:
+        """Look up a company via Findymail's /search/company.
 
-        Used as a fallback when our DB has only a LinkedIn company URL (no
-        website / email_domain). Findymail accepts any of {linkedin_url,
-        website, domain, name} and returns `{name, domain, ...}`.
+        Accepts any of {linkedin_url, website, name, domain}. Returns the
+        full `{name, domain, linkedin_url, company_size, industry,
+        description, city, region, country}` dict or None.
         """
         body: dict = {}
         if linkedin_url:
             body["linkedin_url"] = linkedin_url
         elif website:
             body["website"] = website
+        elif domain:
+            body["domain"] = domain
         elif name:
             body["name"] = name
         else:
@@ -144,7 +147,19 @@ class FindymailService:
             return None
         if not isinstance(data, dict):
             return None
-        domain = (data.get("domain") or "").strip().lower()
+        return data
+
+    async def lookup_company_domain(self, *, linkedin_url: Optional[str] = None,
+                                    website: Optional[str] = None,
+                                    name: Optional[str] = None) -> Optional[str]:
+        """Thin wrapper around lookup_company_info that returns just the domain.
+        Kept for backwards compat with the LinkedIn-find-DM endpoint."""
+        info = await self.lookup_company_info(
+            linkedin_url=linkedin_url, website=website, name=name,
+        )
+        if not info:
+            return None
+        domain = (info.get("domain") or "").strip().lower()
         return domain or None
 
     async def find_contacts_by_domain_and_roles(

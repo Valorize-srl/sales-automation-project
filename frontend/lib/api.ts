@@ -235,6 +235,28 @@ class ApiClient {
     return { imported_count: r.imported_count, candidates: r.candidates };
   }
 
+  /** Findymail company lookup: fills missing fields (linkedin_url, industry,
+   * location, email_domain) on the company by querying Findymail with
+   * whatever signal we have (website > linkedin_url > name). */
+  async findymailFindCompanyInfo(companyId: number): Promise<{
+    company_id: number;
+    company_name: string;
+    found: boolean;
+    updated_fields: string[];
+    matched: {
+      name: string | null;
+      domain: string | null;
+      linkedin_url: string | null;
+      industry: string | null;
+      company_size: string | null;
+      city: string | null;
+      region: string | null;
+      country: string | null;
+    } | null;
+  }> {
+    return this.post(`/companies/${companyId}/findymail-find-company-info`);
+  }
+
   /** Findymail "find by role": given target_titles + the company's domain
    * (derived from email_domain or website), Findymail returns name + email
    * for each contact at that company matching the roles. Persists each new

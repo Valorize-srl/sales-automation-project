@@ -12,6 +12,7 @@ import { BulkScrapeDialog } from "@/components/leads/bulk-scrape-dialog";
 import { LinkedInFindDMDialog } from "@/components/leads/linkedin-find-dm-dialog";
 import { FindymailEnrichDialog } from "@/components/leads/findymail-enrich-dialog";
 import { FindymailFindDMDialog } from "@/components/leads/findymail-find-dm-dialog";
+import { FindymailFindCompanyInfoDialog } from "@/components/leads/findymail-find-company-info-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -58,6 +59,9 @@ export default function LeadsPage() {
   const [findymailFindOpen, setFindymailFindOpen] = useState(false);
   const [findymailFindCompanies, setFindymailFindCompanies] = useState<Company[]>([]);
   const [findymailFindPreparing, setFindymailFindPreparing] = useState(false);
+  const [findymailCoOpen, setFindymailCoOpen] = useState(false);
+  const [findymailCoCompanies, setFindymailCoCompanies] = useState<Company[]>([]);
+  const [findymailCoPreparing, setFindymailCoPreparing] = useState(false);
   const [enrichMenuOpen, setEnrichMenuOpen] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
@@ -273,6 +277,40 @@ export default function LeadsPage() {
       setFindymailCompanies(companies);
     }
     setFindymailOpen(true);
+  };
+
+  /** Findymail company-info lookup — fills missing linkedin_url, industry,
+   * location, email_domain. Same selection logic. */
+  const openFindymailCompanyInfo = async () => {
+    setEnrichMenuOpen(false);
+    if (selectAllMatching) {
+      setFindymailCoPreparing(true);
+      try {
+        const PAGE_SIZE = 200;
+        const acc: Company[] = [];
+        let p = 1;
+        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+        acc.push(...first.companies);
+        while (p < first.total_pages) {
+          p += 1;
+          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
+          acc.push(...next.companies);
+        }
+        setFindymailCoCompanies(acc);
+        setFindymailCoOpen(true);
+      } catch (e) {
+        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+      } finally {
+        setFindymailCoPreparing(false);
+      }
+      return;
+    }
+    if (selectedIds.size > 0) {
+      setFindymailCoCompanies(companies.filter((c) => selectedIds.has(c.id)));
+    } else {
+      setFindymailCoCompanies(companies);
+    }
+    setFindymailCoOpen(true);
   };
 
   /** Findymail find-by-role — finds DMs matching given titles (1 round-trip
@@ -664,10 +702,10 @@ export default function LeadsPage() {
               </div>
               <div className="relative">
                 <Button size="sm" variant="outline" className="gap-1.5"
-                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing}
+                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailCoPreparing}
                   onClick={() => setEnrichMenuOpen(!enrichMenuOpen)}>
                   <Sparkles className="h-3.5 w-3.5" />
-                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing
+                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailCoPreparing
                     ? "Preparo…"
                     : "Arricchisci"}
                   <ChevronDown className="h-3 w-3 opacity-60" />
@@ -685,6 +723,23 @@ export default function LeadsPage() {
                           <p className="font-medium leading-tight">Scrapa siti web</p>
                           <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
                             Estrai email + LinkedIn dalle pagine del sito aziendale
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
+                        onClick={openFindymailCompanyInfo}
+                      >
+                        <Linkedin className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight flex items-center gap-1.5">
+                            Trova LinkedIn azienda
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
+                              Findymail
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Cerca pagina LinkedIn aziendale + settore + dominio email (gratis)
                           </p>
                         </div>
                       </button>
@@ -818,6 +873,13 @@ export default function LeadsPage() {
             open={findymailFindOpen}
             onOpenChange={setFindymailFindOpen}
             companies={findymailFindCompanies}
+            onCompleted={() => loadCompanies(page)}
+          />
+
+          <FindymailFindCompanyInfoDialog
+            open={findymailCoOpen}
+            onOpenChange={setFindymailCoOpen}
+            companies={findymailCoCompanies}
             onCompleted={() => loadCompanies(page)}
           />
 
