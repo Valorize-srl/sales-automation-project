@@ -867,6 +867,7 @@ export default function LeadsPage() {
             onOpenChange={setFindymailOpen}
             companies={findymailCompanies}
             onCompleted={() => loadCompanies(page)}
+            onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
           />
 
           <FindymailFindDMDialog
@@ -874,6 +875,7 @@ export default function LeadsPage() {
             onOpenChange={setFindymailFindOpen}
             companies={findymailFindCompanies}
             onCompleted={() => loadCompanies(page)}
+            onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
           />
 
           <FindymailFindCompanyInfoDialog

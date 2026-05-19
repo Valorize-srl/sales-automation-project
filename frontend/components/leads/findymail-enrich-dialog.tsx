@@ -36,6 +36,9 @@ interface FindymailEnrichDialogProps {
   onOpenChange: (open: boolean) => void;
   companies: Company[];
   onCompleted?: () => void;
+  /** Optional: footer "Aggiungi DM a campagna" button. Forwards the company
+   * IDs that had at least one DM enriched with email. */
+  onPushToCampaign?: (companyIds: number[]) => void;
 }
 
 /**
@@ -53,7 +56,7 @@ function FindymailBadge() {
 }
 
 export function FindymailEnrichDialog({
-  open, onOpenChange, companies, onCompleted,
+  open, onOpenChange, companies, onCompleted, onPushToCampaign,
 }: FindymailEnrichDialogProps) {
   const [rows, setRows] = useState<CompanyRowState[]>([]);
   const [running, setRunning] = useState(false);
@@ -121,6 +124,10 @@ export function FindymailEnrichDialog({
 
   const completedCount = rows.filter((r) => r.status === "done" || r.status === "error").length;
   const totalEnriched = rows.reduce((acc, r) => acc + r.enriched_count, 0);
+  // Aziende dove almeno un DM ha ora una email valida (post-enrich)
+  const pushableCompanyIds = rows
+    .filter((r) => r.status === "done" && r.people.some((p) => p.email && p.email.trim()))
+    .map((r) => r.company.id);
   const totalChecked = rows.reduce((acc, r) => acc + r.checked, 0);
   const progress = rows.length > 0 ? Math.round((completedCount / rows.length) * 100) : 0;
 
@@ -264,7 +271,22 @@ export function FindymailEnrichDialog({
                   ? `${totalEnriched} email salvate sui Person.`
                   : "Nessuna email trovata."}
               </p>
-              <Button variant="outline" onClick={() => handleOpen(false)}>Chiudi</Button>
+              <div className="flex items-center gap-2">
+                {onPushToCampaign && pushableCompanyIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => {
+                      onPushToCampaign(pushableCompanyIds);
+                      handleOpen(false);
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Aggiungi DM a campagna ({pushableCompanyIds.length})
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => handleOpen(false)}>Chiudi</Button>
+              </div>
             </div>
           )}
         </div>
