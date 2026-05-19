@@ -286,6 +286,37 @@ class ApiClient {
     });
   }
 
+  /** Findymail "find DM complete": chains /search/employees → /search/linkedin
+   * to return name + linkedin URL + email in one shot. `maxResults` is clamped
+   * to [1, 10] server-side. Costs ~1 credit per profile + 1 per email found. */
+  async findDMViaLinkedInFindymail(
+    companyId: number,
+    targetTitles: string[],
+    maxResults: number = 5,
+  ): Promise<{
+    company_id: number;
+    company_name: string;
+    website?: string | null;
+    website_resolved_via?: "db" | "linkedin";
+    candidates_found: number;
+    with_email: number;
+    imported_count: number;
+    duplicates_skipped: number;
+    people: Array<{
+      id: number;
+      first_name: string;
+      last_name: string;
+      title: string | null;
+      email: string | null;
+      linkedin_url: string | null;
+    }>;
+  }> {
+    return this.post(`/companies/${companyId}/findymail-find-dm-via-linkedin`, {
+      target_titles: targetTitles,
+      max_results: maxResults,
+    });
+  }
+
   /** Findymail enrichment: for every Person linked to this company without an
    * email, look up the address via Findymail (linkedin_url first, name+domain
    * fallback) and persist on Person. */

@@ -162,6 +162,58 @@ class FindymailService:
         domain = (info.get("domain") or "").strip().lower()
         return domain or None
 
+    async def find_employees_by_website(
+        self, website: str, job_titles: list[str]
+    ) -> list[dict]:
+        """Find employees AT a company by website + job titles.
+
+        Findymail's `/search/employees` returns profiles with name, linkedinUrl,
+        jobTitle, companyName, companyWebsite (no email). Costs 1 credit per
+        profile returned. Used as first leg of the "find DM via LinkedIn" flow
+        — the linkedinUrl is then fed into `/search/linkedin` to fetch the
+        email.
+
+        Returns the list (possibly empty). Raises FindymailError on
+        auth/credit/rate errors.
+        """
+        if not website or not job_titles:
+            return []
+        url = f"{self.BASE_URL}/search/employees"
+        async with httpx.AsyncClient(timeout=self.TIMEOUT_SECONDS) as client:
+            try:
+                resp = await client.post(
+                    url,
+                    headers=self._headers(),
+                    json={"website": website, "job_titles": job_titles},
+                )
+            except httpx.RequestError as e:
+                raise FindymailError(0, f"network error: {e}") from e
+
+        if resp.status_code == 404:
+            return []
+        if resp.status_code in (401, 403):
+            raise FindymailError(resp.status_code, "Findymail API key invalid or unauthorised")
+        if resp.status_code == 402:
+            raise FindymailError(402, "Findymail credit balance exhausted")
+        if resp.status_code == 429:
+            raise FindymailError(429, "Findymail rate limit exceeded")
+        if resp.status_code >= 400:
+            raise FindymailError(resp.status_code, resp.text[:300])
+
+        try:
+            data = resp.json()
+        except ValueError:
+            return []
+        # API may return either {"employees": [...]} or {"contacts": [...]}
+        for key in ("employees", "contacts", "results", "data"):
+            v = data.get(key) if isinstance(data, dict) else None
+            if isinstance(v, list):
+                return [p for p in v if isinstance(p, dict)]
+        # Fallback: top-level list
+        if isinstance(data, list):
+            return [p for p in data if isinstance(p, dict)]
+        return []
+
     async def find_contacts_by_domain_and_roles(
         self, domain: str, roles: list[str]
     ) -> list[dict]:

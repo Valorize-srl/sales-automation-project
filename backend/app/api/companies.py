@@ -1664,6 +1664,14 @@ class FindymailFindDMRequest(BaseModel):
     target_titles: list[str]
 
 
+class FindymailFindDMViaLinkedInRequest(BaseModel):
+    """Find DM via Findymail /search/employees + /search/linkedin chain.
+    Returns name + linkedin URL + email in one shot.
+    """
+    target_titles: list[str]
+    max_results: int = 5
+
+
 @router.post("/{company_id}/findymail-find-company-info")
 async def findymail_find_company_info(
     company_id: int,
@@ -1894,6 +1902,185 @@ async def findymail_find_decision_makers(
         "domain": domain,
         "domain_resolved_via": domain_resolved_via,  # 'db' | 'linkedin'
         "candidates_found": len(contacts),
+        "imported_count": len(imported),
+        "duplicates_skipped": skipped_dup,
+        "people": [
+            {
+                "id": p.id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "title": p.title,
+                "email": p.email,
+                "linkedin_url": p.linkedin_url,
+            }
+            for p in imported
+        ],
+    }
+
+
+@router.post("/{company_id}/findymail-find-dm-via-linkedin")
+async def findymail_find_dm_via_linkedin(
+    company_id: int,
+    body: FindymailFindDMViaLinkedInRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Find DMs at a company via Findymail's `/search/employees` →
+    `/search/linkedin` chain, returning name + LinkedIn URL + email in one
+    shot.
+
+    Flow:
+      1. Resolve a website for the company (website → fallback to
+         /search/company on linkedin_url).
+      2. Call /search/employees(website, job_titles) → list of profiles
+         with linkedinUrl.
+      3. For each profile (sequential), call /search/linkedin(linkedin_url)
+         → email (may be None).
+      4. Persist as Person rows, dedup by email and linkedin_url within
+         this company.
+
+    Budget: 1 credit per profile returned by /search/employees + 1 credit
+    per email actually found by /search/linkedin. `max_results` is clamped
+    to [1, 10] to cap spend.
+    """
+    from app.services.findymail import FindymailService, FindymailError
+
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    titles = [t.strip() for t in (body.target_titles or []) if t.strip()]
+    if not titles:
+        raise HTTPException(400, "target_titles is required")
+    if len(titles) > 3:
+        raise HTTPException(
+            400,
+            f"Findymail accetta massimo 3 ruoli per ricerca (ne hai indicati {len(titles)}). "
+            "Riduci la lista o lancia ricerche separate.",
+        )
+
+    # Clamp max_results to [1, 10] to keep Findymail spend bounded.
+    max_results = max(1, min(10, int(body.max_results or 5)))
+
+    try:
+        service = FindymailService()
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+    # Resolve a website to feed /search/employees. Prefer DB website; if
+    # absent but we have a company LinkedIn URL, resolve via /search/company.
+    website = (company.website or "").strip() or None
+    website_resolved_via = "db" if website else None
+    if not website and company.linkedin_url:
+        try:
+            info = await service.lookup_company_info(linkedin_url=company.linkedin_url)
+        except FindymailError as e:
+            raise HTTPException(502, e.detail)
+        if info:
+            website = (info.get("website") or info.get("domain") or "").strip() or None
+            website_resolved_via = "linkedin"
+
+    if not website:
+        raise HTTPException(
+            400,
+            "L'azienda non ha né sito web né LinkedIn URL aziendale: "
+            "impossibile cercare i dipendenti via Findymail.",
+        )
+
+    try:
+        profiles = await service.find_employees_by_website(website, titles)
+    except FindymailError as e:
+        raise HTTPException(e.status_code or 502, e.detail)
+
+    # Cap to max_results to avoid runaway credit spend on the second leg.
+    profiles = profiles[:max_results]
+    candidates_found = len(profiles)
+
+    # Dedup against existing Persons for this company (by email or linkedin_url)
+    existing_result = await db.execute(
+        select(Person.email, Person.linkedin_url).where(Person.company_id == company_id)
+    )
+    existing_emails: set[str] = set()
+    existing_li: set[str] = set()
+    for em, li in existing_result.all():
+        if em: existing_emails.add(em.lower())
+        if li: existing_li.add(li)
+
+    imported: list[Person] = []
+    skipped_dup = 0
+    with_email = 0
+    for profile in profiles:
+        full_name = (profile.get("name") or "").strip()
+        if not full_name:
+            continue
+        profile_linkedin = (
+            profile.get("linkedinUrl") or profile.get("linkedin_url") or ""
+        ).strip() or None
+        job_title = (profile.get("jobTitle") or profile.get("job_title") or "").strip() or None
+
+        # Second leg: fetch email by linkedin URL.
+        email: Optional[str] = None
+        canonical_linkedin: Optional[str] = None
+        if profile_linkedin:
+            try:
+                contact = await service.find_email_by_linkedin(profile_linkedin)
+            except FindymailError as e:
+                # Soft-fail on rate-limit/credit so we still save the partial
+                # rows from earlier in the loop. Raise immediately so the user
+                # sees what happened.
+                if imported:
+                    await db.commit()
+                raise HTTPException(e.status_code or 502, e.detail)
+            if contact and isinstance(contact, dict):
+                em = (contact.get("email") or "").strip().lower()
+                email = em or None
+                # If Findymail returned a canonical /in/<slug>, prefer it.
+                ret_li = (contact.get("linkedin_url") or "").strip() or None
+                if ret_li:
+                    canonical_linkedin = ret_li
+
+        linkedin_url = canonical_linkedin or profile_linkedin
+        if email:
+            with_email += 1
+
+        # Split name
+        parts = full_name.split(" ", 1)
+        first_name = parts[0].strip() or "Unknown"
+        last_name = (parts[1].strip() if len(parts) > 1 else "") or "Unknown"
+
+        if email and email in existing_emails:
+            skipped_dup += 1
+            continue
+        if linkedin_url and linkedin_url in existing_li:
+            skipped_dup += 1
+            continue
+
+        person = Person(
+            first_name=first_name[:100],
+            last_name=last_name[:100],
+            company_id=company.id,
+            company_name=company.name,
+            email=email[:255] if email else None,
+            linkedin_url=linkedin_url[:500] if linkedin_url else None,
+            title=job_title[:255] if job_title else None,
+            client_tag=company.client_tag,
+        )
+        db.add(person)
+        imported.append(person)
+        if email: existing_emails.add(email)
+        if linkedin_url: existing_li.add(linkedin_url)
+
+    if imported:
+        await db.commit()
+        for p in imported:
+            await db.refresh(p)
+
+    return {
+        "company_id": company_id,
+        "company_name": company.name,
+        "website": website,
+        "website_resolved_via": website_resolved_via,  # 'db' | 'linkedin'
+        "candidates_found": candidates_found,
+        "with_email": with_email,
         "imported_count": len(imported),
         "duplicates_skipped": skipped_dup,
         "people": [
