@@ -39,10 +39,14 @@ interface FindymailFindDMDialogProps {
   onOpenChange: (open: boolean) => void;
   companies: Company[];
   onCompleted?: () => void;
+  /** Optional: when the user clicks "Aggiungi DM a campagna" in the footer,
+   * we forward the company IDs that had at least one imported DM with email,
+   * and the parent opens its PushToCampaignDialog. */
+  onPushToCampaign?: (companyIds: number[]) => void;
 }
 
 export function FindymailFindDMDialog({
-  open, onOpenChange, companies, onCompleted,
+  open, onOpenChange, companies, onCompleted, onPushToCampaign,
 }: FindymailFindDMDialogProps) {
   const [titlesInput, setTitlesInput] = useState("");
   const [rows, setRows] = useState<CompanyRowState[]>([]);
@@ -120,6 +124,11 @@ export function FindymailFindDMDialog({
   const totalImported = rows.reduce((acc, r) => acc + r.imported_count, 0);
   const totalCandidates = rows.reduce((acc, r) => acc + r.candidates_found, 0);
   const progress = rows.length > 0 ? Math.round((completedCount / rows.length) * 100) : 0;
+  // Aziende che hanno almeno un DM importato con email valida — solo queste
+  // hanno senso da spingere su Instantly.
+  const pushableCompanyIds = rows
+    .filter((r) => r.status === "done" && r.people.some((p) => p.email && p.email.trim()))
+    .map((r) => r.company.id);
 
   const toggleExpand = (idx: number) =>
     setRows((prev) => {
@@ -307,7 +316,22 @@ export function FindymailFindDMDialog({
                   ? `${totalImported} decision maker salvat${totalImported === 1 ? "o" : "i"} con email.`
                   : "Nessun nuovo decision maker salvato."}
               </p>
-              <Button variant="outline" onClick={() => handleOpen(false)}>Chiudi</Button>
+              <div className="flex items-center gap-2">
+                {onPushToCampaign && pushableCompanyIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => {
+                      onPushToCampaign(pushableCompanyIds);
+                      handleOpen(false);
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Aggiungi DM a campagna ({pushableCompanyIds.length})
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => handleOpen(false)}>Chiudi</Button>
+              </div>
             </div>
           )}
         </div>
