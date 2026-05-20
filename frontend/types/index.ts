@@ -79,6 +79,7 @@ export interface EmailResponse {
   direction: MessageDirection;
   sentiment: Sentiment | null;
   sentiment_score: number | null;
+  lead_category: string | null;
   ai_suggested_reply: string | null;
   human_approved_reply: string | null;
   status: ResponseStatus;
@@ -323,6 +324,20 @@ export interface DashboardChartEntry {
   replies: number;
 }
 
+export interface DashboardIntentEntry {
+  category: string;
+  count: number;
+}
+
+export interface DashboardTopCampaign {
+  id: number;
+  name: string;
+  total_sent: number;
+  total_opened: number;
+  total_replied: number;
+  reply_rate: number;
+}
+
 export interface DashboardStats {
   people_count: number;
   companies_count: number;
@@ -332,6 +347,8 @@ export interface DashboardStats {
   total_replied: number;
   converted_count: number;
   chart_data: DashboardChartEntry[];
+  intent_breakdown: DashboardIntentEntry[];
+  top_campaigns: DashboardTopCampaign[];
 }
 
 // === Usage Tracking & Settings ===

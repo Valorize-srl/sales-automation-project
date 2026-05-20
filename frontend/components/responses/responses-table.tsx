@@ -107,18 +107,26 @@ export function ResponsesTable({
                 {truncate(resp.message_body, 60)}
               </TableCell>
               <TableCell>
-                {resp.sentiment ? (
-                  <Badge
-                    variant="outline"
-                    className={sentimentColors[resp.sentiment]}
-                  >
-                    {resp.sentiment}
-                    {resp.sentiment_score !== null &&
-                      ` (${(resp.sentiment_score * 100).toFixed(0)}%)`}
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">{"\u2014"}</span>
-                )}
+                <div className="flex flex-col gap-1 items-start">
+                  {resp.lead_category ? (
+                    <Badge
+                      variant="outline"
+                      className={`${resp.sentiment ? sentimentColors[resp.sentiment] : ""} font-medium`}
+                      title="Smartlead category"
+                    >
+                      {resp.lead_category}
+                    </Badge>
+                  ) : resp.sentiment ? (
+                    <Badge
+                      variant="outline"
+                      className={sentimentColors[resp.sentiment]}
+                    >
+                      {resp.sentiment}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{"\u2014"}</span>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 <Badge

@@ -131,6 +131,16 @@ class _CategoryCache:
             hit = self._by_id.get(int(category_id))
         return hit[1] if hit else Sentiment.NEUTRAL
 
+    async def name_for_id(self, category_id: Optional[int]) -> Optional[str]:
+        if category_id is None:
+            return None
+        await self._ensure_loaded()
+        hit = self._by_id.get(int(category_id))
+        if hit is None:
+            await self.refresh()
+            hit = self._by_id.get(int(category_id))
+        return hit[0] if hit else None
+
     def sentiment_for_name(self, category_name: Optional[str]) -> Optional[Sentiment]:
         if not category_name:
             return None

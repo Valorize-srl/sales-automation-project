@@ -19,6 +19,7 @@ class EmailResponseOut(BaseModel):
     direction: str
     sentiment: Optional[str] = None
     sentiment_score: Optional[float] = None
+    lead_category: Optional[str] = None  # original Smartlead label, when present
     ai_suggested_reply: Optional[str] = None
     human_approved_reply: Optional[str] = None
     status: str

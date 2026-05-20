@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Download, Loader2, X, Clock } from "lucide-react";
+import { X, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ResponsesTable } from "@/components/responses/responses-table";
 import { ResponseDetailDialog } from "@/components/responses/response-detail-dialog";
@@ -13,7 +13,6 @@ import {
   CampaignListResponse,
   EmailResponseWithDetails,
   EmailResponseListResponse,
-  FetchRepliesResponse,
   ResponseStats,
 } from "@/types";
 
@@ -22,11 +21,9 @@ export default function ResponsesPage() {
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<number[]>([]);
   const [responses, setResponses] = useState<EmailResponseWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [fetchProgress, setFetchProgress] = useState<string>("");
-  const [fetchResult, setFetchResult] = useState<FetchRepliesResponse | null>(
-    null
-  );
+  // Refresh button removed — replies arrive in real-time via Smartlead
+  // webhook (see backend/app/api/webhooks.py). The 30s poll only re-reads
+  // the local DB as a defensive fallback.
   const [selectedResponse, setSelectedResponse] =
     useState<EmailResponseWithDetails | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -38,7 +35,7 @@ export default function ResponsesPage() {
   const { toast } = useToast();
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  const POLL_INTERVAL = 30 * 1000; // 30 seconds — replies arrive via webhook, this is just a fallback refresh
 
   useEffect(() => {
     loadCampaigns();
@@ -117,34 +114,6 @@ export default function ResponsesPage() {
       setCampaigns(data.campaigns);
     } catch (err) {
       console.error("Failed to load campaigns:", err);
-    }
-  };
-
-  const handleFetchReplies = async () => {
-    // Replies arrive via Smartlead webhook in real-time — this button just
-    // reloads the local list to pick up anything new since last render.
-    setFetching(true);
-    setFetchResult(null);
-    setFetchProgress("Refreshing from database...");
-
-    try {
-      await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
-      await loadStats(selectedCampaignIds, filterDateFrom, filterDateTo);
-      setFetchProgress("");
-      toast({
-        title: "Refreshed",
-        description: "Replies are kept up-to-date in real-time via Smartlead webhook.",
-      });
-    } catch (err) {
-      console.error("Refresh failed:", err);
-      setFetchProgress("");
-      toast({
-        title: "Refresh Failed",
-        description: err instanceof Error ? err.message : "Failed to refresh replies",
-        variant: "destructive",
-      });
-    } finally {
-      setFetching(false);
     }
   };
 
@@ -239,6 +208,13 @@ export default function ResponsesPage() {
             {filterSentiment && stats ? ` (${stats.total} total)` : ""}
             {selectedCampaignIds.length > 0 &&
               ` from ${selectedCampaignIds.length} campaign${selectedCampaignIds.length > 1 ? "s" : ""}`}
+            <span className="ml-2 inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Live · Smartlead webhook
+            </span>
             {lastRefresh && (
               <span className="ml-2 inline-flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -253,40 +229,8 @@ export default function ResponsesPage() {
             selectedIds={selectedCampaignIds}
             onSelectionChange={setSelectedCampaignIds}
           />
-          <Button
-            onClick={handleFetchReplies}
-            disabled={fetching || selectedCampaignIds.length === 0}
-            variant="outline"
-            className="gap-1"
-          >
-            {fetching ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            {fetching ? "Refreshing..." : "Refresh"}
-          </Button>
         </div>
       </div>
-
-      {fetching && fetchProgress && (
-        <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-          <span className="text-blue-900">{fetchProgress}</span>
-        </div>
-      )}
-
-      {fetchResult && !fetching && (
-        <div className={`mb-4 p-3 rounded-lg text-sm ${
-          fetchResult.errors > 0
-            ? "bg-yellow-50 border border-yellow-200 text-yellow-900"
-            : "bg-green-50 border border-green-200 text-green-900"
-        }`}>
-          <strong>Fetch Complete:</strong> {fetchResult.fetched} new {fetchResult.fetched === 1 ? 'reply' : 'replies'} imported
-          {fetchResult.skipped > 0 && `, ${fetchResult.skipped} ${fetchResult.skipped === 1 ? 'duplicate' : 'duplicates'} skipped`}
-          {fetchResult.errors > 0 && ` ⚠️ ${fetchResult.errors} ${fetchResult.errors === 1 ? 'error' : 'errors'} occurred`}.
-        </div>
-      )}
 
       {/* Sentiment summary cards */}
       {stats && stats.total > 0 && (

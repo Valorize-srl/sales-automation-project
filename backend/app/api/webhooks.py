@@ -27,7 +27,7 @@ from app.models.email_response import (
     ResponseStatus,
 )
 from app.models.lead import Lead
-from app.services.smartlead_categories import category_to_sentiment
+from app.services.smartlead_categories import category_to_sentiment, smartlead_categories
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -196,6 +196,10 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
     sentiment = await category_to_sentiment(
         category_id=cat_id_int, category_name=cat_name,
     )
+    # If only the id arrived, resolve the name via the cache for richer
+    # display on the /responses UI.
+    if not cat_name and cat_id_int is not None:
+        cat_name = await smartlead_categories.name_for_id(cat_id_int)
 
     # Parse receive timestamp
     received_at: Optional[datetime] = None
@@ -228,6 +232,7 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
         lead_id=lead.id if lead else None,
         instantly_email_id=str(message_id),  # column reused for Smartlead message_id
         smartlead_lead_id=str(smartlead_lead_id) if smartlead_lead_id is not None else None,
+        lead_category=str(cat_name) if cat_name else None,
         from_email=lead_email,
         sender_email=str(sender_email).lower() if sender_email else None,
         thread_id=payload.get("thread_id"),
