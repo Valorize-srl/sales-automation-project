@@ -37,8 +37,7 @@ interface CreateCampaignDialogProps {
 
 const NO_ICP = "__none__";
 
-// Instantly API accepts only a specific subset of IANA timezones.
-// Display label -> Instantly API value
+// Display label -> IANA timezone value (Smartlead accepts standard IANA names).
 const TIMEZONES: { label: string; value: string }[] = [
   { label: "Rome, Berlin, Paris (UTC+1)", value: "Europe/Belgrade" },
   { label: "London, Dublin (UTC+0)", value: "Europe/Isle_of_Man" },
@@ -152,7 +151,7 @@ export function CreateCampaignDialog({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load email accounts when dialog opens and createOnInstantly is enabled
+  // Load email accounts when dialog opens and createOnInstantly (legacy state name) is enabled
   useEffect(() => {
     if (open && createOnInstantly) {
       loadEmailAccounts();
@@ -331,7 +330,7 @@ export function CreateCampaignDialog({
                 className="h-4 w-4 rounded border-gray-300"
               />
               <Label htmlFor="createOnInstantly" className="font-normal">
-                Also create on Instantly
+                Also create on Smartlead
               </Label>
             </div>
           </div>
@@ -435,7 +434,7 @@ export function CreateCampaignDialog({
                   </p>
                 ) : emailAccounts.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No email accounts found on Instantly.
+                    No email accounts found on Smartlead.
                   </p>
                 ) : (
                   <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 space-y-1">

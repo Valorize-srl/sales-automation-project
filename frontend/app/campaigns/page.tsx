@@ -87,12 +87,12 @@ export default function CampaignsPage() {
     loadCampaigns();
   }, [loadIcps, loadCampaigns]);
 
-  // Auto-polling every 5 minutes: sync metrics from Instantly + reload campaigns
+  // Auto-polling every 5 minutes: sync metrics from Smartlead + reload campaigns
   useEffect(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
-        // First sync metrics from Instantly for all active campaigns
+        // First sync metrics from Smartlead for all active campaigns
         await api.syncAllCampaignMetrics();
       } catch (err) {
         console.error("Auto-sync metrics failed:", err);
@@ -117,7 +117,7 @@ export default function CampaignsPage() {
     } catch (err) {
       toast({
         title: "Sync Failed",
-        description: err instanceof Error ? err.message : "Failed to sync with Instantly",
+        description: err instanceof Error ? err.message : "Failed to sync with Smartlead",
         variant: "destructive",
       });
     } finally {
@@ -136,7 +136,7 @@ export default function CampaignsPage() {
       }
       toast({
         title: "Metrics Updated",
-        description: "Campaign metrics synced from Instantly",
+        description: "Campaign metrics synced from Smartlead",
       });
     } catch (err) {
       toast({
@@ -196,7 +196,7 @@ export default function CampaignsPage() {
       }
       toast({
         title: "Campaign Activated",
-        description: `Campaign "${updated.name}" is now active on Instantly`,
+        description: `Campaign "${updated.name}" is now active on Smartlead`,
       });
     } catch (err) {
       toast({
@@ -327,7 +327,7 @@ export default function CampaignsPage() {
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            {syncing ? "Syncing..." : "Sync from Instantly"}
+            {syncing ? "Syncing..." : "Sync from Smartlead"}
           </Button>
           <Button
             onClick={() => setCreateDialogOpen(true)}

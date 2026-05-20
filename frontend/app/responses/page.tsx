@@ -84,13 +84,11 @@ export default function ResponsesPage() {
     }
   }, []);
 
-  // Auto-fetch new replies from Instantly + refresh local data (silent)
+  // Auto-refresh local responses list (replies arrive in real-time via Smartlead webhook,
+  // we just need to re-read from our DB to pick them up).
   const autoFetchAndRefresh = useCallback(async () => {
     if (selectedCampaignIds.length === 0) return;
     try {
-      // First fetch new replies from Instantly
-      await api.fetchReplies(selectedCampaignIds);
-      // Then reload the local responses list
       await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, true);
     } catch (err) {
       console.error("Auto-refresh failed:", err);
@@ -102,7 +100,7 @@ export default function ResponsesPage() {
     loadStats(selectedCampaignIds, filterDateFrom, filterDateTo);
   }, [selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo, loadResponses, loadStats]);
 
-  // Auto-polling every 5 minutes: fetch from Instantly + refresh
+  // Auto-polling every 5 minutes: refresh from DB (webhooks already keep it warm)
   useEffect(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
     if (selectedCampaignIds.length > 0) {
@@ -123,33 +121,26 @@ export default function ResponsesPage() {
   };
 
   const handleFetchReplies = async () => {
+    // Replies arrive via Smartlead webhook in real-time — this button just
+    // reloads the local list to pick up anything new since last render.
     setFetching(true);
     setFetchResult(null);
-    setFetchProgress("Fetching replies from Instantly...");
-
-    const campaignCount = selectedCampaignIds.length;
+    setFetchProgress("Refreshing from database...");
 
     try {
-      const result = await api.post<FetchRepliesResponse>("/responses/fetch", {
-        campaign_ids: selectedCampaignIds,
-      });
-
-      setFetchResult(result);
-      setFetchProgress("");
-
-      toast({
-        title: "Replies Fetched Successfully",
-        description: `Fetched ${result.fetched} new ${result.fetched === 1 ? 'reply' : 'replies'} from ${campaignCount} ${campaignCount === 1 ? 'campaign' : 'campaigns'}. ${result.skipped > 0 ? `Skipped ${result.skipped} duplicates.` : ''}`,
-      });
-
       await loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
       await loadStats(selectedCampaignIds, filterDateFrom, filterDateTo);
-    } catch (err) {
-      console.error("Fetch failed:", err);
       setFetchProgress("");
       toast({
-        title: "Fetch Failed",
-        description: err instanceof Error ? err.message : "Failed to fetch replies from Instantly",
+        title: "Refreshed",
+        description: "Replies are kept up-to-date in real-time via Smartlead webhook.",
+      });
+    } catch (err) {
+      console.error("Refresh failed:", err);
+      setFetchProgress("");
+      toast({
+        title: "Refresh Failed",
+        description: err instanceof Error ? err.message : "Failed to refresh replies",
         variant: "destructive",
       });
     } finally {
@@ -186,7 +177,7 @@ export default function ResponsesPage() {
       await api.post(`/responses/${id}/send`, {});
       toast({
         title: "Reply Sent",
-        description: "Your reply has been sent successfully via Instantly",
+        description: "Your reply has been sent successfully via Smartlead",
       });
       loadResponses(selectedCampaignIds, filterSentiment, filterDateFrom, filterDateTo);
       setDetailOpen(false);
@@ -273,7 +264,7 @@ export default function ResponsesPage() {
             ) : (
               <Download className="h-4 w-4" />
             )}
-            {fetching ? "Fetching..." : "Fetch Replies"}
+            {fetching ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
       </div>

@@ -342,7 +342,7 @@ export function ResponseDetailDialog({
                   className="gap-1"
                   onClick={handleSend}
                   disabled={sending || !response.instantly_email_id}
-                  title={!response.instantly_email_id ? "Email cannot be sent: missing Instantly email ID. Please re-fetch replies from Instantly." : ""}
+                  title={!response.instantly_email_id ? "Email cannot be sent: this reply was imported before the Smartlead webhook went live and has no thread id." : ""}
                 >
                   {sending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />

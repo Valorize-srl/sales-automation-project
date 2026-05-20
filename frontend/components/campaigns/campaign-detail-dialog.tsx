@@ -181,7 +181,7 @@ export function CampaignDetailDialog({
     } catch (err) {
       toast({
         title: "Push Failed",
-        description: err instanceof Error ? err.message : "Failed to push sequences to Instantly",
+        description: err instanceof Error ? err.message : "Failed to push sequences to Smartlead",
         variant: "destructive",
       });
     } finally {
@@ -200,7 +200,7 @@ export function CampaignDetailDialog({
     } catch (err) {
       toast({
         title: "Sync Failed",
-        description: err instanceof Error ? err.message : "Failed to sync leads from Instantly",
+        description: err instanceof Error ? err.message : "Failed to sync leads from Smartlead",
         variant: "destructive",
       });
     } finally {
@@ -372,7 +372,7 @@ export function CampaignDetailDialog({
                 ) : (
                   <Send className="h-3 w-3" />
                 )}
-                {pushingSequences ? "Pushing..." : dirty ? "Save & Push to Instantly" : "Push to Instantly"}
+                {pushingSequences ? "Pushing..." : dirty ? "Save & Push to Smartlead" : "Push to Smartlead"}
               </Button>
             )}
           </div>
