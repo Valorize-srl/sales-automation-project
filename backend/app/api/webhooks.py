@@ -46,22 +46,61 @@ SMARTLEAD_TO_CAMPAIGN_STATUS: dict[str, CampaignStatus] = {
 
 
 # ----------------------------------------------------------------------
-# HMAC verification
+# Auth — token (query/header) or HMAC signature
 # ----------------------------------------------------------------------
+#
+# Smartlead webhooks (as of 2026-05) do NOT include a signed payload — there
+# is no signing secret you can configure in their UI. To keep the endpoint
+# safe we instead require a shared `SMARTLEAD_WEBHOOK_SECRET` that the user
+# embeds in the webhook URL on Smartlead (e.g. `?token=<secret>`) or, if
+# they ever offer header configuration, in `Authorization: Bearer <secret>`
+# or `X-Webhook-Token`. As a future-proof bonus we still accept HMAC-SHA256
+# signatures should Smartlead later support them.
+
+
+def _verify_token(provided: Optional[str], secret: str) -> bool:
+    if not provided or not secret:
+        return False
+    # Tolerate a `Bearer ` prefix.
+    token = provided.split(" ", 1)[-1].strip()
+    return hmac.compare_digest(token, secret)
 
 
 def _verify_hmac(raw_body: bytes, signature: Optional[str], secret: str) -> bool:
-    """Validate an HMAC-SHA256 signature header against the raw body bytes.
-
-    Fail-closed: if either signature or secret is missing, returns False so
-    the request is rejected. Tolerates a leading `sha256=` prefix that some
-    webhook providers add to the header value.
-    """
     if not signature or not secret:
         return False
     sig = signature.split("=", 1)[-1].strip()
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, sig)
+
+
+def _authenticate_request(request, raw_body: bytes, secret: str) -> bool:
+    """Accept any of: query token, Authorization header, X-Webhook-Token, or
+    HMAC signature in X-Smartlead-Signature / X-Signature / Smartlead-Signature.
+    """
+    if not secret:
+        return False
+    # 1. Query token (the path Smartlead supports today)
+    query_token = request.query_params.get("token")
+    if _verify_token(query_token, secret):
+        return True
+    # 2. Bearer-style header
+    auth_header = request.headers.get("authorization")
+    if _verify_token(auth_header, secret):
+        return True
+    # 3. Custom header
+    custom_header = request.headers.get("x-webhook-token")
+    if _verify_token(custom_header, secret):
+        return True
+    # 4. HMAC signature (future-proof — Smartlead doesn't ship this today)
+    signature = (
+        request.headers.get("x-smartlead-signature")
+        or request.headers.get("x-signature")
+        or request.headers.get("smartlead-signature")
+    )
+    if _verify_hmac(raw_body, signature, secret):
+        return True
+    return False
 
 
 # ----------------------------------------------------------------------
@@ -255,20 +294,20 @@ async def smartlead_webhook(
 ):
     """Receive a Smartlead webhook event.
 
-    Smartlead may sign the request with HMAC-SHA256 — we accept the signature
-    from any of `X-Smartlead-Signature`, `X-Signature`, or
-    `Smartlead-Signature` (varies by account). If `SMARTLEAD_WEBHOOK_SECRET`
-    is unset on the server, all requests are rejected with 401.
+    Smartlead does not sign webhook payloads in its current UI, so we
+    authenticate via a shared secret instead. We accept the secret in any
+    of (precedence order): `?token=…` query param, `Authorization: Bearer`
+    header, or `X-Webhook-Token` header. As a forward-compat bonus we also
+    accept an HMAC-SHA256 signature in `X-Smartlead-Signature` /
+    `X-Signature` / `Smartlead-Signature`.
+
+    If `SMARTLEAD_WEBHOOK_SECRET` is unset on the server, all requests are
+    rejected with 401 (fail-closed).
     """
     raw_body = await request.body()
-    signature = (
-        request.headers.get("x-smartlead-signature")
-        or request.headers.get("x-signature")
-        or request.headers.get("smartlead-signature")
-    )
-    if not _verify_hmac(raw_body, signature, settings.smartlead_webhook_secret):
-        logger.warning("Smartlead webhook rejected — bad/missing signature")
-        raise HTTPException(401, "Invalid webhook signature")
+    if not _authenticate_request(request, raw_body, settings.smartlead_webhook_secret):
+        logger.warning("Smartlead webhook rejected — missing/invalid auth")
+        raise HTTPException(401, "Invalid webhook auth")
 
     try:
         payload = await request.json()
