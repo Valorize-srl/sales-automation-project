@@ -1,6 +1,12 @@
-from typing import Any, Optional
-"""Email responses API routes - fetch, generate AI reply, approve, send, delete."""
-import asyncio
+from typing import Optional
+"""Email responses API routes - list, generate AI reply, approve, send, delete.
+
+Replies arrive via the Smartlead webhook (see `app/api/webhooks.py`) and are
+persisted as `EmailResponse` rows directly. The legacy `/responses/fetch`
+polling endpoint is retained as a no-op stub so any frontend code still
+calling it during the migration window doesn't 404 — it will be removed
+together with its UI button in Phase 4.
+"""
 import html
 import logging
 from datetime import datetime
@@ -11,14 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.database import get_db
-from app.models.campaign import Campaign
 from app.models.email_response import (
     EmailResponse,
     MessageDirection,
     ResponseStatus,
-    Sentiment,
 )
-from app.models.lead import Lead
 from app.schemas.response import (
     EmailResponseOut,
     EmailResponseListResponse,
@@ -27,7 +30,7 @@ from app.schemas.response import (
     ApproveReplyRequest,
     SendReplyResponse,
 )
-from app.services.instantly import instantly_service, InstantlyAPIError
+from app.services.smartlead import smartlead_service, SmartleadAPIError
 from app.services.sentiment import reply_service
 
 logger = logging.getLogger(__name__)
@@ -46,19 +49,6 @@ def _response_to_out(resp: EmailResponse) -> EmailResponseOut:
     if resp.campaign:
         out.campaign_name = resp.campaign.name
     return out
-
-
-def _score_to_sentiment(score: Optional[float]) -> Optional[Sentiment]:
-    """Map Instantly ai_interest_value (0-1) to our Sentiment enum."""
-    if score is None:
-        return None
-    if score >= 0.7:
-        return Sentiment.INTERESTED
-    if score >= 0.4:
-        return Sentiment.POSITIVE
-    if score >= 0.2:
-        return Sentiment.NEUTRAL
-    return Sentiment.NEGATIVE
 
 
 # --- List Responses ---
@@ -108,226 +98,24 @@ async def list_responses(
     return EmailResponseListResponse(responses=items, total=len(items))
 
 
-# --- Fetch Replies from Instantly ---
+# --- Fetch Replies (no-op stub) ---
+#
+# Replies are now pushed in by Smartlead via webhook (`/api/webhooks/smartlead`)
+# the moment they arrive. This endpoint is kept as a no-op so any frontend
+# button still calling it during the migration doesn't 404; it is removed
+# together with its UI in Phase 4.
 
 
-async def _process_email_item(
-    email_item: dict,
-    campaign_id: int,
-    db: AsyncSession,
-    our_accounts: set[str],
-) -> str:
-    """Process a single email item from Instantly. Returns 'fetched', 'skipped', or 'skip_outbound'."""
-    instantly_id = email_item.get("id")
-    if not instantly_id:
-        return "skipped"
-
-    # Deduplication
-    existing = await db.execute(
-        select(EmailResponse.id).where(
-            EmailResponse.instantly_email_id == instantly_id
-        )
-    )
-    if existing.scalar_one_or_none() is not None:
-        return "skipped"
-
-    # Determine direction: if from_address_email is one of our sending accounts, it's outbound
-    from_email = email_item.get("from_address_email", "")
-    eaccount = email_item.get("eaccount", "")
-    if from_email and from_email.lower() in our_accounts:
-        return "skip_outbound"
-
-    # Match lead by sender email
-    lead_id = None
-    if from_email:
-        lead_result = await db.execute(
-            select(Lead).where(Lead.email == from_email.lower())
-        )
-        lead = lead_result.scalar_one_or_none()
-        if lead:
-            lead_id = lead.id
-
-    # Extract body text
-    body_raw = email_item.get("body", "")
-    if isinstance(body_raw, dict):
-        body_text = body_raw.get("text", "") or body_raw.get("html", "")
-    else:
-        body_text = str(body_raw)
-
-    # Parse actual email timestamp from Instantly
-    received_at = None
-    ts_raw = email_item.get("timestamp_email")
-    if ts_raw:
-        try:
-            received_at = datetime.fromisoformat(
-                ts_raw.replace("Z", "+00:00")
-            )
-        except (ValueError, AttributeError):
-            pass
-
-    # Extract sentiment from Instantly's AI interest score
-    ai_interest = email_item.get("ai_interest_value")
-    sentiment_score = None
-    sentiment_val = None
-    if ai_interest is not None:
-        try:
-            sentiment_score = float(ai_interest)
-            sentiment_val = _score_to_sentiment(sentiment_score)
-        except (ValueError, TypeError):
-            pass
-
-    # Create record
-    email_response = EmailResponse(
-        campaign_id=campaign_id,
-        lead_id=lead_id,
-        instantly_email_id=instantly_id,
-        from_email=from_email,
-        sender_email=eaccount,
-        thread_id=email_item.get("thread_id"),
-        subject=email_item.get("subject", ""),
-        message_body=body_text,
-        direction=MessageDirection.INBOUND,
-        status=ResponseStatus.PENDING,
-        received_at=received_at,
-        sentiment=sentiment_val,
-        sentiment_score=sentiment_score,
-    )
-    db.add(email_response)
-    await db.flush()
-    return "fetched"
-
-
-async def _paginated_fetch(
-    campaign_instantly_id: str,
-    campaign_id: int,
-    db: AsyncSession,
-    our_accounts: set[str],
-    email_type: Optional[str] = None,
-    lead_email: Optional[str] = None,
-) -> tuple[int, int]:
-    """Fetch emails from Instantly with pagination. Returns (fetched, skipped)."""
-    fetched = 0
-    skipped = 0
-    starting_after = None
-
-    while True:
-        kwargs: dict[str, Any] = {
-            "campaign_id": campaign_instantly_id,
-            "limit": 50,
-            "starting_after": starting_after,
-        }
-        if email_type:
-            kwargs["email_type"] = email_type
-        if lead_email:
-            kwargs["lead"] = lead_email
-        email_data = await instantly_service.list_emails(**kwargs)
-
-        # Try different response structures (Instantly API format varies)
-        items = (
-            email_data.get("items") or
-            email_data.get("data") or
-            email_data.get("emails") or
-            []
-        )
-        if not items:
-            logger.info(f"No email items found. Response keys: {[k for k in email_data.keys() if k != '_status_code']}")
-            break
-
-        for email_item in items:
-            result = await _process_email_item(email_item, campaign_id, db, our_accounts)
-            if result == "fetched":
-                fetched += 1
-            elif result == "skipped":
-                skipped += 1
-
-        # Cursor pagination — check both top-level and nested pagination object
-        pagination = email_data.get("pagination", {})
-        next_cursor = (
-            email_data.get("next_starting_after") or
-            pagination.get("next_starting_after")
-        )
-        if not next_cursor or len(items) < 50:
-            break
-        starting_after = next_cursor
-        await asyncio.sleep(0.5)  # Rate limit between pagination calls
-
-    return fetched, skipped
-
-
-@router.post("/fetch", response_model=FetchRepliesResponse)
+@router.post("/fetch", response_model=FetchRepliesResponse, deprecated=True)
 async def fetch_replies(
     data: FetchRepliesRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Fetch new replies from Instantly for given campaigns.
-    Imports inbound emails with sentiment from Instantly's ai_interest_value.
-    Outbound emails are filtered via our_accounts detection (DB + Instantly API).
-    Includes retry with backoff on rate limits and inter-campaign throttling.
-    """
-    fetched = 0
-    skipped = 0
-    errors = 0
-
-    # Collect our sending accounts to distinguish inbound vs outbound
-    # 1) From existing records in DB
-    acct_result = await db.execute(
-        select(EmailResponse.sender_email)
-        .where(EmailResponse.sender_email.isnot(None))
-        .distinct()
-    )
-    our_accounts = {row[0].lower() for row in acct_result.all() if row[0]}
-    # 2) Also fetch accounts from Instantly API for reliable detection
-    try:
-        acct_data = await instantly_service.list_accounts(limit=100)
-        api_accounts = acct_data.get("items") or acct_data.get("data") or acct_data.get("accounts") or []
-        for acct in api_accounts:
-            email = acct.get("email", "")
-            if email:
-                our_accounts.add(email.lower())
-    except Exception as e:
-        logger.warning(f"Could not fetch Instantly accounts for outbound detection: {e}")
-
-    camp_result = await db.execute(
-        select(Campaign).where(Campaign.id.in_(data.campaign_ids))
-    )
-    campaigns = camp_result.scalars().all()
     logger.info(
-        f"Fetch replies: {len(campaigns)} campaigns loaded, "
-        f"our_accounts={our_accounts}, "
-        f"requested_ids={data.campaign_ids}"
+        "/responses/fetch called for campaign_ids=%s — no-op (replies arrive via Smartlead webhook)",
+        data.campaign_ids,
     )
-
-    for campaign in campaigns:
-        if not campaign.instantly_campaign_id:
-            logger.warning(f"Campaign {campaign.id} ({campaign.name}) has no instantly_campaign_id, skipping")
-            continue
-        logger.info(f"Fetching replies for campaign {campaign.id} ({campaign.name}), instantly_id={campaign.instantly_campaign_id}")
-
-        try:
-            # Fetch all emails for this campaign (no email_type filter to get everything)
-            f, s = await _paginated_fetch(
-                campaign.instantly_campaign_id,
-                campaign.id,
-                db,
-                our_accounts,
-            )
-            fetched += f
-            skipped += s
-            logger.info(f"Campaign {campaign.id}: fetched={f}, skipped={s}")
-
-        except InstantlyAPIError as e:
-            logger.error(
-                f"Failed to fetch emails for campaign {campaign.id}: {e.detail}"
-            )
-            errors += 1
-
-        # Brief pause between campaigns to avoid rate limits
-        await asyncio.sleep(0.5)
-
-    return FetchRepliesResponse(
-        fetched=fetched, skipped=skipped, errors=errors
-    )
+    return FetchRepliesResponse(fetched=0, skipped=0, errors=0)
 
 
 # --- Response Stats ---
@@ -501,7 +289,15 @@ async def send_reply(
     response_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Send an approved reply via Instantly."""
+    """Send an approved reply via Smartlead's reply-to-thread endpoint.
+
+    Smartlead delivers the reply through the same email account the original
+    thread is on (no per-call eaccount needed), and identifies the thread by
+    the original message_id we stored on EmailResponse plus the Smartlead
+    lead_id captured from the webhook payload.
+    """
+    from datetime import timezone
+
     result = await db.execute(
         select(EmailResponse)
         .options(
@@ -524,38 +320,40 @@ async def send_reply(
     if not reply_text:
         raise HTTPException(400, "No reply text available")
 
+    # `instantly_email_id` is the legacy column name; it stores the Smartlead
+    # message_id of the original inbound email captured by the webhook.
     if not resp.instantly_email_id:
-        raise HTTPException(400, "No Instantly email ID - cannot send reply")
+        raise HTTPException(400, "No Smartlead message id on this response — cannot reply")
+    if not resp.smartlead_lead_id:
+        raise HTTPException(400, "No Smartlead lead id on this response — cannot reply")
+    if not resp.campaign or not resp.campaign.instantly_campaign_id:
+        raise HTTPException(400, "Linked campaign has no Smartlead id — cannot reply")
 
-    if not resp.sender_email:
-        raise HTTPException(400, "No sender email account (eaccount) - cannot send reply")
+    email_html = "<div>{}</div>".format(
+        html.escape(reply_text).replace("\r\n", "<br>").replace("\n", "<br>")
+    )
 
     try:
-        logger.info(f"Sending reply for response {response_id} from {resp.sender_email} to {resp.from_email}")
-        reply_data = {
-            "reply_to_uuid": resp.instantly_email_id,
-            "eaccount": resp.sender_email,
-            "subject": f"Re: {resp.subject}" if resp.subject else "Re: ",
-            "body": {
-                "text": reply_text,
-                "html": "<div>{}</div>".format(
-                    html.escape(reply_text).replace("\r\n", "<br>").replace("\n", "<br>")
-                ),
-            },
-        }
-        result = await instantly_service.reply_to_email(reply_data)
-        logger.info(f"Reply sent successfully for response {response_id}: {result}")
+        logger.info(
+            "Sending Smartlead reply for response %s in campaign smartlead_id=%s lead_id=%s",
+            response_id, resp.campaign.instantly_campaign_id, resp.smartlead_lead_id,
+        )
+        await smartlead_service.reply_to_thread(
+            resp.campaign.instantly_campaign_id,
+            lead_id=resp.smartlead_lead_id,
+            email_body=email_html,
+            reply_message_id=resp.instantly_email_id,
+            reply_email_time=datetime.now(timezone.utc).isoformat(),
+        )
         resp.status = ResponseStatus.SENT
         await db.flush()
         return SendReplyResponse(success=True, message="Reply sent successfully")
-    except InstantlyAPIError as e:
-        logger.error(f"Instantly API error for response {response_id}: {e.detail}")
-        raise HTTPException(
-            502, f"Failed to send reply via Instantly: {e.detail}"
-        )
+    except SmartleadAPIError as e:
+        logger.error("Smartlead reply failed for response %s: %s", response_id, e.detail)
+        raise HTTPException(502, f"Failed to send reply via Smartlead: {e.detail}")
     except Exception as e:
-        logger.error(f"Unexpected error sending response {response_id}: {str(e)}")
-        raise HTTPException(500, f"Internal server error while sending reply: {str(e)}")
+        logger.error("Unexpected error sending response %s: %s", response_id, e)
+        raise HTTPException(500, f"Internal server error while sending reply: {e}")
 
 
 # --- Ignore Response ---

@@ -15,6 +15,7 @@ from app.api import (
     api_keys,
     activity,
     scraper,
+    webhooks,
 )
 
 api_router = APIRouter()
@@ -33,3 +34,4 @@ api_router.include_router(tools.router, prefix="/tools", tags=["tools"])
 api_router.include_router(api_keys.router, prefix="/admin/api-keys", tags=["admin"])
 api_router.include_router(activity.router, prefix="/activity", tags=["activity"])
 api_router.include_router(scraper.router, prefix="/scraper", tags=["scraper"])
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
