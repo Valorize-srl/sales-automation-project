@@ -38,6 +38,7 @@ class EmailResponse(Base):
     campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
     lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
     instantly_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
+    smartlead_lead_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     from_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sender_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     thread_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

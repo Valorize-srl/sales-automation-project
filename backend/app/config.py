@@ -19,8 +19,16 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
 
-    # Instantly
+    # Instantly (legacy — being replaced by Smartlead; kept temporarily so
+    # services that still import it during Phase 1 don't crash. Removed in
+    # the Phase 3 PR that deletes services/instantly.py.)
     instantly_api_key: str = ""
+
+    # Smartlead — sole outreach provider going forward. Auth via
+    # `?api_key=…` query string. Webhook secret is the HMAC signing key
+    # configured when the Smartlead webhook is registered.
+    smartlead_api_key: str = ""
+    smartlead_webhook_secret: str = ""
 
     # Apollo
     apollo_api_key: str = ""
