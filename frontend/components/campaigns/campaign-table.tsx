@@ -64,7 +64,7 @@ export function CampaignTable({
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">
-          No campaigns yet. Sync from Instantly or create a new one.
+          No campaigns yet. Sync from Smartlead or create a new one.
         </p>
       </div>
     );

@@ -75,7 +75,7 @@ export function CampaignMultiSelect({
         <div className="absolute top-full mt-1 left-0 z-50 w-[320px] bg-popover border rounded-md shadow-md">
           {instantlyCampaigns.length === 0 ? (
             <p className="p-3 text-sm text-muted-foreground">
-              No campaigns linked to Instantly
+              No campaigns linked to Smartlead
             </p>
           ) : (
             <>

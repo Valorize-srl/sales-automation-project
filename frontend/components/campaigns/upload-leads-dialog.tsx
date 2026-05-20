@@ -155,7 +155,7 @@ export function UploadLeadsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[550px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Push Leads to Instantly</DialogTitle>
+          <DialogTitle>Push Leads to Smartlead</DialogTitle>
         </DialogHeader>
 
         {hasResult ? (
@@ -201,7 +201,7 @@ export function UploadLeadsDialog({
                 {listResult.pushed_to_instantly > 0 && (
                   <div className="text-sm bg-amber-50 rounded-md p-3 border border-amber-200">
                     <p className="font-medium text-amber-800">
-                      Le lead possono impiegare fino a 5 minuti per apparire su Instantly.
+                      Le lead possono impiegare qualche minuto per apparire su Smartlead.
                     </p>
                   </div>
                 )}
@@ -219,7 +219,7 @@ export function UploadLeadsDialog({
                 )}
                 {/* Debug info */}
                 <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 space-y-1">
-                  <p>Instantly Campaign ID: {(listResult as any).instantly_campaign_id || "N/A"}</p>
+                  <p>Smartlead Campaign ID: {(listResult as any).instantly_campaign_id || "N/A"}</p>
                   <p>Valid leads: {(listResult as any).valid_leads || 0}</p>
                   {(listResult as any).api_responses?.length > 0 && (
                     <div className="mt-1">
@@ -267,7 +267,7 @@ export function UploadLeadsDialog({
             {mode === "people" && (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Select people from your database to push to this Instantly campaign.
+                  Select people from your database to push to this Smartlead campaign.
                 </p>
 
                 {/* Search */}
@@ -344,7 +344,7 @@ export function UploadLeadsDialog({
             {mode === "lists" && (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Select a lead list to push all its people to this Instantly campaign.
+                  Select a lead list to push all its people to this Smartlead campaign.
                 </p>
 
                 {loadingLists ? (

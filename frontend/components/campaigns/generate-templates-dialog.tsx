@@ -267,7 +267,7 @@ export function GenerateTemplatesDialog({
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
-                  {pushingSequences ? "Pushing..." : "Push to Instantly"}
+                  {pushingSequences ? "Pushing..." : "Push to Smartlead"}
                 </Button>
               )}
               <Button onClick={() => handleOpenChange(false)}>Done</Button>

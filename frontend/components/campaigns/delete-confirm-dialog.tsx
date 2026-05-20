@@ -34,7 +34,7 @@ export function DeleteConfirmDialog({
             {count !== 1 ? "e" : ""}.
             <br />
             <br />
-            Le campagne verranno eliminate anche da Instantly.
+            Le campagne verranno eliminate anche da Smartlead.
             <br />
             Questa azione non può essere annullata.
           </AlertDialogDescription>
