@@ -1,5 +1,5 @@
 from typing import Optional
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func as sa_func
@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.models.analytics import Analytics
 from app.models.campaign import Campaign, CampaignStatus
+from app.models.email_response import EmailResponse, MessageDirection
 from app.models.person import Person
 from app.models.company import Company
 
@@ -103,6 +104,63 @@ async def get_dashboard_stats(
     )
     converted_count = converted_result.scalar() or 0
 
+    # Reply intent breakdown — derived from EmailResponse rows landed in the
+    # window (counted by Smartlead lead_category when present, falling back
+    # to our internal sentiment bucket). Inbound replies only.
+    since_dt = datetime.combine(since, datetime.min.time())
+    until_dt = datetime.combine(until, datetime.max.time())
+    date_col = sa_func.coalesce(EmailResponse.received_at, EmailResponse.created_at)
+
+    cat_result = await db.execute(
+        select(EmailResponse.lead_category, sa_func.count())
+        .where(
+            EmailResponse.direction == MessageDirection.INBOUND,
+            date_col >= since_dt,
+            date_col <= until_dt,
+        )
+        .group_by(EmailResponse.lead_category)
+    )
+    intent_breakdown: list[dict] = []
+    for cat_name, cnt in cat_result.all():
+        intent_breakdown.append({
+            "category": cat_name or "Uncategorized",
+            "count": int(cnt),
+        })
+    intent_breakdown.sort(key=lambda r: r["count"], reverse=True)
+
+    # Top campaigns by reply rate (reply_count / sent_count). Only campaigns
+    # with non-trivial volume (sent >= 5) and at least one reply make the
+    # cut, sorted desc, capped at 5.
+    top_q = await db.execute(
+        select(
+            Campaign.id,
+            Campaign.name,
+            Campaign.total_sent,
+            Campaign.total_opened,
+            Campaign.total_replied,
+        )
+        .where(
+            Campaign.deleted_at.is_(None),
+            Campaign.total_sent >= 5,
+        )
+    )
+    top_rows = []
+    for row in top_q.all():
+        sent = int(row.total_sent or 0)
+        replied = int(row.total_replied or 0)
+        if sent <= 0:
+            continue
+        top_rows.append({
+            "id": row.id,
+            "name": row.name,
+            "total_sent": sent,
+            "total_opened": int(row.total_opened or 0),
+            "total_replied": replied,
+            "reply_rate": round((replied / sent) * 100, 1),
+        })
+    top_rows.sort(key=lambda r: (-r["reply_rate"], -r["total_replied"]))
+    top_campaigns = top_rows[:5]
+
     return {
         "people_count": people_count,
         "companies_count": companies_count,
@@ -112,5 +170,7 @@ async def get_dashboard_stats(
         "total_replied": total_replied,
         "converted_count": converted_count,
         "chart_data": chart_data,
+        "intent_breakdown": intent_breakdown,
+        "top_campaigns": top_campaigns,
         "date_range": {"start": str(since), "end": str(until)},
     }

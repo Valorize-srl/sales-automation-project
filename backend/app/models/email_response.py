@@ -39,6 +39,10 @@ class EmailResponse(Base):
     lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
     instantly_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     smartlead_lead_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Original Smartlead category label (e.g. "Interested", "Meeting Request",
+    # "Wrong Person"). Mapped onto the coarser `sentiment` enum elsewhere;
+    # kept verbatim here for richer UI display.
+    lead_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     from_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sender_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     thread_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

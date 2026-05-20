@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Plus, RefreshCw, Loader2, Trash2, Search, Clock } from "lucide-react";
+import { Plus, Trash2, Search, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -30,7 +30,7 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [icps, setIcps] = useState<ICP[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  // Manual sync button removed — see syncAndReload + 90s poll below.
   const [filterIcpId, setFilterIcpId] = useState<string>(ALL_ICPS);
   const [filterStatus, setFilterStatus] = useState<string>("__all__");
   const [searchQuery, setSearchQuery] = useState("");
@@ -39,7 +39,7 @@ export default function CampaignsPage() {
 
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  const POLL_INTERVAL = 90 * 1000; // 90 seconds — keeps the campaign list live
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
@@ -81,49 +81,40 @@ export default function CampaignsPage() {
     }
   }, [filterIcpId, filterStatus, searchQuery]);
 
-  // Initial load
+  // Pull the campaign list from Smartlead + refresh metrics, then reload UI.
+  // Called on mount and on every poll tick so the page is effectively live —
+  // new campaigns created in the Smartlead dashboard appear within ~90s
+  // without any manual button click.
+  const syncAndReload = useCallback(async (silent: boolean) => {
+    try {
+      // Pull any new/renamed campaigns from Smartlead → local DB
+      await api.syncCampaigns();
+    } catch (err) {
+      console.error("Auto-sync campaigns failed:", err);
+    }
+    try {
+      // Refresh per-campaign sent/opened/replied totals
+      await api.syncAllCampaignMetrics();
+    } catch (err) {
+      console.error("Auto-sync metrics failed:", err);
+    }
+    loadCampaigns(silent);
+  }, [loadCampaigns]);
+
+  // Initial load: sync from Smartlead then render. No manual button needed.
   useEffect(() => {
     loadIcps();
-    loadCampaigns();
-  }, [loadIcps, loadCampaigns]);
+    syncAndReload(false);
+  }, [loadIcps, syncAndReload]);
 
-  // Auto-polling every 5 minutes: sync metrics from Smartlead + reload campaigns
+  // Auto-polling: keeps both the campaign list and metrics warm.
   useEffect(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
-    pollingRef.current = setInterval(async () => {
-      try {
-        // First sync metrics from Smartlead for all active campaigns
-        await api.syncAllCampaignMetrics();
-      } catch (err) {
-        console.error("Auto-sync metrics failed:", err);
-      }
-      // Then reload campaign list with fresh data
-      loadCampaigns(true);
-    }, POLL_INTERVAL);
+    pollingRef.current = setInterval(() => syncAndReload(true), POLL_INTERVAL);
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [loadCampaigns]);
-
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      const result = await api.syncCampaigns();
-      toast({
-        title: "Sync Complete",
-        description: `${result.imported} imported, ${result.updated} updated, ${result.errors} errors`,
-      });
-      loadCampaigns();
-    } catch (err) {
-      toast({
-        title: "Sync Failed",
-        description: err instanceof Error ? err.message : "Failed to sync with Smartlead",
-        variant: "destructive",
-      });
-    } finally {
-      setSyncing(false);
-    }
-  };
+  }, [syncAndReload]);
 
   const handleSyncMetrics = async (id: number) => {
     try {
@@ -261,6 +252,13 @@ export default function CampaignsPage() {
             {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
             {(filterIcpId !== ALL_ICPS || filterStatus !== "__all__") && " (filtered)"}
             {searchQuery && " (search results)"}
+            <span className="ml-2 inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Live · Smartlead
+            </span>
             {lastRefresh && (
               <span className="ml-2 inline-flex items-center gap-1">
                 <Clock className="h-3 w-3" />
@@ -316,19 +314,6 @@ export default function CampaignsPage() {
               Delete ({selectedCampaignIds.length})
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={handleSync}
-            disabled={syncing}
-            className="gap-1"
-          >
-            {syncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {syncing ? "Syncing..." : "Sync from Smartlead"}
-          </Button>
           <Button
             onClick={() => setCreateDialogOpen(true)}
             className="gap-1"

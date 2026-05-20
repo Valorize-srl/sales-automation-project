@@ -21,6 +21,9 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
 } from "recharts";
 import { api } from "@/lib/api";
 import { DashboardStats } from "@/types";
@@ -166,6 +169,20 @@ export default function DashboardPage() {
     ...d,
     date: fmtDate(d.date),
   })) ?? [];
+
+  // Color the intent breakdown bars by sentiment category so the visual
+  // matches the /responses page color coding.
+  const intentColor = (name: string): string => {
+    const n = name.toLowerCase();
+    if (n.includes("interested") && !n.includes("not")) return "#22c55e"; // green
+    if (n.includes("meeting")) return "#22c55e";
+    if (n.includes("not interested") || n.includes("do not contact") || n.includes("unsubscrib")) return "#ef4444"; // red
+    if (n.includes("wrong person") || n.includes("bounce")) return "#dc2626"; // dark red
+    if (n.includes("information") || n.includes("requested")) return "#3b82f6"; // blue
+    if (n.includes("out of office") || n.includes("not now")) return "#94a3b8"; // gray
+    return "#64748b";
+  };
+  const intentData = stats?.intent_breakdown ?? [];
 
   return (
     <div>
@@ -313,6 +330,74 @@ export default function DashboardPage() {
             </LineChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      {/* Reply intent breakdown + Top campaigns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+        <div className="rounded-lg border bg-card p-5">
+          <h2 className="text-sm font-semibold mb-1">Reply intent breakdown</h2>
+          <p className="text-xs text-muted-foreground mb-4">
+            Smartlead categorizza ogni risposta (Interested, Meeting Request, Not Interested, ecc.)
+          </p>
+          {loading ? (
+            <div className="h-48 bg-muted animate-pulse rounded" />
+          ) : intentData.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+              Nessuna risposta categorizzata nel periodo selezionato
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={intentData} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={140} />
+                <Tooltip
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: "1px solid hsl(var(--border))",
+                    background: "hsl(var(--card))",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  {intentData.map((entry, i) => (
+                    <Cell key={`cell-${i}`} fill={intentColor(entry.category)} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div className="rounded-lg border bg-card p-5">
+          <h2 className="text-sm font-semibold mb-1">Top campaigns by reply rate</h2>
+          <p className="text-xs text-muted-foreground mb-4">
+            Campagne con almeno 5 email inviate, ordinate per reply rate
+          </p>
+          {loading ? (
+            <div className="h-48 bg-muted animate-pulse rounded" />
+          ) : !stats || stats.top_campaigns.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+              Nessuna campagna con volume sufficiente
+            </div>
+          ) : (
+            <ol className="space-y-2.5">
+              {stats.top_campaigns.map((c, i) => (
+                <li key={c.id} className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-muted-foreground tabular-nums w-5">#{i + 1}</span>
+                  <span className="flex-1 truncate text-sm font-medium" title={c.name}>{c.name}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {c.total_replied}/{c.total_sent}
+                  </span>
+                  <span className="text-sm font-semibold text-emerald-600 tabular-nums w-14 text-right">
+                    {c.reply_rate.toFixed(1)}%
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </div>
     </div>
   );
