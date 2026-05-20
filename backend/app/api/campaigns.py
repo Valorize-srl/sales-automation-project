@@ -1,4 +1,11 @@
-"""Campaign management API routes."""
+"""Campaign management API routes.
+
+All call sites in this module use the Smartlead client now. The legacy
+`instantly_campaign_id` column is reused to store Smartlead campaign ids
+(integers cast to str) — see migration 033 and the Phase 1 README. Other
+column names with `instantly_` in them are likewise kept to avoid rippling
+into the leads section.
+"""
 from typing import Optional
 import json
 import logging
@@ -18,7 +25,7 @@ from app.models.lead_list import LeadList
 from app.models.person import Person
 from app.models.company import Company
 from app.models.campaign_lead_list import CampaignLeadList
-from app.services.instantly import instantly_service, InstantlyAPIError
+from app.services.smartlead import smartlead_service, SmartleadAPIError, ADD_LEADS_BATCH_SIZE
 from app.schemas.campaign import (
     CampaignCreate,
     CampaignUpdate,
@@ -31,6 +38,71 @@ from app.schemas.campaign import (
     EmailAccountOut,
     PushSequencesResponse,
 )
+
+
+# Smartlead campaign status strings → our internal CampaignStatus enum.
+# Used by the sync endpoints to keep DB campaign.status in sync with whatever
+# the user does in the Smartlead UI.
+_SMARTLEAD_STATUS_MAP: dict[str, CampaignStatus] = {
+    "DRAFTED": CampaignStatus.DRAFT,
+    "ACTIVE": CampaignStatus.ACTIVE,
+    "PAUSED": CampaignStatus.PAUSED,
+    "STOPPED": CampaignStatus.PAUSED,
+    "COMPLETED": CampaignStatus.COMPLETED,
+    "ARCHIVED": CampaignStatus.COMPLETED,
+}
+
+
+def _map_smartlead_status(status_value) -> CampaignStatus:
+    if isinstance(status_value, str):
+        return _SMARTLEAD_STATUS_MAP.get(status_value.upper(), CampaignStatus.DRAFT)
+    return CampaignStatus.DRAFT
+
+
+def _smartlead_analytics_to_metrics(analytics: dict) -> tuple[int, int, int]:
+    """Pull (sent, opened, replied) from a Smartlead /analytics response.
+
+    Smartlead's field naming varies between endpoints (`total_sent_count`
+    vs `emails_sent_count` vs nested objects). Be defensive.
+    """
+    def _grab(*keys):
+        for k in keys:
+            v = analytics.get(k)
+            if v is not None:
+                try:
+                    return int(v)
+                except (TypeError, ValueError):
+                    pass
+        return 0
+    sent = _grab("sent_count", "total_sent_count", "emails_sent_count", "sent")
+    opened = _grab("open_count", "unique_open_count", "opens", "opened")
+    replied = _grab("reply_count", "unique_reply_count", "replies", "replied")
+    return sent, opened, replied
+
+
+async def _resolve_email_account_id(email: str) -> Optional[int]:
+    """Find a Smartlead email_account_id given the email address. Smartlead
+    addresses email accounts by integer id; the legacy `/instantly/accounts/{email}`
+    endpoints take email as the path param so we walk the account list once."""
+    offset = 0
+    while True:
+        page = await smartlead_service.list_email_accounts(offset=offset, limit=100)
+        items = page if isinstance(page, list) else (
+            page.get("data") or page.get("accounts") or page.get("items") or []
+        )
+        if not items:
+            return None
+        for acct in items:
+            acct_email = (acct.get("from_email") or acct.get("email") or "").lower()
+            if acct_email == email.lower():
+                aid = acct.get("id")
+                try:
+                    return int(aid) if aid is not None else None
+                except (TypeError, ValueError):
+                    return None
+        if len(items) < 100:
+            return None
+        offset += 100
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -74,80 +146,111 @@ async def create_campaign(
     data: CampaignCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new campaign locally and optionally on Instantly."""
-    instantly_campaign_id = None
-    if data.create_on_instantly:
+    """Create a new campaign locally and (optionally) on Smartlead.
+
+    Smartlead requires the campaign to be created first (DRAFTED) and then
+    schedule + settings + sequences updated in separate calls.
+    """
+    smartlead_campaign_id: Optional[str] = None
+    if data.create_on_instantly:  # legacy field name — still means "create externally"
         try:
-            # Build schedule from frontend data
+            created = await smartlead_service.create_campaign(data.name)
+            sid = created.get("id") or created.get("campaign_id") or (created.get("data") or {}).get("id")
+            if sid is None:
+                raise HTTPException(502, f"Smartlead create_campaign returned no id: {created}")
+            smartlead_campaign_id = str(sid)
+
+            # Schedule: translate ScheduleDays → list[int] (0=Sun..6=Sat)
             days = data.schedule_days
-            days_dict = {
-                "0": days.d0 if days else False,
-                "1": days.d1 if days else True,
-                "2": days.d2 if days else True,
-                "3": days.d3 if days else True,
-                "4": days.d4 if days else True,
-                "5": days.d5 if days else True,
-                "6": days.d6 if days else False,
-            }
-            campaign_schedule = {
-                "schedules": [{
-                    "name": "Default",
-                    "timing": {
-                        "from": data.schedule_from,
-                        "to": data.schedule_to,
-                    },
-                    "days": days_dict,
-                    "timezone": data.schedule_timezone,
-                }]
-            }
-            result = await instantly_service.create_campaign(
-                data.name,
-                campaign_schedule,
-                email_list=data.email_accounts if data.email_accounts else None,
-                daily_limit=data.daily_limit,
-                email_gap=data.email_gap,
-                stop_on_reply=data.stop_on_reply,
-                stop_on_auto_reply=data.stop_on_auto_reply,
-                link_tracking=data.link_tracking,
-                open_tracking=data.open_tracking,
-                text_only=data.text_only,
-            )
-            instantly_campaign_id = result.get("id")
-        except InstantlyAPIError as e:
+            days_list = [
+                i for i, present in enumerate([
+                    days.d0 if days else False,
+                    days.d1 if days else True,
+                    days.d2 if days else True,
+                    days.d3 if days else True,
+                    days.d4 if days else True,
+                    days.d5 if days else True,
+                    days.d6 if days else False,
+                ]) if present
+            ]
+            try:
+                await smartlead_service.update_campaign_schedule(
+                    smartlead_campaign_id,
+                    timezone=data.schedule_timezone,
+                    days_of_the_week=days_list,
+                    start_hour=data.schedule_from,
+                    end_hour=data.schedule_to,
+                    min_time_btw_emails=data.email_gap,
+                    max_leads_per_day=data.daily_limit,
+                )
+            except SmartleadAPIError as e:
+                logger.warning("Smartlead schedule update failed: %s", e.detail)
+
+            # Settings: track_settings + stop conditions
+            track_settings: list[str] = []
+            if not data.link_tracking:
+                track_settings.append("DONT_LINK_CLICK")
+            if not data.open_tracking:
+                track_settings.append("DONT_EMAIL_OPEN")
+            stop_lead = "REPLY_TO_AN_EMAIL" if data.stop_on_reply else "NEVER"
+            try:
+                await smartlead_service.update_campaign_settings(
+                    smartlead_campaign_id,
+                    track_settings=track_settings,
+                    stop_lead_settings=stop_lead,
+                    send_as_plain_text=data.text_only,
+                )
+            except SmartleadAPIError as e:
+                logger.warning("Smartlead settings update failed: %s", e.detail)
+
+            # Email accounts: resolve emails → Smartlead account ids, then attach
+            if data.email_accounts:
+                account_ids: list[int] = []
+                for em in data.email_accounts:
+                    aid = await _resolve_email_account_id(em)
+                    if aid:
+                        account_ids.append(aid)
+                if account_ids:
+                    try:
+                        await smartlead_service.add_email_accounts_to_campaign(
+                            smartlead_campaign_id, account_ids,
+                        )
+                    except SmartleadAPIError as e:
+                        logger.warning("Smartlead account attach failed: %s", e.detail)
+        except SmartleadAPIError as e:
             raise HTTPException(
-                502, f"Failed to create campaign on Instantly: {e.detail}"
+                502, f"Failed to create campaign on Smartlead: {e.detail}"
             )
 
-    # Save email steps as JSON if provided
+    # Save email steps locally as JSON + push to Smartlead as sequences
     email_templates_json = None
     if data.email_steps:
         steps_data = [s.model_dump() for s in data.email_steps]
         email_templates_json = json.dumps(steps_data)
 
-        # Push sequences to Instantly during creation
-        if instantly_campaign_id:
-            instantly_steps = []
-            for step in steps_data:
-                instantly_steps.append({
-                    "type": "email",
-                    "delay": step.get("wait_days", 0),
-                    "delay_unit": "day",
+        if smartlead_campaign_id:
+            sl_sequences = []
+            for idx, step in enumerate(steps_data, start=1):
+                sl_sequences.append({
+                    "seq_number": idx,
+                    "seq_delay_details": {"delay_in_days": int(step.get("wait_days", 0) or 0)},
+                    "variant_distribution_type": "MANUALLY_EQUAL",
                     "variants": [{
-                        "subject": step.get("subject", ""),
-                        "body": step.get("body", ""),
+                        "subject": step.get("subject", "") or "",
+                        "email_body": step.get("body", "") or "",
+                        "variant_label": "A",
                     }],
                 })
             try:
-                await instantly_service.update_campaign(
-                    instantly_campaign_id,
-                    {"sequences": [{"steps": instantly_steps}]},
+                await smartlead_service.save_campaign_sequences(
+                    smartlead_campaign_id, sl_sequences,
                 )
-            except InstantlyAPIError as e:
-                logger.warning(f"Failed to push sequences during creation: {e.detail}")
+            except SmartleadAPIError as e:
+                logger.warning("Failed to push sequences during creation: %s", e.detail)
 
     campaign = Campaign(
         name=data.name,
-        instantly_campaign_id=instantly_campaign_id,
+        instantly_campaign_id=smartlead_campaign_id,  # legacy column name
         email_templates=email_templates_json,
         status=CampaignStatus.DRAFT,
     )
@@ -156,50 +259,47 @@ async def create_campaign(
     return await _campaign_to_response(campaign, db)
 
 
-# NOTE: /instantly/accounts MUST be registered before /{campaign_id}
+# NOTE: /instantly/accounts MUST be registered before /{campaign_id}.
+# URL kept as `/instantly/accounts` for frontend compat — internally hits Smartlead.
 @router.get("/instantly/accounts", response_model=EmailAccountListResponse)
 async def list_instantly_accounts():
-    """List email accounts from Instantly workspace."""
+    """List sender email accounts from Smartlead."""
     try:
         all_accounts: list[dict] = []
-        starting_after = None
+        offset = 0
         while True:
-            data = await instantly_service.list_accounts(
-                limit=100, starting_after=starting_after
+            data = await smartlead_service.list_email_accounts(offset=offset, limit=100)
+            items = data if isinstance(data, list) else (
+                data.get("data") or data.get("accounts") or data.get("items") or []
             )
-
-            # Try different response structures
-            items = (
-                data.get("accounts") or
-                data.get("data") or
-                data.get("items") or
-                (data if isinstance(data, list) else [])
-            )
-
             if not items:
                 break
-
             all_accounts.extend(items)
-
-            # Check pagination using the pagination object
-            pagination = data.get("pagination", {})
-            starting_after = pagination.get("next_starting_after")
-
-            if not starting_after:
+            if len(items) < 100:
                 break
+            offset += 100
+
+        def _map_status(s: Optional[str]) -> Optional[int]:
+            # The legacy schema (EmailAccountOut.status: Optional[int]) expected
+            # an integer enum from Instantly. Smartlead reports textual statuses;
+            # we coerce to a stable int so the frontend doesn't break.
+            if not s:
+                return None
+            mapping = {"ACTIVE": 1, "PAUSED": 2, "DISABLED": 0, "WARMING_UP": 3}
+            return mapping.get(str(s).upper(), None)
 
         accounts = [
             EmailAccountOut(
-                email=a.get("email", ""),
-                first_name=a.get("first_name"),
-                last_name=a.get("last_name"),
-                status=a.get("status"),
+                email=(a.get("from_email") or a.get("email") or ""),
+                first_name=a.get("from_name", "").split(" ", 1)[0] if a.get("from_name") else None,
+                last_name=" ".join(a.get("from_name", "").split(" ")[1:]) or None if a.get("from_name") else None,
+                status=_map_status(a.get("status")),
             )
             for a in all_accounts
         ]
         return EmailAccountListResponse(accounts=accounts, total=len(accounts))
-    except InstantlyAPIError as e:
-        raise HTTPException(502, f"Failed to list accounts: {e.detail}")
+    except SmartleadAPIError as e:
+        raise HTTPException(502, f"Failed to list email accounts from Smartlead: {e.detail}")
 
 
 @router.get("/{campaign_id}", response_model=CampaignResponse)
@@ -252,119 +352,71 @@ async def delete_campaign(campaign_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
 
-# --- Instantly Sync ---
-
-
-def _map_instantly_status(status_value) -> CampaignStatus:
-    """Map Instantly status integer to our CampaignStatus enum.
-
-    Instantly statuses: 0=Draft, 1=Active, 2=Paused, 3=Completed, 4=Scheduled, -1=Error, -2=Deleted
-    """
-    mapping = {
-        0: CampaignStatus.DRAFT,
-        1: CampaignStatus.ACTIVE,
-        2: CampaignStatus.PAUSED,
-        3: CampaignStatus.COMPLETED,
-        4: CampaignStatus.SCHEDULED,
-        -1: CampaignStatus.ERROR,
-        -2: CampaignStatus.ERROR,  # Deleted on Instantly = error state locally
-    }
-    return mapping.get(status_value, CampaignStatus.DRAFT)
+# --- Smartlead Sync ---
 
 
 @router.post("/sync", response_model=InstantlySyncResponse)
 async def sync_campaigns(db: AsyncSession = Depends(get_db)):
-    """Import/update campaigns from Instantly. Manual trigger."""
+    """Import/update campaigns from Smartlead. Manual trigger."""
     imported = 0
     updated = 0
     errors = 0
 
     try:
-        all_instantly = []
-        starting_after = None
-        while True:
-            data = await instantly_service.list_campaigns(
-                limit=100, starting_after=starting_after
-            )
-
-            # Log the response structure for debugging
-            logger.info(f"Instantly API response keys: {list(data.keys())}")
-
-            # Try different response structures
-            items = (
-                data.get("campaigns") or
-                data.get("data") or
-                data.get("items") or
-                (data if isinstance(data, list) else [])
-            )
-
-            if not items:
-                logger.warning(f"No campaigns found in response. Keys: {list(data.keys())}")
-                break
-
-            logger.info(f"Found {len(items)} campaigns in this batch")
-            all_instantly.extend(items)
-
-            # Check pagination using the pagination object (as per Instantly docs)
-            pagination = data.get("pagination", {})
-            starting_after = pagination.get("next_starting_after")
-
-            if not starting_after:
-                logger.info("No more pages (pagination.next_starting_after is null)")
-                break
+        # /campaigns/ ritorna direttamente l'array completo (no cursor pagination).
+        all_smartlead = await smartlead_service.list_campaigns()
+        logger.info("Smartlead returned %d campaigns", len(all_smartlead))
 
         existing_result = await db.execute(
             select(Campaign.instantly_campaign_id).where(
                 Campaign.instantly_campaign_id.isnot(None)
             )
         )
-        existing_ids = {row[0] for row in existing_result.all()}
+        existing_ids = {row[0] for row in existing_result.all() if row[0]}
 
-        for ic in all_instantly:
-            ic_id = ic.get("id")
-            ic_name = ic.get("name", "Unnamed Campaign")
+        for sc in all_smartlead:
+            sc_id = sc.get("id")
+            if sc_id is None:
+                continue
+            sc_id_str = str(sc_id)
+            sc_name = sc.get("name") or "Unnamed Campaign"
 
             try:
-                if ic_id in existing_ids:
+                if sc_id_str in existing_ids:
                     result = await db.execute(
                         select(Campaign).where(
-                            Campaign.instantly_campaign_id == ic_id
+                            Campaign.instantly_campaign_id == sc_id_str
                         )
                     )
                     campaign = result.scalar_one_or_none()
                     if campaign:
-                        campaign.status = _map_instantly_status(ic.get("status"))
+                        campaign.status = _map_smartlead_status(sc.get("status"))
                         try:
-                            analytics = await instantly_service.get_campaign_analytics(ic_id)
-                            campaign.total_sent = analytics.get(
-                                "emails_sent_count", campaign.total_sent
-                            )
-                            campaign.total_opened = analytics.get(
-                                "open_count", campaign.total_opened
-                            )
-                            campaign.total_replied = analytics.get(
-                                "reply_count", campaign.total_replied
-                            )
-                        except InstantlyAPIError:
+                            analytics = await smartlead_service.get_campaign_top_analytics(sc_id_str)
+                            sent, opened, replied = _smartlead_analytics_to_metrics(analytics)
+                            campaign.total_sent = sent or campaign.total_sent
+                            campaign.total_opened = opened or campaign.total_opened
+                            campaign.total_replied = replied or campaign.total_replied
+                        except SmartleadAPIError:
                             pass
                         updated += 1
                 else:
                     new_campaign = Campaign(
-                        name=ic_name,
-                        instantly_campaign_id=ic_id,
-                        status=_map_instantly_status(ic.get("status")),
+                        name=sc_name,
+                        instantly_campaign_id=sc_id_str,
+                        status=_map_smartlead_status(sc.get("status")),
                     )
                     db.add(new_campaign)
                     imported += 1
 
             except Exception as e:
-                logger.warning(f"Error syncing campaign {ic_id}: {e}")
+                logger.warning(f"Error syncing Smartlead campaign {sc_id}: {e}")
                 errors += 1
 
         await db.flush()
 
-    except InstantlyAPIError as e:
-        raise HTTPException(502, f"Failed to sync with Instantly: {e.detail}")
+    except SmartleadAPIError as e:
+        raise HTTPException(502, f"Failed to sync with Smartlead: {e.detail}")
 
     return InstantlySyncResponse(imported=imported, updated=updated, errors=errors)
 
@@ -373,24 +425,24 @@ async def sync_campaigns(db: AsyncSession = Depends(get_db)):
 async def sync_campaign_metrics(
     campaign_id: int, db: AsyncSession = Depends(get_db)
 ):
-    """Pull latest metrics from Instantly for a single campaign."""
+    """Pull latest metrics from Smartlead for a single campaign."""
     result = await db.execute(
-        select(Campaign)
-                .where(Campaign.id == campaign_id)
+        select(Campaign).where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
 
     try:
-        analytics = await instantly_service.get_campaign_analytics(
+        analytics = await smartlead_service.get_campaign_top_analytics(
             campaign.instantly_campaign_id
         )
-        campaign.total_sent = analytics.get("emails_sent_count", campaign.total_sent)
-        campaign.total_opened = analytics.get("open_count", campaign.total_opened)
-        campaign.total_replied = analytics.get("reply_count", campaign.total_replied)
+        sent, opened, replied = _smartlead_analytics_to_metrics(analytics)
+        campaign.total_sent = sent or campaign.total_sent
+        campaign.total_opened = opened or campaign.total_opened
+        campaign.total_replied = replied or campaign.total_replied
 
         today = date.today()
         existing = await db.execute(
@@ -414,10 +466,10 @@ async def sync_campaign_metrics(
             ))
 
         await db.flush()
-    
-    except InstantlyAPIError as e:
+
+    except SmartleadAPIError as e:
         raise HTTPException(
-            502, f"Failed to get analytics from Instantly: {e.detail}"
+            502, f"Failed to get analytics from Smartlead: {e.detail}"
         )
 
     return await _campaign_to_response(campaign, db)
@@ -425,10 +477,9 @@ async def sync_campaign_metrics(
 
 @router.post("/sync-all-metrics")
 async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
-    """Bulk sync metrics from Instantly for all active/linked campaigns. Used by auto-polling."""
+    """Bulk sync metrics from Smartlead for all linked campaigns. Used by auto-polling."""
     result = await db.execute(
-        select(Campaign)
-                .where(
+        select(Campaign).where(
             Campaign.instantly_campaign_id.isnot(None),
             Campaign.deleted_at.is_(None),
             Campaign.status.in_([CampaignStatus.ACTIVE, CampaignStatus.PAUSED, CampaignStatus.SCHEDULED]),
@@ -440,22 +491,22 @@ async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
     errors = 0
     for campaign in campaigns:
         try:
-            analytics = await instantly_service.get_campaign_analytics(
+            analytics = await smartlead_service.get_campaign_top_analytics(
                 campaign.instantly_campaign_id
             )
-            campaign.total_sent = analytics.get("emails_sent_count", campaign.total_sent)
-            campaign.total_opened = analytics.get("open_count", campaign.total_opened)
-            campaign.total_replied = analytics.get("reply_count", campaign.total_replied)
+            sent, opened, replied = _smartlead_analytics_to_metrics(analytics)
+            campaign.total_sent = sent or campaign.total_sent
+            campaign.total_opened = opened or campaign.total_opened
+            campaign.total_replied = replied or campaign.total_replied
 
-            # Also update Instantly status
+            # Also refresh status from Smartlead
             try:
-                instantly_data = await instantly_service.get_campaign(campaign.instantly_campaign_id)
-                new_status = _map_instantly_status(instantly_data.get("status"))
-                campaign.status = new_status
-            except InstantlyAPIError:
-                pass  # Keep existing status if we can't fetch it
+                sl_data = await smartlead_service.get_campaign(campaign.instantly_campaign_id)
+                if isinstance(sl_data, dict):
+                    campaign.status = _map_smartlead_status(sl_data.get("status"))
+            except SmartleadAPIError:
+                pass  # keep existing if Smartlead errors
 
-            # Also write to Analytics table (for dashboard chart)
             today = date.today()
             existing = await db.execute(
                 select(Analytics).where(
@@ -478,7 +529,7 @@ async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
                 ))
 
             synced += 1
-        except InstantlyAPIError as e:
+        except SmartleadAPIError as e:
             logger.warning(f"Failed to sync metrics for campaign {campaign.id}: {e.detail}")
             errors += 1
         except Exception as e:
@@ -499,24 +550,23 @@ async def sync_all_campaign_metrics(db: AsyncSession = Depends(get_db)):
 async def activate_campaign(
     campaign_id: int, db: AsyncSession = Depends(get_db)
 ):
-    """Activate campaign on Instantly."""
+    """Activate campaign on Smartlead."""
     result = await db.execute(
-        select(Campaign)
-                .where(Campaign.id == campaign_id)
+        select(Campaign).where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
 
     try:
-        await instantly_service.activate_campaign(campaign.instantly_campaign_id)
+        await smartlead_service.activate_campaign(campaign.instantly_campaign_id)
         campaign.status = CampaignStatus.ACTIVE
         await db.flush()
-    except InstantlyAPIError as e:
+    except SmartleadAPIError as e:
         raise HTTPException(
-            502, f"Failed to activate campaign on Instantly: {e.detail}"
+            502, f"Failed to activate campaign on Smartlead: {e.detail}"
         )
 
     return await _campaign_to_response(campaign, db)
@@ -526,24 +576,23 @@ async def activate_campaign(
 async def pause_campaign(
     campaign_id: int, db: AsyncSession = Depends(get_db)
 ):
-    """Pause campaign on Instantly."""
+    """Pause campaign on Smartlead."""
     result = await db.execute(
-        select(Campaign)
-                .where(Campaign.id == campaign_id)
+        select(Campaign).where(Campaign.id == campaign_id)
     )
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
 
     try:
-        await instantly_service.pause_campaign(campaign.instantly_campaign_id)
+        await smartlead_service.pause_campaign(campaign.instantly_campaign_id)
         campaign.status = CampaignStatus.PAUSED
         await db.flush()
-    except InstantlyAPIError as e:
+    except SmartleadAPIError as e:
         raise HTTPException(
-            502, f"Failed to pause campaign on Instantly: {e.detail}"
+            502, f"Failed to pause campaign on Smartlead: {e.detail}"
         )
 
     return await _campaign_to_response(campaign, db)
@@ -558,13 +607,13 @@ async def add_list_to_campaign(
     lead_list_id: int = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
 ):
-    """Associate a lead list with a campaign and push its people to Instantly."""
+    """Associate a lead list with a campaign and push its people to Smartlead."""
     result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
 
     # Verify lead list exists
     list_result = await db.execute(select(LeadList).where(LeadList.id == lead_list_id))
@@ -643,38 +692,44 @@ async def add_list_to_campaign(
                 "company_name": company.name or "",
             })
 
-    logger.info(f"Prepared {len(instantly_leads)} valid leads for Instantly (skipped {skipped_invalid} invalid/duplicate)")
+    logger.info(f"Prepared {len(instantly_leads)} valid leads for Smartlead (skipped {skipped_invalid} invalid/duplicate)")
 
-    # Push to Instantly in smaller batches
+    # Push to Smartlead (the client handles 400-per-request batching internally)
     pushed = 0
     errors_count = 0
     error_details = []
-    logger.info(f"Pushing to Instantly campaign_id: {campaign.instantly_campaign_id}")
-    api_responses = []
+    api_responses: list[dict] = []
+    logger.info(f"Pushing to Smartlead campaign_id: {campaign.instantly_campaign_id}")
     if instantly_leads:
-        batch_size = 100
-        for i in range(0, len(instantly_leads), batch_size):
-            batch = instantly_leads[i:i + batch_size]
+        # Translate our internal lead shape to Smartlead's lead_list entries.
+        # Smartlead accepts {email, first_name, last_name, company_name, ...}.
+        for i in range(0, len(instantly_leads), ADD_LEADS_BATCH_SIZE):
+            batch = instantly_leads[i:i + ADD_LEADS_BATCH_SIZE]
             try:
-                resp = await instantly_service.add_leads_to_campaign(
-                    campaign.instantly_campaign_id, batch
+                resp = await smartlead_service.add_leads_to_campaign(
+                    campaign.instantly_campaign_id, batch,
                 )
-                logger.info(f"Batch {i//batch_size + 1} response: {resp}")
+                logger.info(f"Batch {i//ADD_LEADS_BATCH_SIZE + 1} response: {resp}")
                 if len(api_responses) < 2:
                     api_responses.append(resp)
-                pushed += len(batch)
-            except InstantlyAPIError as e:
-                logger.error(f"Failed to push lead batch {i//batch_size + 1} to Instantly (status={e.status_code}): {e.detail}")
+                pushed += int(resp.get("uploaded_count") or len(batch))
+            except SmartleadAPIError as e:
+                logger.error(
+                    f"Failed to push lead batch {i//ADD_LEADS_BATCH_SIZE + 1} to Smartlead "
+                    f"(status={e.status_code}): {e.detail}"
+                )
                 errors_count += len(batch)
                 if len(error_details) < 3:
-                    error_details.append(f"Batch {i//batch_size + 1}: {e.status_code} - {e.detail[:200]}")
+                    error_details.append(
+                        f"Batch {i//ADD_LEADS_BATCH_SIZE + 1}: {e.status_code} - {e.detail[:200]}"
+                    )
             except Exception as e:
-                logger.error(f"Unexpected error pushing batch {i//batch_size + 1}: {e}")
+                logger.error(f"Unexpected error pushing batch {i//ADD_LEADS_BATCH_SIZE + 1}: {e}")
                 errors_count += len(batch)
                 if len(error_details) < 3:
-                    error_details.append(f"Batch {i//batch_size + 1}: {str(e)[:200]}")
+                    error_details.append(f"Batch {i//ADD_LEADS_BATCH_SIZE + 1}: {str(e)[:200]}")
 
-    # Create or update association record
+    # Create or update association record (legacy column name kept).
     if existing_assoc:
         existing_assoc.pushed_to_instantly = pushed > 0
         existing_assoc.pushed_count = (existing_assoc.pushed_count or 0) + pushed
@@ -688,18 +743,17 @@ async def add_list_to_campaign(
         db.add(assoc)
     await db.commit()
 
-    message = f"Pushed {pushed} leads to Instantly."
+    message = f"Pushed {pushed} leads to Smartlead."
     if skipped_invalid:
         message += f" Skipped {skipped_invalid} invalid/duplicate emails."
     if error_details:
         message += f" Errors: {'; '.join(error_details)}"
     if pushed > 0:
-        message += " Le lead possono impiegare fino a 5 minuti per apparire su Instantly."
+        message += " Le lead possono impiegare qualche minuto per apparire su Smartlead."
 
-    # Log first batch sample for debugging
     first_lead_sample = instantly_leads[0] if instantly_leads else None
     logger.info(f"First lead sample: {first_lead_sample}")
-    logger.info(f"Campaign Instantly ID: {campaign.instantly_campaign_id}")
+    logger.info(f"Campaign Smartlead ID: {campaign.instantly_campaign_id}")
 
     return {
         "campaign_id": campaign_id,
@@ -781,7 +835,7 @@ async def upload_leads_to_campaign(
     data: LeadUploadRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Push selected leads from our DB to an Instantly campaign.
+    """Push selected leads from our DB to a Smartlead campaign.
 
     Supports both legacy Lead model (lead_ids) and new Person model (person_ids).
     """
@@ -790,7 +844,7 @@ async def upload_leads_to_campaign(
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
 
     instantly_leads = []
 
@@ -831,22 +885,21 @@ async def upload_leads_to_campaign(
 
     pushed = 0
     errors_count = 0
-    batch_size = 1000
-    for i in range(0, len(instantly_leads), batch_size):
-        batch = instantly_leads[i:i + batch_size]
+    for i in range(0, len(instantly_leads), ADD_LEADS_BATCH_SIZE):
+        batch = instantly_leads[i:i + ADD_LEADS_BATCH_SIZE]
         try:
-            await instantly_service.add_leads_to_campaign(
-                campaign.instantly_campaign_id, batch
+            resp = await smartlead_service.add_leads_to_campaign(
+                campaign.instantly_campaign_id, batch,
             )
-            pushed += len(batch)
-        except InstantlyAPIError as e:
-            logger.error(f"Failed to push lead batch: {e.detail}")
+            pushed += int(resp.get("uploaded_count") or len(batch))
+        except SmartleadAPIError as e:
+            logger.error(f"Failed to push lead batch to Smartlead: {e.detail}")
             errors_count += len(batch)
 
     return LeadUploadResponse(pushed=pushed, errors=errors_count)
 
 
-# --- Push Sequences to Instantly ---
+# --- Push Sequences to Smartlead ---
 
 
 @router.post(
@@ -857,13 +910,13 @@ async def push_sequences_to_instantly(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Push email templates from DB to Instantly as campaign sequences."""
+    """Push email templates from DB to Smartlead as campaign sequences."""
     result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
     campaign = result.scalar_one_or_none()
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
     if not campaign.email_templates:
         raise HTTPException(400, "No email templates to push")
 
@@ -872,92 +925,37 @@ async def push_sequences_to_instantly(
     except (json.JSONDecodeError, TypeError):
         raise HTTPException(400, "Invalid email templates data")
 
-    # Map internal format to Instantly sequences format
-    instantly_steps = []
-    for step in steps_data:
-        instantly_steps.append({
-            "type": "email",
-            "delay": step.get("wait_days", 0),
-            "delay_unit": "day",
+    sl_sequences = []
+    for idx, step in enumerate(steps_data, start=1):
+        sl_sequences.append({
+            "seq_number": idx,
+            "seq_delay_details": {"delay_in_days": int(step.get("wait_days", 0) or 0)},
+            "variant_distribution_type": "MANUALLY_EQUAL",
             "variants": [{
-                "subject": step.get("subject", ""),
-                "body": step.get("body", ""),
+                "subject": step.get("subject", "") or "",
+                "email_body": step.get("body", "") or "",
+                "variant_label": "A",
             }],
         })
 
     try:
-        await instantly_service.update_campaign(
-            campaign.instantly_campaign_id,
-            {"sequences": [{"steps": instantly_steps}]},
+        await smartlead_service.save_campaign_sequences(
+            campaign.instantly_campaign_id, sl_sequences,
         )
-    except InstantlyAPIError as e:
+    except SmartleadAPIError as e:
         raise HTTPException(
-            502, f"Failed to push sequences to Instantly: {e.detail}"
+            502, f"Failed to push sequences to Smartlead: {e.detail}"
         )
 
     return PushSequencesResponse(
         success=True,
-        steps_pushed=len(instantly_steps),
-        message=f"Pushed {len(instantly_steps)} steps to Instantly",
+        steps_pushed=len(sl_sequences),
+        message=f"Pushed {len(sl_sequences)} steps to Smartlead",
     )
 
 
-# --- Webhooks ---
-
-
-@router.post("/webhooks/instantly")
-async def instantly_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    """Receive webhook events from Instantly."""
-    try:
-        payload = await request.json()
-    except Exception:
-        raise HTTPException(400, "Invalid JSON payload")
-
-    event_type = payload.get("event_type", "")
-    event_data = payload.get("data", payload)
-    logger.info(f"Instantly webhook: {event_type}")
-
-    campaign_id_str = event_data.get("campaign_id")
-    if not campaign_id_str:
-        return {"status": "ignored", "reason": "no campaign_id"}
-
-    result = await db.execute(
-        select(Campaign).where(Campaign.instantly_campaign_id == campaign_id_str)
-    )
-    campaign = result.scalar_one_or_none()
-    if not campaign:
-        return {"status": "ignored", "reason": "unknown campaign"}
-
-    if event_type == "email_sent":
-        campaign.total_sent = (campaign.total_sent or 0) + 1
-
-    elif event_type == "email_opened":
-        campaign.total_opened = (campaign.total_opened or 0) + 1
-
-    elif event_type == "reply_received":
-        campaign.total_replied = (campaign.total_replied or 0) + 1
-        # NOTE: Webhook handler for reply_received is disabled because Instantly webhooks
-        # don't provide critical fields (instantly_email_id, sender_email, thread_id) needed
-        # to reply to emails. Use POST /responses/fetch instead which has complete data.
-        # Keeping total_replied counter update for metrics.
-        #
-        # lead_email = event_data.get("lead_email", event_data.get("email"))
-        # if lead_email:
-        #     lead_result = await db.execute(
-        #         select(Lead).where(Lead.email == lead_email.lower())
-        #     )
-        #     lead = lead_result.scalar_one_or_none()
-        #     if lead:
-        #         db.add(EmailResponse(
-        #             campaign_id=campaign.id,
-        #             lead_id=lead.id,
-        #             message_body=event_data.get("text", event_data.get("body", "")),
-        #             direction=MessageDirection.INBOUND,
-        #             status=ResponseStatus.PENDING,
-        #         ))
-
-    await db.flush()
-    return {"status": "ok"}
+# (The old /webhooks/instantly handler was removed — Smartlead replies are
+# now handled by /api/webhooks/smartlead in app/api/webhooks.py)
 
 
 # --- Sync Leads FROM Instantly ---
@@ -968,7 +966,7 @@ async def sync_leads_from_instantly(
     campaign_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Pull leads FROM Instantly campaign back to local DB."""
+    """Pull leads FROM Smartlead campaign back to local DB."""
     result = await db.execute(
         select(Campaign).where(Campaign.id == campaign_id)
     )
@@ -976,30 +974,31 @@ async def sync_leads_from_instantly(
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
 
     imported = 0
     skipped = 0
     errors = 0
 
     try:
-        starting_after = None
+        offset = 0
         while True:
-            data = await instantly_service.list_leads(
-                campaign_id=campaign.instantly_campaign_id,
-                limit=100,
-                starting_after=starting_after,
+            data = await smartlead_service.list_leads_in_campaign(
+                campaign.instantly_campaign_id, offset=offset, limit=100,
             )
-            items = data.get("items") or data.get("data") or data.get("leads") or []
+            items = data if isinstance(data, list) else (
+                data.get("data") or data.get("leads") or data.get("items") or []
+            )
             if not items:
                 break
 
             for lead_data in items:
-                email = (lead_data.get("email", "") or "").lower().strip()
+                # Smartlead nests the lead under .lead in some responses
+                lead_obj = lead_data.get("lead") if isinstance(lead_data.get("lead"), dict) else lead_data
+                email = (lead_obj.get("email", "") or "").lower().strip()
                 if not email:
                     continue
 
-                # Check if lead already exists
                 existing = await db.execute(
                     select(Lead).where(Lead.email == email)
                 )
@@ -1010,10 +1009,10 @@ async def sync_leads_from_instantly(
                 try:
                     new_lead = Lead(
                         email=email,
-                        first_name=lead_data.get("first_name", ""),
-                        last_name=lead_data.get("last_name", ""),
-                        company=lead_data.get("company_name", ""),
-                        source="instantly",
+                        first_name=lead_obj.get("first_name", ""),
+                        last_name=lead_obj.get("last_name", ""),
+                        company=lead_obj.get("company_name", ""),
+                        source="smartlead",
                     )
                     db.add(new_lead)
                     await db.flush()
@@ -1022,14 +1021,12 @@ async def sync_leads_from_instantly(
                     logger.warning(f"Error importing lead {email}: {e}")
                     errors += 1
 
-            # Cursor pagination
-            pagination = data.get("pagination", {})
-            starting_after = pagination.get("next_starting_after")
-            if not starting_after:
+            if len(items) < 100:
                 break
+            offset += 100
 
-    except InstantlyAPIError as e:
-        raise HTTPException(502, f"Failed to fetch leads from Instantly: {e.detail}")
+    except SmartleadAPIError as e:
+        raise HTTPException(502, f"Failed to fetch leads from Smartlead: {e.detail}")
 
     return {
         "imported": imported,
@@ -1039,7 +1036,7 @@ async def sync_leads_from_instantly(
     }
 
 
-# --- Daily Analytics from Instantly ---
+# --- Daily Analytics from Smartlead ---
 
 
 @router.get("/{campaign_id}/daily-analytics")
@@ -1049,7 +1046,12 @@ async def get_campaign_daily_analytics(
     end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get day-by-day analytics from Instantly for a campaign."""
+    """Get day-by-day analytics from Smartlead for a campaign.
+
+    Smartlead's `/analytics-by-date` requires both start_date and end_date and
+    rejects ranges larger than 30 days. Defaults to the last 30 days when
+    parameters are not supplied.
+    """
     result = await db.execute(
         select(Campaign).where(Campaign.id == campaign_id)
     )
@@ -1057,56 +1059,81 @@ async def get_campaign_daily_analytics(
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     if not campaign.instantly_campaign_id:
-        raise HTTPException(400, "Campaign is not linked to Instantly")
+        raise HTTPException(400, "Campaign is not linked to Smartlead")
+
+    from datetime import timedelta
+    today = date.today()
+    if not end_date:
+        end_date = today.isoformat()
+    if not start_date:
+        start_date = (today - timedelta(days=30)).isoformat()
 
     try:
-        analytics = await instantly_service.get_daily_campaign_analytics(
-            campaign_id=campaign.instantly_campaign_id,
+        analytics = await smartlead_service.get_campaign_analytics_by_date(
+            campaign.instantly_campaign_id,
             start_date=start_date,
             end_date=end_date,
         )
         return analytics
-    except InstantlyAPIError as e:
+    except SmartleadAPIError as e:
         raise HTTPException(502, f"Failed to get daily analytics: {e.detail}")
 
 
-# --- Instantly Account & Warmup Management ---
+# --- Email Account & Warmup Management (Smartlead) ---
+# URLs preserved as `/instantly/accounts/...` so any frontend code that
+# referenced them keeps working. Internally we resolve email → Smartlead
+# account id and call the appropriate Smartlead endpoints.
 
 
 @router.get("/instantly/accounts/{email}")
 async def get_instantly_account(email: str):
-    """Get details for a specific Instantly email account including warmup status."""
+    """Get details for a specific email account (Smartlead)."""
     try:
-        return await instantly_service.get_account(email)
-    except InstantlyAPIError as e:
+        aid = await _resolve_email_account_id(email)
+        if aid is None:
+            raise HTTPException(404, f"Email account {email} not found on Smartlead")
+        return await smartlead_service.get_email_account(aid)
+    except SmartleadAPIError as e:
         raise HTTPException(502, f"Failed to get account: {e.detail}")
 
 
 @router.patch("/instantly/accounts/{email}")
 async def update_instantly_account(email: str, request: Request):
-    """Update Instantly account settings (warmup config, daily limit, etc.)."""
+    """Update email account settings on Smartlead (daily limit, warmup, etc.)."""
     try:
         payload = await request.json()
     except Exception:
         raise HTTPException(400, "Invalid JSON payload")
 
     try:
-        return await instantly_service.update_account(email, payload)
-    except InstantlyAPIError as e:
+        aid = await _resolve_email_account_id(email)
+        if aid is None:
+            raise HTTPException(404, f"Email account {email} not found on Smartlead")
+        return await smartlead_service.update_email_account(aid, payload)
+    except SmartleadAPIError as e:
         raise HTTPException(502, f"Failed to update account: {e.detail}")
 
 
 @router.post("/instantly/accounts/{email}/{action}")
 async def manage_instantly_account(email: str, action: str):
-    """Manage Instantly account state: pause, resume, enable_warmup, disable_warmup, test_vitals."""
-    valid_actions = {"pause", "resume", "enable_warmup", "disable_warmup", "test_vitals"}
-    if action not in valid_actions:
-        raise HTTPException(400, f"Invalid action. Must be one of: {', '.join(valid_actions)}")
-
-    try:
-        return await instantly_service.manage_account_state(email, action)
-    except InstantlyAPIError as e:
-        raise HTTPException(502, f"Failed to {action} account: {e.detail}")
+    """Account state actions. Smartlead exposes warmup config (POST
+    /email-accounts/{id}/warmup body {warmup_enabled, ...}) but not the
+    granular pause/resume/test_vitals actions Instantly had — for those
+    return 501 with a hint to use the Smartlead UI."""
+    if action in ("enable_warmup", "disable_warmup"):
+        aid = await _resolve_email_account_id(email)
+        if aid is None:
+            raise HTTPException(404, f"Email account {email} not found on Smartlead")
+        try:
+            return await smartlead_service.configure_warmup(
+                aid, {"warmup_enabled": action == "enable_warmup"},
+            )
+        except SmartleadAPIError as e:
+            raise HTTPException(502, f"Failed to {action}: {e.detail}")
+    raise HTTPException(
+        501,
+        f"Action '{action}' is not exposed by Smartlead's API. Manage it from the Smartlead dashboard.",
+    )
 
 
 @router.get("/instantly/accounts/{email}/warmup-analytics")
@@ -1115,14 +1142,15 @@ async def get_account_warmup_analytics(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
 ):
-    """Get warmup analytics for a specific email account."""
+    """Warmup stats for a single email account. Smartlead returns the last
+    7 days of warmup metrics regardless of start/end (those args are ignored
+    here but kept for API compat)."""
     try:
-        return await instantly_service.get_warmup_analytics(
-            emails=[email],
-            start_date=start_date,
-            end_date=end_date,
-        )
-    except InstantlyAPIError as e:
+        aid = await _resolve_email_account_id(email)
+        if aid is None:
+            raise HTTPException(404, f"Email account {email} not found on Smartlead")
+        return await smartlead_service.fetch_warmup_stats(aid)
+    except SmartleadAPIError as e:
         raise HTTPException(502, f"Failed to get warmup analytics: {e.detail}")
 
 
@@ -1134,8 +1162,9 @@ async def bulk_delete_campaigns(
     """
     Soft delete multiple campaigns (mark as deleted_at).
 
-    Also deletes campaigns from Instantly if they have instantly_campaign_id.
-    If any Instantly deletion fails, the entire transaction is rolled back.
+    Also deletes campaigns from Smartlead if they have a linked id. Smartlead
+    delete is irreversible — proceed with the local soft-delete even if the
+    remote call returns 404 (already gone).
     """
     if not campaign_ids:
         raise HTTPException(400, "No campaign IDs provided")
@@ -1152,32 +1181,31 @@ async def bulk_delete_campaigns(
         raise HTTPException(404, "No campaigns found with provided IDs")
 
     deleted_count = 0
-    instantly_deleted = 0
+    remote_deleted = 0
     errors = []
 
-    # Try to delete from Instantly first (before committing to DB)
     for campaign in campaigns:
         try:
             if campaign.instantly_campaign_id:
-                logger.info(f"Deleting campaign {campaign.id} from Instantly: {campaign.instantly_campaign_id}")
-                await instantly_service.delete_campaign(campaign.instantly_campaign_id)
-                instantly_deleted += 1
-                logger.info(f"Successfully deleted campaign {campaign.id} from Instantly")
-        except InstantlyAPIError as e:
-            # 404 = already deleted from Instantly, treat as success
-            if e.status_code == 404 or "not found" in e.detail.lower():
-                logger.info(f"Campaign {campaign.id} not found on Instantly (already deleted), proceeding")
-                instantly_deleted += 1
+                logger.info(
+                    f"Deleting campaign {campaign.id} from Smartlead: {campaign.instantly_campaign_id}",
+                )
+                await smartlead_service.delete_campaign(campaign.instantly_campaign_id)
+                remote_deleted += 1
+                logger.info(f"Successfully deleted campaign {campaign.id} from Smartlead")
+        except SmartleadAPIError as e:
+            if e.status_code == 404 or "not found" in (e.detail or "").lower():
+                logger.info(f"Campaign {campaign.id} not found on Smartlead (already gone), proceeding")
+                remote_deleted += 1
             else:
-                error_msg = f"Failed to delete campaign {campaign.id} ('{campaign.name}') from Instantly: {e.detail}"
+                error_msg = f"Failed to delete campaign {campaign.id} ('{campaign.name}') from Smartlead: {e.detail}"
                 logger.error(error_msg)
                 errors.append(error_msg)
         except Exception as e:
-            error_msg = f"Unexpected error deleting campaign {campaign.id} from Instantly: {str(e)}"
+            error_msg = f"Unexpected error deleting campaign {campaign.id} from Smartlead: {str(e)}"
             logger.error(error_msg)
             errors.append(error_msg)
 
-    # If all Instantly deletions succeeded (or no instantly_campaign_id), mark as deleted in DB
     now = datetime.utcnow()
     for campaign in campaigns:
         campaign.deleted_at = now
@@ -1185,11 +1213,12 @@ async def bulk_delete_campaigns(
 
     await db.commit()
 
-    logger.info(f"Successfully soft-deleted {deleted_count} campaigns, {instantly_deleted} from Instantly")
+    logger.info(f"Successfully soft-deleted {deleted_count} campaigns, {remote_deleted} from Smartlead")
 
     return {
         "deleted": deleted_count,
-        "instantly_deleted": instantly_deleted,
+        # Key kept as `instantly_deleted` for frontend compat (legacy naming).
+        "instantly_deleted": remote_deleted,
         "errors": errors,
-        "message": f"Successfully deleted {deleted_count} campaigns"
+        "message": f"Successfully deleted {deleted_count} campaigns",
     }

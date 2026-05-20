@@ -255,7 +255,7 @@ def register(mcp: FastMCP) -> None:
         """
         from app.models.campaign import Campaign
         from app.models.person import Person
-        from app.services.instantly import instantly_service, InstantlyAPIError
+        from app.services.smartlead import smartlead_service, SmartleadAPIError
 
         async with db_session() as db:
             c = await db.get(Company, company_id)
@@ -278,25 +278,25 @@ def register(mcp: FastMCP) -> None:
                 "first_name": p.first_name,
                 "last_name": p.last_name,
                 "company_name": c.name or "",
-                "phone": p.phone or "",
-                "custom_variables": {
+                "phone_number": p.phone or "",
+                "linkedin_profile": p.linkedin_url or "",
+                "custom_fields": {
                     "title": p.title or "",
                     "industry": p.industry or c.industry or "",
-                    "linkedin_url": p.linkedin_url or "",
                 },
             } for p in persons]
 
             try:
-                result = await instantly_service.add_leads_to_campaign(
-                    camp.instantly_campaign_id, leads
+                result = await smartlead_service.add_leads_to_campaign(
+                    camp.instantly_campaign_id, leads,
                 )
-            except InstantlyAPIError as e:
-                return {"error": "instantly_error", "status_code": e.status_code, "detail": e.detail}
+            except SmartleadAPIError as e:
+                return {"error": "smartlead_error", "status_code": e.status_code, "detail": e.detail}
 
         return {
             "company_id": company_id, "campaign_id": campaign_id,
             "campaign_name": camp.name, "uploaded": len(leads),
-            "instantly_result": result,
+            "smartlead_result": result,
         }
 
     @mcp.tool()
