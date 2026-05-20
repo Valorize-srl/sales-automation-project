@@ -54,6 +54,14 @@ class _CategoryCache:
 
     Refreshed lazily; webhook handler can call `refresh()` if it receives an
     unknown id (suggests a new custom category in Smartlead).
+
+    Resolution priority for each category:
+      1. The Smartlead API itself returns `sentiment_type` per category
+         ("positive" | "negative" | null). When present, use it.
+      2. Otherwise, look up the name in `_DEFAULT_CATEGORY_TO_SENTIMENT` —
+         catches a few labels that Smartlead leaves untagged but that have a
+         clear conceptual lean (e.g. "Wrong Person" → NEGATIVE).
+      3. Else fall back to NEUTRAL.
     """
 
     def __init__(self) -> None:
@@ -64,6 +72,21 @@ class _CategoryCache:
     def _name_to_sentiment(self, name: str) -> Sentiment:
         key = (name or "").strip().lower()
         return _DEFAULT_CATEGORY_TO_SENTIMENT.get(key, Sentiment.NEUTRAL)
+
+    def _resolve(self, name: str, sentiment_type: Optional[str]) -> Sentiment:
+        st = (sentiment_type or "").strip().lower()
+        if st == "positive":
+            # Smartlead "positive" covers both raw interest ("Interested",
+            # "Meeting Request") and informational ("Information Request").
+            # Bias toward INTERESTED for the meeting-y labels.
+            key = (name or "").strip().lower()
+            if key in {"interested", "meeting request", "booked meeting"}:
+                return Sentiment.INTERESTED
+            return Sentiment.POSITIVE
+        if st == "negative":
+            return Sentiment.NEGATIVE
+        # Smartlead sentiment_type is null → use name-based fallback.
+        return self._name_to_sentiment(name)
 
     async def refresh(self) -> None:
         async with self._lock:
@@ -85,7 +108,10 @@ class _CategoryCache:
                     cid_int = int(cid)
                 except (TypeError, ValueError):
                     continue
-                mapping[cid_int] = (str(cname), self._name_to_sentiment(str(cname)))
+                mapping[cid_int] = (
+                    str(cname),
+                    self._resolve(str(cname), row.get("sentiment_type")),
+                )
             self._by_id = mapping
             self._loaded = True
             logger.info("Loaded %d Smartlead categories", len(mapping))
