@@ -8,7 +8,6 @@ from app.models.person import Person
 from app.models.company import Company
 from app.models.lead_list import LeadList
 from app.models.campaign_lead_list import CampaignLeadList
-from app.models.prospecting_tool import ProspectingTool
 from app.models.api_key import ApiKey
 from app.models.activity_log import ActivityLog
 
@@ -23,7 +22,6 @@ __all__ = [
     "Company",
     "LeadList",
     "CampaignLeadList",
-    "ProspectingTool",
     "ApiKey",
     "ActivityLog",
 ]

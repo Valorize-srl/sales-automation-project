@@ -433,23 +433,6 @@ export interface Setting {
   updated_at: string;
 }
 
-export interface ProspectingTool {
-  id: number;
-  name: string;
-  display_name: string;
-  description: string | null;
-  when_to_use: string | null;
-  cost_info: string | null;
-  sectors_strong: string[] | null;
-  sectors_weak: string[] | null;
-  apify_actor_id: string | null;
-  output_type: string | null;
-  is_enabled: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string | null;
-}
-
 // === Enrichment ===
 
 export interface EnrichmentResult {
@@ -625,9 +608,7 @@ export interface CompanyDetailResponse {
   campaigns: CampaignSummary[];
 }
 
-// --- Bandi Monitor ---
-
-// ── Prospecting Tools ──────────────────────────────────────────────
+// ── Prospecting Tools (Apollo Search People only) ──────────────────
 
 export interface ToolSearchResponse {
   results: Record<string, unknown>[];
@@ -643,14 +624,6 @@ export interface ImportLeadsResponse {
   message: string;
 }
 
-export interface ToolsApolloEnrichResponse {
-  enriched: number;
-  total_requested: number;
-  credits_used: number;
-  cost_usd: number;
-  message: string;
-}
-
 export interface ApolloSearchPeopleParams {
   person_titles?: string[];
   person_locations?: string[];
@@ -662,60 +635,11 @@ export interface ApolloSearchPeopleParams {
   client_tag?: string;
 }
 
-export interface ApolloSearchCompaniesParams {
-  organization_locations?: string[];
-  organization_keywords?: string[];
-  organization_sizes?: string[];
-  technologies?: string[];
-  keywords?: string;
-  per_page?: number;
-  client_tag?: string;
-}
-
-export interface GoogleMapsSearchParams {
-  query: string;
-  location?: string;
-  max_results?: number;
-  client_tag?: string;
-}
-
-export interface ScrapeWebsitesParams {
-  urls: string[];
-  client_tag?: string;
-}
-
 export interface ImportLeadsParams {
   results: Record<string, unknown>[];
   import_type: "people" | "companies";
   client_tag?: string;
   list_id?: number;
-}
-
-export interface GenerateCsvParams {
-  results: Record<string, unknown>[];
-  columns?: string[];
-  filename?: string;
-}
-
-export interface LinkedInSearchPeopleParams {
-  keywords: string;
-  company?: string;
-  location?: string;
-  max_results?: number;
-  client_tag?: string;
-}
-
-export interface LinkedInSearchCompaniesParams {
-  company_urls?: string[];
-  company_names?: string[];
-  client_tag?: string;
-}
-
-export interface CsvExportResponse {
-  filename: string;
-  rows: number;
-  columns: string[];
-  content_base64: string;
 }
 
 export interface WebsiteScrapeResult {

@@ -10,7 +10,6 @@ router = APIRouter()
 
 
 SETTING_DEFAULTS = {
-    "apify_api_token": "",
     "usd_eur_exchange_rate": "0.92",
 }
 

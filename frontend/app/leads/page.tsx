@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin, Download, Mail, ChevronDown } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin, Download, Mail, ChevronDown, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
@@ -14,6 +14,7 @@ import { FindymailEnrichDialog } from "@/components/leads/findymail-enrich-dialo
 import { FindymailFindDMDialog } from "@/components/leads/findymail-find-dm-dialog";
 import { FindymailFindDMViaLinkedInDialog } from "@/components/leads/findymail-find-dm-via-linkedin-dialog";
 import { FindymailFindCompanyInfoDialog } from "@/components/leads/findymail-find-company-info-dialog";
+import { ApolloSearchPeopleDialog } from "@/components/leads/apollo-search-people-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -63,6 +64,7 @@ export default function LeadsPage() {
   const [findymailLiOpen, setFindymailLiOpen] = useState(false);
   const [findymailLiCompanies, setFindymailLiCompanies] = useState<Company[]>([]);
   const [findymailLiPreparing, setFindymailLiPreparing] = useState(false);
+  const [apolloPeopleOpen, setApolloPeopleOpen] = useState(false);
   const [findymailCoOpen, setFindymailCoOpen] = useState(false);
   const [findymailCoCompanies, setFindymailCoCompanies] = useState<Company[]>([]);
   const [findymailCoPreparing, setFindymailCoPreparing] = useState(false);
@@ -752,6 +754,29 @@ export default function LeadsPage() {
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setEnrichMenuOpen(false)} />
                     <div className="absolute left-0 top-9 z-40 w-72 rounded-md border bg-popover shadow-md py-1">
+                      <p className="px-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                        🔍 Sourcing
+                      </p>
+                      <button
+                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
+                        onClick={() => { setEnrichMenuOpen(false); setApolloPeopleOpen(true); }}
+                      >
+                        <Users className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-tight flex items-center gap-1.5">
+                            Cerca nuove persone
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                              Apollo
+                            </span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            Cerca DM per ruolo / location / seniority. Importa nella lista scelta.
+                          </p>
+                        </div>
+                      </button>
+                      <p className="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold border-t mt-1">
+                        ✨ Enrichment
+                      </p>
                       <button
                         className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
                         onClick={openBulkScrape}
@@ -939,6 +964,12 @@ export default function LeadsPage() {
             companies={findymailLiCompanies}
             onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
             onPushToCampaign={(ids) => setPushToCampaignTarget({ mode: "bulk", companyIds: ids })}
+          />
+
+          <ApolloSearchPeopleDialog
+            open={apolloPeopleOpen}
+            onOpenChange={setApolloPeopleOpen}
+            onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
           />
 
           <FindymailFindCompanyInfoDialog
