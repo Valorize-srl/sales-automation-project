@@ -29,8 +29,6 @@ class Settings(BaseSettings):
     # Apollo
     apollo_api_key: str = ""
 
-    # Apify
-    apify_api_token: str = ""
 
     # Findymail (email enrichment from LinkedIn URL or name+domain)
     findymail_api_key: str = ""

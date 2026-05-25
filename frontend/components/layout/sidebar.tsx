@@ -12,7 +12,6 @@ import {
   PieChart,
   Settings,
   LogOut,
-  Search,
   Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,7 +26,6 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
-  { href: "/prospecting", label: "Prospecting", icon: Search },
   { href: "/campaigns", label: "Campaigns", icon: Mail },
   { href: "/responses", label: "Replies", icon: MessageSquareReply },
   { href: "/replies-analytics", label: "Replies Analytics", icon: PieChart },
