@@ -234,6 +234,8 @@ async def _log_search(
     client_tag: Optional[str],
 ):
     """Log a search to ApolloSearchHistory for cost tracking."""
+    # NB: `session_id` and `icp_id` columns were dropped in migration 032
+    # (the chat/agents/ICP cleanup). Don't pass them.
     history = ApolloSearchHistory(
         search_type=search_type,
         search_query=query,
@@ -246,7 +248,6 @@ async def _log_search(
         cost_claude_usd=0.0,
         cost_total_usd=cost_usd,
         client_tag=client_tag,
-        session_id=None,
     )
     db.add(history)
     await db.flush()
