@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Globe, Linkedin, Download, Mail, ChevronDown, Users } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
@@ -15,6 +15,7 @@ import { FindymailFindDMDialog } from "@/components/leads/findymail-find-dm-dial
 import { FindymailFindDMViaLinkedInDialog } from "@/components/leads/findymail-find-dm-via-linkedin-dialog";
 import { FindymailFindCompanyInfoDialog } from "@/components/leads/findymail-find-company-info-dialog";
 import { ApolloSearchPeopleDialog } from "@/components/leads/apollo-search-people-dialog";
+import { EnrichmentDrawer } from "@/components/leads/enrichment-drawer";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -65,10 +66,12 @@ export default function LeadsPage() {
   const [findymailLiCompanies, setFindymailLiCompanies] = useState<Company[]>([]);
   const [findymailLiPreparing, setFindymailLiPreparing] = useState(false);
   const [apolloPeopleOpen, setApolloPeopleOpen] = useState(false);
+  const [enrichmentDrawerOpen, setEnrichmentDrawerOpen] = useState(false);
+  const [listsSidebarCollapsed, setListsSidebarCollapsed] = useState(false);
   const [findymailCoOpen, setFindymailCoOpen] = useState(false);
   const [findymailCoCompanies, setFindymailCoCompanies] = useState<Company[]>([]);
   const [findymailCoPreparing, setFindymailCoPreparing] = useState(false);
-  const [enrichMenuOpen, setEnrichMenuOpen] = useState(false);
+  // (enrichMenuOpen rimosso: il dropdown è stato sostituito da EnrichmentDrawer.)
   const [exportingCsv, setExportingCsv] = useState(false);
   const [pushToCampaignTarget, setPushToCampaignTarget] = useState<{
     mode: "single" | "bulk";
@@ -184,7 +187,7 @@ export default function LeadsPage() {
    * - no selection: scrape just the current page.
    */
   const openBulkScrape = async () => {
-    setEnrichMenuOpen(false);
+
     if (selectAllMatching) {
       setBulkScrapePreparing(true);
       try {
@@ -221,7 +224,7 @@ export default function LeadsPage() {
    * pattern as openBulkScrape: selectAllMatching paginates through the server.
    */
   const openLinkedInDM = async () => {
-    setEnrichMenuOpen(false);
+
     if (selectAllMatching) {
       setLinkedInDMPreparing(true);
       try {
@@ -254,7 +257,7 @@ export default function LeadsPage() {
 
   /** Findymail email enrichment — same selection resolution pattern. */
   const openFindymail = async () => {
-    setEnrichMenuOpen(false);
+
     if (selectAllMatching) {
       setFindymailPreparing(true);
       try {
@@ -288,7 +291,7 @@ export default function LeadsPage() {
   /** Findymail company-info lookup — fills missing linkedin_url, industry,
    * location, email_domain. Same selection logic. */
   const openFindymailCompanyInfo = async () => {
-    setEnrichMenuOpen(false);
+
     if (selectAllMatching) {
       setFindymailCoPreparing(true);
       try {
@@ -322,7 +325,7 @@ export default function LeadsPage() {
   /** Findymail find-by-role — finds DMs matching given titles (1 round-trip
    * per company, returns name+email directly). Same selection logic. */
   const openFindymailFindDM = async () => {
-    setEnrichMenuOpen(false);
+
     if (selectAllMatching) {
       setFindymailFindPreparing(true);
       try {
@@ -356,7 +359,7 @@ export default function LeadsPage() {
   /** Findymail "find DM via LinkedIn" — chains /search/employees → /search/linkedin
    * to return name + LinkedIn URL + email in one shot. Same selection logic. */
   const openFindymailFindDMViaLinkedIn = async () => {
-    setEnrichMenuOpen(false);
+
     if (selectAllMatching) {
       setFindymailLiPreparing(true);
       try {
@@ -640,6 +643,8 @@ export default function LeadsPage() {
         selectedListId={filters.list_id ?? null}
         onSelectList={onSelectList}
         refreshKey={listsRefreshKey}
+        collapsed={listsSidebarCollapsed}
+        onToggleCollapsed={() => setListsSidebarCollapsed((v) => !v)}
       />
 
       <div className="flex-1 overflow-auto">
@@ -670,16 +675,10 @@ export default function LeadsPage() {
                 <Download className="h-3.5 w-3.5" />
                 {exportingCsv ? "Esporto…" : "Export CSV"}
               </Button>
-              <Button size="sm" className="gap-1.5" disabled={total === 0 || bulkScrapePreparing}
-                onClick={openBulkScrape}>
+              <Button size="sm" className="gap-1.5"
+                onClick={() => setEnrichmentDrawerOpen(true)}>
                 <Sparkles className="h-3.5 w-3.5" />
-                {bulkScrapePreparing
-                  ? "Preparo…"
-                  : `Enrich ${selectAllMatching
-                      ? `${total.toLocaleString("it-IT")} matching`
-                      : selectedIds.size > 0
-                      ? `${selectedIds.size} selezionate`
-                      : `pagina (${companies.length})`}`}
+                Arricchisci
               </Button>
             </div>
           </div>
@@ -740,139 +739,6 @@ export default function LeadsPage() {
                   </>
                 )}
               </div>
-              <div className="relative">
-                <Button size="sm" variant="outline" className="gap-1.5"
-                  disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailLiPreparing || findymailCoPreparing}
-                  onClick={() => setEnrichMenuOpen(!enrichMenuOpen)}>
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailLiPreparing || findymailCoPreparing
-                    ? "Preparo…"
-                    : "Arricchisci"}
-                  <ChevronDown className="h-3 w-3 opacity-60" />
-                </Button>
-                {enrichMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setEnrichMenuOpen(false)} />
-                    <div className="absolute left-0 top-9 z-40 w-72 rounded-md border bg-popover shadow-md py-1">
-                      <p className="px-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                        🔍 Sourcing
-                      </p>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
-                        onClick={() => { setEnrichMenuOpen(false); setApolloPeopleOpen(true); }}
-                      >
-                        <Users className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight flex items-center gap-1.5">
-                            Cerca nuove persone
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                              Apollo
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Cerca DM per ruolo / location / seniority. Importa nella lista scelta.
-                          </p>
-                        </div>
-                      </button>
-                      <p className="px-3 pt-2 pb-0.5 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold border-t mt-1">
-                        ✨ Enrichment
-                      </p>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent"
-                        onClick={openBulkScrape}
-                      >
-                        <Globe className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight">Scrapa siti web</p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Estrai email + LinkedIn dalle pagine del sito aziendale
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
-                        onClick={openFindymailCompanyInfo}
-                      >
-                        <Linkedin className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight flex items-center gap-1.5">
-                            Trova LinkedIn azienda
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
-                              Findymail
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Cerca pagina LinkedIn aziendale + settore + dominio email (gratis)
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
-                        onClick={openLinkedInDM}
-                      >
-                        <Linkedin className="h-4 w-4 text-[#0A66C2] shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight">Trova DM via LinkedIn</p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Cerca decision maker su Google + LinkedIn — niente login
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
-                        onClick={openFindymailFindDM}
-                      >
-                        <Sparkles className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight flex items-center gap-1.5">
-                            Cerca DM per ruolo
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
-                              Findymail
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Trova nome + email direttamente sul dominio aziendale dato un job title
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
-                        onClick={openFindymailFindDMViaLinkedIn}
-                      >
-                        <Sparkles className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight flex items-center gap-1.5">
-                            Cerca DM completi (LinkedIn + email)
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
-                              Findymail
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Trova fino a N dipendenti via LinkedIn aziendale + recupera la loro email. Output più completo, costa di più.
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        className="flex items-start gap-2 px-3 py-2 text-sm w-full text-left hover:bg-accent border-t"
-                        onClick={openFindymail}
-                      >
-                        <Mail className="h-4 w-4 text-[#E8662C] shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium leading-tight flex items-center gap-1.5">
-                            Trova email per DM esistenti
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#FFE9DA] text-[#E8662C] border border-[#E8662C]/30">
-                              Findymail
-                            </span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                            Per ogni DM senza email: lookup via LinkedIn URL o nome+dominio
-                          </p>
-                        </div>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
               <Button size="sm" variant="outline" className="gap-1.5"
                 onClick={async () => {
                   const ids = await resolveSelectedIds();
@@ -883,9 +749,17 @@ export default function LeadsPage() {
               <Button size="sm" variant="outline" className="gap-1.5 text-destructive" onClick={handleBulkDelete}>
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </Button>
-              <Button size="sm" variant="ghost" className="ml-auto"
+              <Button size="sm" variant="ghost"
                 onClick={() => { setSelectedIds(new Set()); setSelectAllMatching(false); }}>
                 Clear
+              </Button>
+              <Button size="sm" className="ml-auto gap-1.5"
+                disabled={bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailLiPreparing || findymailCoPreparing}
+                onClick={() => setEnrichmentDrawerOpen(true)}>
+                <Sparkles className="h-3.5 w-3.5" />
+                {bulkScrapePreparing || linkedInDMPreparing || findymailPreparing || findymailFindPreparing || findymailLiPreparing || findymailCoPreparing
+                  ? "Preparo…"
+                  : "Arricchisci"}
               </Button>
             </div>
           )}
@@ -970,6 +844,26 @@ export default function LeadsPage() {
             open={apolloPeopleOpen}
             onOpenChange={setApolloPeopleOpen}
             onCompleted={() => { loadCompanies(page); setListsRefreshKey((k) => k + 1); }}
+          />
+
+          <EnrichmentDrawer
+            open={enrichmentDrawerOpen}
+            onOpenChange={setEnrichmentDrawerOpen}
+            hasSelection={selectAllMatching || selectedIds.size > 0}
+            selectionLabel={
+              selectAllMatching
+                ? `${total.toLocaleString("it-IT")} matching`
+                : selectedIds.size > 0
+                ? `${selectedIds.size} selezionate`
+                : ""
+            }
+            onApolloSearchPeople={() => setApolloPeopleOpen(true)}
+            onBulkScrape={openBulkScrape}
+            onFindymailCompanyInfo={openFindymailCompanyInfo}
+            onLinkedInDM={openLinkedInDM}
+            onFindymailFindDM={openFindymailFindDM}
+            onFindymailFindDMViaLinkedIn={openFindymailFindDMViaLinkedIn}
+            onFindymail={openFindymail}
           />
 
           <FindymailFindCompanyInfoDialog
