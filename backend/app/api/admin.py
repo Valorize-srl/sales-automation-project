@@ -10,15 +10,56 @@ useful for inspection.
 import logging
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
 from app.models.email_response import EmailResponse
+from app.services.smartlead_sender_pool import smartlead_sender_pool
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/cleanup-warmup-replies")
+async def cleanup_warmup_replies(db: AsyncSession = Depends(get_db)):
+    """Delete EmailResponse rows whose `from_email` matches one of our
+    Smartlead sender accounts.
+
+    These are warmup auto-replies (Smartlead's senders ping each other to
+    build deliverability reputation) that the webhook persisted before we
+    added the outbound-filter. One-shot cleanup; idempotent — safe to call
+    again, just returns 0 next time.
+    """
+    # Force-refresh the sender pool from Smartlead so the deletion criterion
+    # is up-to-date (covers recently-added accounts).
+    await smartlead_sender_pool.refresh()
+    sender_emails = sorted(smartlead_sender_pool._emails)  # noqa: SLF001
+
+    if not sender_emails:
+        return {"deleted": 0, "message": "no sender accounts known — refresh failed?"}
+
+    # Pull matching rows so we can report what was removed.
+    matching = await db.execute(
+        select(EmailResponse.id, EmailResponse.from_email)
+        .where(EmailResponse.from_email.in_(sender_emails))
+    )
+    rows = matching.all()
+    ids = [r.id for r in rows]
+
+    if ids:
+        await db.execute(
+            sql_delete(EmailResponse).where(EmailResponse.id.in_(ids))
+        )
+        await db.commit()
+
+    return {
+        "deleted": len(ids),
+        "deleted_ids": ids,
+        "examples": [{"id": r.id, "from_email": r.from_email} for r in rows[:10]],
+        "sender_pool_size": len(sender_emails),
+    }
 
 
 @router.get("/check-sender-emails")
