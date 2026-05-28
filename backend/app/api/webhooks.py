@@ -311,7 +311,23 @@ async def smartlead_webhook(
     """
     raw_body = await request.body()
     if not _authenticate_request(request, raw_body, settings.smartlead_webhook_secret):
-        logger.warning("Smartlead webhook rejected — missing/invalid auth")
+        # Diagnostic logging so we can see how Smartlead actually authenticates
+        # its outbound calls. Logged only on rejection; redacted to avoid
+        # leaking the configured secret.
+        safe_headers = {
+            k: v for k, v in request.headers.items()
+            if k.lower() not in {"cookie", "authorization"}
+        }
+        if "authorization" in request.headers:
+            v = request.headers["authorization"]
+            safe_headers["authorization"] = (v[:6] + "…" + v[-4:]) if len(v) > 12 else "***"
+        query = dict(request.query_params)
+        body_preview = raw_body[:300].decode("utf-8", errors="replace")
+        logger.warning(
+            "Smartlead webhook rejected — missing/invalid auth. "
+            "method=%s path=%s query=%s headers=%s body_preview=%s",
+            request.method, request.url.path, query, safe_headers, body_preview,
+        )
         raise HTTPException(401, "Invalid webhook auth")
 
     try:

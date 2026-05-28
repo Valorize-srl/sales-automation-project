@@ -57,3 +57,45 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Styles for sanitized HTML rendering of incoming email replies in the
+ * /responses detail dialog. Tailwind's prose plugin isn't installed, so
+ * we keep a minimal in-house set: collapse oversized email margins, give
+ * links a sensible color, constrain images, and style the quoted-reply
+ * blockquote that mail clients add. */
+.rich-email {
+  line-height: 1.5;
+  word-break: break-word;
+}
+.rich-email :where(p, div) { margin: 0 0 0.5em; }
+.rich-email :where(p, div):last-child { margin-bottom: 0; }
+.rich-email :where(br + br) { display: none; }
+.rich-email a {
+  color: hsl(217 91% 50%);
+  text-decoration: underline;
+}
+.rich-email a:hover { opacity: 0.85; }
+.rich-email img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+}
+.rich-email blockquote {
+  border-left: 3px solid hsl(var(--muted-foreground) / 0.3);
+  padding-left: 0.75rem;
+  margin: 0.5em 0;
+  color: hsl(var(--muted-foreground));
+}
+.rich-email ul, .rich-email ol { padding-left: 1.25rem; margin: 0.25em 0; }
+.rich-email li { margin: 0.1em 0; }
+.rich-email pre, .rich-email code {
+  background: hsl(var(--muted) / 0.5);
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+.rich-email table { border-collapse: collapse; max-width: 100%; }
+.rich-email th, .rich-email td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.25rem 0.5rem;
+}

@@ -38,9 +38,29 @@ const statusColors: Record<ResponseStatus, string> = {
   ignored: "bg-gray-100 text-gray-500",
 };
 
+/** Strip HTML tags + decode the most common entities for clean previews.
+ * Reply bodies arrive as HTML from Smartlead; rendering them as plaintext
+ * in the table column dumps `<div>` etc. into the cell. */
+function htmlToPreview(html: string | null): string {
+  if (!html) return "";
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<\/?[a-z][^>]*>/gi, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function truncate(text: string | null, max: number): string {
-  if (!text) return "\u2014";
-  return text.length > max ? text.slice(0, max) + "..." : text;
+  const clean = htmlToPreview(text);
+  if (!clean) return "\u2014";
+  return clean.length > max ? clean.slice(0, max) + "\u2026" : clean;
 }
 
 export function ResponsesTable({
