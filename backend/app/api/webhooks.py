@@ -28,6 +28,7 @@ from app.models.email_response import (
 )
 from app.models.lead import Lead
 from app.services.smartlead_categories import category_to_sentiment, smartlead_categories
+from app.services.smartlead_sender_pool import smartlead_sender_pool
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -180,6 +181,18 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
         or payload.get("reply_email")
         or ""
     ).strip().lower() or None
+
+    # Filter out Smartlead's warmup auto-replies: if the sender is one of OUR
+    # configured sending accounts, this is internal warmup pool noise (Smartlead
+    # accounts auto-reply to each other to build sender reputation), not a real
+    # reply from a lead. Skip persistence.
+    if await smartlead_sender_pool.is_sender(lead_email):
+        logger.info(
+            "Smartlead reply skipped — from_email %s is one of our sender accounts (warmup)",
+            lead_email,
+        )
+        return "skipped_warmup"
+
     lead = await _find_lead_by_email(db, lead_email)
 
     # Category → Sentiment. Smartlead webhooks may include either the id, the
