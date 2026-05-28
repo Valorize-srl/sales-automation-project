@@ -20,6 +20,23 @@ import {
 } from "@/types";
 import { api } from "@/lib/api";
 
+/** Minimal sanitizer for reply bodies before rendering with dangerouslySetInnerHTML.
+ * Strips scripts/styles/iframes, inline event handlers, and javascript: URLs.
+ * Bodies come from external senders, so we never trust them — but this is an
+ * authenticated admin surface so the risk is bounded. */
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<object[\s\S]*?<\/object>/gi, "")
+    .replace(/<embed[^>]*>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "")
+    .replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, "")
+    .replace(/javascript:/gi, "blocked:");
+}
+
 interface ResponseDetailDialogProps {
   response: EmailResponseWithDetails | null;
   open: boolean;
@@ -230,12 +247,21 @@ export function ResponseDetailDialog({
 
         <Separator />
 
-        {/* Original Message */}
+        {/* Original Message — rendered as sanitized HTML (replies arrive as HTML
+            from Smartlead). The rich-email wrapper styles links, paragraphs,
+            and quoted-reply blocks while constraining width + max-height. */}
         <div>
           <h4 className="font-medium mb-2">Original Message</h4>
-          <div className="bg-muted p-3 rounded text-sm whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-            {response.message_body || "No message body"}
-          </div>
+          {response.message_body ? (
+            <div
+              className="rich-email bg-muted p-3 rounded text-sm max-h-[300px] overflow-y-auto"
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(response.message_body) }}
+            />
+          ) : (
+            <div className="bg-muted p-3 rounded text-sm text-muted-foreground italic">
+              No message body
+            </div>
+          )}
         </div>
 
         <Separator />
