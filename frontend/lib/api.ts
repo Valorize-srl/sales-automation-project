@@ -501,6 +501,13 @@ class ApiClient {
     return this.post("/responses/fetch", { campaign_ids: campaignIds });
   }
 
+  /** Fetch every message in the conversation thread anchored by `responseId`.
+   * Messages are returned oldest-first. Used by the detail dialog to render
+   * the full back-and-forth when a lead has replied multiple times. */
+  async getResponseThread(responseId: number): Promise<import("@/types").EmailResponseListResponse> {
+    return this.get(`/responses/${responseId}/thread`);
+  }
+
   async getResponseStats(campaignIds: number[], dateFrom?: string, dateTo?: string): Promise<import("@/types").ResponseStats> {
     const params = new URLSearchParams({ campaign_ids: campaignIds.join(",") });
     if (dateFrom) params.set("date_from", dateFrom);

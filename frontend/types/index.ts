@@ -80,6 +80,10 @@ export interface EmailResponse {
   sentiment: Sentiment | null;
   sentiment_score: number | null;
   lead_category: string | null;
+  /** Number of messages in this conversation (same campaign + lead email).
+   * The list endpoint groups multi-reply threads and returns the latest
+   * message with this count; single-message rows have thread_count=1. */
+  thread_count?: number;
   ai_suggested_reply: string | null;
   human_approved_reply: string | null;
   status: ResponseStatus;
