@@ -112,8 +112,17 @@ export function ResponsesTable({
             >
               <TableCell>
                 <div>
-                  <p className="font-medium text-sm">
+                  <p className="font-medium text-sm flex items-center gap-1.5">
                     {resp.lead_name || "Unknown"}
+                    {(resp.thread_count ?? 1) > 1 && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] px-1.5 py-0 h-4 leading-none"
+                        title={`${resp.thread_count} messaggi in questa conversazione`}
+                      >
+                        {resp.thread_count} msg
+                      </Badge>
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {resp.lead_email || resp.from_email || "\u2014"}

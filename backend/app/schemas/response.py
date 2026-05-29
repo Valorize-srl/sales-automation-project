@@ -20,6 +20,10 @@ class EmailResponseOut(BaseModel):
     sentiment: Optional[str] = None
     sentiment_score: Optional[float] = None
     lead_category: Optional[str] = None  # original Smartlead label, when present
+    # Number of messages in this conversation thread (same campaign + lead
+    # email). Set by the list endpoint when grouping multi-reply threads.
+    # Defaults to 1 for single-message rows.
+    thread_count: int = 1
     ai_suggested_reply: Optional[str] = None
     human_approved_reply: Optional[str] = None
     status: str

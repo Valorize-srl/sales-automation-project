@@ -80,6 +80,30 @@ export function ResponseDetailDialog({
   const [generating, setGenerating] = useState(false);
   const [convertedState, setConvertedState] = useState<boolean | null>(null);
   const [convertingLead, setConvertingLead] = useState(false);
+  // Thread = all messages in the same conversation (campaign + lead email).
+  // Loaded lazily when the dialog opens; older messages are shown collapsed
+  // above the "current" anchor message.
+  const [threadMessages, setThreadMessages] = useState<EmailResponseWithDetails[] | null>(null);
+
+  useEffect(() => {
+    if (!response || !open) {
+      setThreadMessages(null);
+      return;
+    }
+    const count = (response.thread_count ?? 1);
+    if (count <= 1) {
+      setThreadMessages(null);
+      return;
+    }
+    (async () => {
+      try {
+        const data = await api.getResponseThread(response.id);
+        setThreadMessages(data.responses as EmailResponseWithDetails[]);
+      } catch {
+        setThreadMessages(null);
+      }
+    })();
+  }, [response?.id, response?.thread_count, open]);
 
   // Load converted status when dialog opens with a new response
   useEffect(() => {
@@ -247,12 +271,51 @@ export function ResponseDetailDialog({
 
         <Separator />
 
-        {/* Original Message — rendered as sanitized HTML (replies arrive as HTML
-            from Smartlead). The rich-email wrapper styles links, paragraphs,
-            and quoted-reply blocks while constraining width + max-height. */}
+        {/* Conversation history — when the lead has replied multiple times,
+            show every inbound message in chronological order. Each message
+            is sanitized HTML. Single-reply threads collapse to one panel
+            labelled "Original Message" for back-compat with the previous UI. */}
         <div>
-          <h4 className="font-medium mb-2">Original Message</h4>
-          {response.message_body ? (
+          <h4 className="font-medium mb-2">
+            {threadMessages && threadMessages.length > 1
+              ? `Conversation (${threadMessages.length} messages)`
+              : "Original Message"}
+          </h4>
+          {threadMessages && threadMessages.length > 1 ? (
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {threadMessages.map((m, idx) => {
+                const isLatest = idx === threadMessages.length - 1;
+                const when = m.received_at || m.created_at;
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded border ${isLatest ? "border-primary/40 bg-primary/5" : "border-border bg-muted"} p-3`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5 text-xs text-muted-foreground">
+                      <span>
+                        {idx + 1} of {threadMessages.length}
+                        {isLatest ? " · latest" : ""}
+                      </span>
+                      <span>
+                        {when ? new Date(when).toLocaleString("it-IT", {
+                          day: "2-digit", month: "2-digit", year: "2-digit",
+                          hour: "2-digit", minute: "2-digit",
+                        }) : ""}
+                      </span>
+                    </div>
+                    {m.message_body ? (
+                      <div
+                        className="rich-email text-sm"
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.message_body) }}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No body</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : response.message_body ? (
             <div
               className="rich-email bg-muted p-3 rounded text-sm max-h-[300px] overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(response.message_body) }}

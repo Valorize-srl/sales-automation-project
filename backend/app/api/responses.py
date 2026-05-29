@@ -94,8 +94,79 @@ async def list_responses(
 
     result = await db.execute(query)
     responses = result.scalars().all()
-    items = [_response_to_out(r) for r in responses]
+
+    # Group by conversation: (campaign_id, lower(from_email)) — keep only the
+    # most recent message per thread and attach a count so the UI can show a
+    # "+N more" badge for back-and-forth conversations. Smartlead doesn't
+    # currently populate `thread_id` in its EMAIL_REPLY webhook payload, so
+    # we approximate the thread by `campaign + lead email`. Rows are already
+    # date_col.desc()-ordered, so the first occurrence of each key is the
+    # latest.
+    threads: dict[tuple[int, str], EmailResponse] = {}
+    thread_counts: dict[tuple[int, str], int] = {}
+    for r in responses:
+        em = (r.from_email or "").strip().lower()
+        if not em:
+            # Without a `from_email` we can't group — keep as its own row.
+            threads[("__noaddr__", str(r.id))] = r
+            thread_counts[("__noaddr__", str(r.id))] = 1
+            continue
+        key = (r.campaign_id, em)
+        thread_counts[key] = thread_counts.get(key, 0) + 1
+        if key not in threads:
+            threads[key] = r
+
+    items = []
+    for key, r in threads.items():
+        out = _response_to_out(r)
+        out.thread_count = thread_counts[key]
+        items.append(out)
     return EmailResponseListResponse(responses=items, total=len(items))
+
+
+@router.get("/{response_id}/thread", response_model=EmailResponseListResponse)
+async def get_response_thread(
+    response_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return every inbound message in the same conversation as `response_id`.
+
+    Two messages belong to the same thread when they share the same
+    `campaign_id` AND the same `from_email` (case-insensitive). Sorted
+    oldest-first so the detail dialog can render the conversation
+    chronologically. Smartlead's webhook payload doesn't include a stable
+    thread_id, hence the (campaign, lead-email) heuristic.
+    """
+    anchor = await db.execute(
+        select(EmailResponse).where(EmailResponse.id == response_id)
+    )
+    base = anchor.scalar_one_or_none()
+    if not base:
+        raise HTTPException(404, "Response not found")
+    em = (base.from_email or "").strip().lower()
+    if not em:
+        # No address to group by → return just the anchor.
+        return EmailResponseListResponse(responses=[_response_to_out(base)], total=1)
+
+    date_col = sa_func.coalesce(EmailResponse.received_at, EmailResponse.created_at)
+    result = await db.execute(
+        select(EmailResponse)
+        .options(
+            selectinload(EmailResponse.lead),
+            selectinload(EmailResponse.campaign),
+        )
+        .where(
+            EmailResponse.direction == MessageDirection.INBOUND,
+            EmailResponse.campaign_id == base.campaign_id,
+            sa_func.lower(EmailResponse.from_email) == em,
+        )
+        .order_by(date_col.asc())
+    )
+    rows = result.scalars().all()
+    return EmailResponseListResponse(
+        responses=[_response_to_out(r) for r in rows],
+        total=len(rows),
+    )
 
 
 # --- Fetch Replies (no-op stub) ---
