@@ -175,40 +175,57 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
     if existing.scalar_one_or_none() is not None:
         return "dup"
 
-    # Smartlead's EMAIL_REPLY webhook payload doesn't follow message-direction
-    # semantics: `from_email` in the payload is the campaign sender (OUR
-    # eaccount), not the lead who replied. The lead's address lives in
-    # `lead_email` (or `reply_email`, varying by version). Try those first.
-    # Log payload keys + the two candidates so future shape changes are obvious.
-    raw_from = (payload.get("from_email") or "").strip().lower() or None
-    raw_lead = (payload.get("lead_email") or "").strip().lower() or None
-    raw_reply = (payload.get("reply_email") or "").strip().lower() or None
-    raw_to = (payload.get("to_email") or "").strip().lower() or None
+    # Diagnostic logging: Smartlead's EMAIL_REPLY webhook payload shape is
+    # not fully documented. To figure out where the lead's email actually
+    # lives, we dump payload keys split across multiple lines (Railway
+    # truncates single lines) and probe several common field name candidates.
+    keys = sorted(payload.keys())
+    logger.info("Smartlead webhook keys A=%s", keys[:8])
+    logger.info("Smartlead webhook keys B=%s", keys[8:16])
+    logger.info("Smartlead webhook keys C=%s", keys[16:24])
+    logger.info("Smartlead webhook keys D=%s", keys[24:])
 
-    # Prefer the explicit lead_email; fall back to reply_email; only use
-    # from_email or to_email as a last resort (their semantics flip
-    # depending on whether the webhook treats from/to from our or the lead's
-    # perspective).
-    lead_email = raw_lead or raw_reply or raw_from or raw_to
+    def _norm(v):
+        if v is None:
+            return None
+        s = str(v).strip().lower()
+        return s or None
 
-    logger.info(
-        "Smartlead EMAIL_REPLY payload keys=%s chosen_lead_email=%s "
-        "(lead_email=%s reply_email=%s from_email=%s to_email=%s)",
-        sorted(payload.keys()), lead_email,
-        raw_lead, raw_reply, raw_from, raw_to,
-    )
+    candidates = {
+        "from_email": _norm(payload.get("from_email")),
+        "to_email": _norm(payload.get("to_email")),
+        "lead_email": _norm(payload.get("lead_email")),
+        "reply_email": _norm(payload.get("reply_email")),
+        "to_address_email": _norm(payload.get("to_address_email")),
+        "from_address_email": _norm(payload.get("from_address_email")),
+        "sl_email_address": _norm(payload.get("sl_email_address")),
+        "lead.email": _norm((payload.get("lead") or {}).get("email") if isinstance(payload.get("lead"), dict) else None),
+        "sent_message_email": _norm((payload.get("sent_message") or {}).get("from_email") if isinstance(payload.get("sent_message"), dict) else None),
+    }
+    logger.info("Smartlead candidate emails: %s", candidates)
 
-    # Warmup filter: ONLY skip when the chosen lead_email is one of OUR
-    # senders AND the from_email field doesn't disagree (i.e. it really
-    # looks like one of our senders talking to itself). Without that
-    # safeguard, mis-classifying `from_email` as the lead would cause all
-    # replies to be dropped (which is exactly the bug we just hit).
-    if lead_email and lead_email == raw_from and await smartlead_sender_pool.is_sender(lead_email):
-        logger.info(
-            "Smartlead reply skipped — lead_email %s is one of our sender accounts (warmup)",
-            lead_email,
+    # Pick the first non-sender email we can find. The webhook delivers BOTH
+    # the lead and the sender — without knowing which field is which, we
+    # treat "is in sender pool" as the disambiguator: the OTHER address must
+    # be the lead.
+    lead_email: Optional[str] = None
+    for name, em in candidates.items():
+        if not em:
+            continue
+        if await smartlead_sender_pool.is_sender(em):
+            continue  # this is our outbound account, not the lead
+        lead_email = em
+        logger.info("Smartlead chose lead_email=%s from field=%s", lead_email, name)
+        break
+
+    if not lead_email:
+        logger.warning(
+            "Smartlead reply: no non-sender email found in payload — "
+            "all candidates resolve to our sender pool. Storing anyway "
+            "with from_email=%s.",
+            payload.get("from_email"),
         )
-        return "skipped_warmup"
+        lead_email = candidates.get("from_email")
 
     lead = await _find_lead_by_email(db, lead_email)
 
