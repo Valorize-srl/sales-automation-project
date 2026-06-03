@@ -296,6 +296,32 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
         "Smartlead reply stored: campaign=%s lead=%s message_id=%s sentiment=%s",
         campaign.id, lead.id if lead else None, message_id, sentiment,
     )
+
+    # Smartlead's EMAIL_REPLY webhook payload often arrives WITHOUT the body
+    # and WITHOUT the category (the category is set by an async AI pass).
+    # Fetch the actual reply content + category via the REST API now so the
+    # row is complete by the time the user looks at it. Failures are logged
+    # but don't fail the webhook (we'll always have the basic row).
+    if lead_email:
+        try:
+            from app.services.smartlead_reply_enricher import enrich_response
+            changes = await enrich_response(
+                db, record,
+                smartlead_campaign_id=str(smartlead_campaign_id),
+                lead_email=lead_email,
+            )
+            if any(changes.values()):
+                await db.flush()
+                logger.info(
+                    "Smartlead reply enriched: campaign=%s lead=%s changes=%s",
+                    campaign.id, lead.id if lead else None,
+                    {k: v for k, v in changes.items() if v},
+                )
+        except Exception as e:
+            logger.warning(
+                "Smartlead reply enrichment failed (row kept as-is): %s", e,
+            )
+
     return "stored"
 
 
