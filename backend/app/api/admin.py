@@ -22,11 +22,72 @@ from app.services.smartlead_categories import (
     category_to_sentiment,
     smartlead_categories,
 )
+from app.services.smartlead_reply_enricher import enrich_response
 from app.services.smartlead_sender_pool import smartlead_sender_pool
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/enrich-responses")
+async def enrich_responses(db: AsyncSession = Depends(get_db)):
+    """Backfill missing body / lead_category / smartlead_lead_id on
+    EmailResponse rows by fetching message-history + statistics from
+    Smartlead. Idempotent; safe to re-run.
+
+    Use after the webhook handler stored partial rows (Smartlead's
+    EMAIL_REPLY payload often arrives without body and without category).
+    """
+    # All inbound rows that look incomplete (no body OR no category).
+    from sqlalchemy import func as sa_func, or_
+    incomplete_result = await db.execute(
+        select(EmailResponse, Campaign)
+        .join(Campaign, EmailResponse.campaign_id == Campaign.id)
+        .where(
+            or_(
+                EmailResponse.message_body.is_(None),
+                sa_func.length(EmailResponse.message_body) == 0,
+                EmailResponse.lead_category.is_(None),
+            )
+        )
+    )
+    rows = incomplete_result.all()
+    logger.info("enrich_responses: %d incomplete rows", len(rows))
+
+    enriched = 0
+    skipped_no_email = 0
+    skipped_no_campaign_id = 0
+    failed = 0
+
+    for resp, camp in rows:
+        em = (resp.from_email or "").strip().lower()
+        if not em:
+            skipped_no_email += 1
+            continue
+        if not camp.instantly_campaign_id:
+            skipped_no_campaign_id += 1
+            continue
+        try:
+            changes = await enrich_response(
+                db, resp,
+                smartlead_campaign_id=str(camp.instantly_campaign_id),
+                lead_email=em,
+            )
+            if any(changes.values()):
+                enriched += 1
+        except Exception as e:
+            logger.warning("enrich_responses row id=%s failed: %s", resp.id, e)
+            failed += 1
+
+    await db.commit()
+    return {
+        "scanned": len(rows),
+        "enriched": enriched,
+        "skipped_no_email": skipped_no_email,
+        "skipped_no_campaign_id": skipped_no_campaign_id,
+        "failed": failed,
+    }
 
 
 @router.post("/sync-smartlead-categories")
