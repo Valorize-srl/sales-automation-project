@@ -845,9 +845,18 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
 
         defs = dict(data.defaults or {})
 
-        # Column max lengths (from model)
-        LIMITS = {"name": 255, "email": 255, "phone": 50, "linkedin_url": 500,
-                  "industry": 255, "location": 255, "website": 500}
+        # Column max lengths (must match the Company model). When a CSV column
+        # exceeds the SQL column width the INSERT throws and SQLAlchemy poisons
+        # the session — every subsequent row then fails with "transaction has
+        # been rolled back". Truncate eagerly here. (Province caused exactly
+        # this on a 7k-row import — the column is only 10 chars, but the CSV
+        # had longer values.)
+        LIMITS = {
+            "name": 255, "email": 255, "phone": 50, "linkedin_url": 500,
+            "industry": 255, "location": 255, "website": 500,
+            "province": 10, "client_tag": 200, "signals": 65000,
+        }
+        EMAIL_DOMAIN_LIMIT = 100  # applied to _extract_domain output
 
         def _val(row: dict, mapping_col, field: str):
             limit = LIMITS.get(field, 0)
@@ -908,10 +917,16 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     if cleaned:
                         cf[k] = cleaned[:500]
 
+                # Build the Company in Python first so any pre-INSERT error
+                # is caught cleanly; truncate email_domain too (model: 100).
+                domain = _extract_domain(email)
+                if domain and len(domain) > EMAIL_DOMAIN_LIMIT:
+                    domain = domain[:EMAIL_DOMAIN_LIMIT]
+
                 company = Company(
                     name=name,
                     email=email,
-                    email_domain=_extract_domain(email),
+                    email_domain=domain,
                     phone=_val(row, data.mapping.phone, "phone"),
                     linkedin_url=_val(row, data.mapping.linkedin_url, "linkedin_url"),
                     industry=_val(row, data.mapping.industry, "industry"),
@@ -923,18 +938,34 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     employee_count=emp_val,
                     custom_fields=cf or None,
                 )
-                db.add(company)
+                # Wrap each row's INSERT in a savepoint so a single bad row
+                # (e.g. surprise constraint violation) doesn't poison the
+                # session and kill every subsequent row.
+                try:
+                    async with db.begin_nested():
+                        db.add(company)
+                        await db.flush()
+                except Exception as flush_err:
+                    logger.warning(
+                        "CSV import row %d savepoint failed (%s): %r",
+                        imported + duplicates_skipped + errors + merged + 1,
+                        type(flush_err).__name__, flush_err,
+                    )
+                    errors += 1
+                    continue
                 companies_by_name[name.lower()] = company
                 existing_names.add(name.lower())
                 imported += 1
 
-                # Flush in batches to avoid huge transaction
                 if imported % 500 == 0:
-                    await db.flush()
                     logger.info("CSV import progress: %d imported so far", imported)
 
             except Exception as row_err:
-                logger.warning("CSV import row error: %s", row_err)
+                logger.warning(
+                    "CSV import row %d pre-insert error (%s): %r",
+                    imported + duplicates_skipped + errors + merged + 1,
+                    type(row_err).__name__, row_err,
+                )
                 errors += 1
                 continue
 
