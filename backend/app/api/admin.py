@@ -171,6 +171,47 @@ async def sync_smartlead_categories(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/cleanup-noreply-replies")
+async def cleanup_noreply_replies(db: AsyncSession = Depends(get_db)):
+    """Delete EmailResponse rows whose `from_email` is a no-reply / auto-ack
+    address (sub-addressed `+noreply@`, or starting with `noreply@` /
+    `no-reply@` / `do-not-reply@`).
+
+    These are auto-acknowledgements from corporate notification systems
+    (e.g. car dealerships, insurance complaint mailboxes) — no human
+    content, never categorized by Smartlead. The webhook handler now
+    skips them on arrival; this endpoint removes the ones that landed
+    before the filter was added.
+    """
+    from sqlalchemy import or_
+    result = await db.execute(
+        select(EmailResponse).where(
+            or_(
+                EmailResponse.from_email.ilike("%+noreply@%"),
+                EmailResponse.from_email.ilike("%+no-reply@%"),
+                EmailResponse.from_email.ilike("noreply@%"),
+                EmailResponse.from_email.ilike("no-reply@%"),
+                EmailResponse.from_email.ilike("do-not-reply@%"),
+                EmailResponse.from_email.ilike("donotreply@%"),
+            )
+        )
+    )
+    rows = list(result.scalars().all())
+    ids = [r.id for r in rows]
+
+    if ids:
+        await db.execute(
+            sql_delete(EmailResponse).where(EmailResponse.id.in_(ids))
+        )
+        await db.commit()
+
+    return {
+        "deleted": len(ids),
+        "deleted_ids": ids,
+        "examples": [{"id": r.id, "from_email": r.from_email} for r in rows[:10]],
+    }
+
+
 @router.post("/cleanup-warmup-replies")
 async def cleanup_warmup_replies(db: AsyncSession = Depends(get_db)):
     """Delete EmailResponse rows whose `from_email` matches one of our

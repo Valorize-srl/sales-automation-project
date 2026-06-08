@@ -34,6 +34,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# Last N webhook payloads kept in memory for diagnostics. Inspectable via
+# `GET /api/admin/last-webhook-payloads`. Cheap insurance against Railway
+# log truncation when we need to see Smartlead's actual payload shape.
+import collections
+_LAST_PAYLOADS: collections.deque[dict] = collections.deque(maxlen=20)
+
+
+def _record_payload_snapshot(payload: dict, event: str, result: str, chosen_lead_email: Optional[str]) -> None:
+    try:
+        # Only store first-level keys + their string-coerced previews to keep
+        # the buffer small; nested dicts dumped as JSON-compatible.
+        keys = list(payload.keys()) if isinstance(payload, dict) else []
+        sample = {}
+        for k in keys[:50]:
+            v = payload.get(k)
+            if isinstance(v, (dict, list)):
+                sample[k] = type(v).__name__
+            else:
+                s = "" if v is None else str(v)
+                sample[k] = s[:200]
+        _LAST_PAYLOADS.append({
+            "ts": datetime.utcnow().isoformat(),
+            "event": event,
+            "result": result,
+            "chosen_lead_email": chosen_lead_email,
+            "keys": keys,
+            "sample": sample,
+        })
+    except Exception:
+        pass
+
+
 SMARTLEAD_TO_CAMPAIGN_STATUS: dict[str, CampaignStatus] = {
     "DRAFTED": CampaignStatus.DRAFT,
     "ACTIVE": CampaignStatus.ACTIVE,
@@ -226,6 +258,23 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
             payload.get("from_email"),
         )
         lead_email = candidates.get("from_email")
+
+    # Auto-acknowledgement filter: sub-addressed bounce/no-reply mailboxes
+    # ("+noreply@" or starts with "noreply@"/"no-reply@"/"do-not-reply@")
+    # are auto-replies from corporate notification systems — no human
+    # content, never categorized by Smartlead's AI, no thread on Smartlead.
+    # Skip persistence outright.
+    if lead_email and (
+        "+noreply@" in lead_email
+        or lead_email.startswith(("noreply@", "no-reply@", "do-not-reply@", "donotreply@"))
+        or "+no-reply@" in lead_email
+    ):
+        logger.info(
+            "Smartlead reply skipped — %s is an auto-noreply address, no real content",
+            lead_email,
+        )
+        _record_payload_snapshot(payload, "EMAIL_REPLY", "skipped_noreply", lead_email)
+        return "skipped_noreply"
 
     lead = await _find_lead_by_email(db, lead_email)
 
@@ -430,4 +479,21 @@ async def smartlead_webhook(
         logger.info("Smartlead webhook unknown event=%s payload=%s", event, payload)
         result = "ignored"
 
+    # Diagnostic ring buffer (last 20 payloads) for inspection via
+    # /api/admin/last-webhook-payloads. Defeats Railway log truncation.
+    # `_handle_reply` already records for the "skipped_noreply" path; this
+    # catches every other path including "stored" / "skipped_warmup" / etc.
+    if result != "skipped_noreply":  # already recorded inside the handler
+        _record_payload_snapshot(payload, event, result, None)
+
     return {"ok": True, "event": event or "unknown", "result": result}
+
+
+@router.get("/_diagnostics")
+async def get_diagnostic_payloads():
+    """Last 20 Smartlead webhook payloads (in-memory ring buffer). Use to
+    inspect actual payload shape when a row arrives without body/category."""
+    return {
+        "count": len(_LAST_PAYLOADS),
+        "payloads": list(_LAST_PAYLOADS),
+    }
