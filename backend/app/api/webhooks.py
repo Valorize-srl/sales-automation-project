@@ -54,6 +54,17 @@ def _record_payload_snapshot(payload: dict, event: str, result: str, chosen_lead
             else:
                 s = "" if v is None else str(v)
                 sample[k] = s[:200]
+        # Fall back to extracting the most likely lead email from the payload
+        # itself when the caller didn't pass one (e.g. the route-level snapshot
+        # call that doesn't know what `_handle_reply` chose).
+        if not chosen_lead_email and isinstance(payload, dict):
+            chosen_lead_email = (
+                payload.get("sl_lead_email")
+                or payload.get("lead_email")
+                or payload.get("reply_email")
+                or payload.get("to_email")
+                or None
+            )
         _LAST_PAYLOADS.append({
             "ts": datetime.utcnow().isoformat(),
             "event": event,
@@ -188,15 +199,45 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
         )
         return "no_campaign"
 
+    # Smartlead's EMAIL_REPLY payload doesn't always include a message_id —
+    # diagnostic buffer 2026-06-08 captured one for `info@apartmentslavalle.it`
+    # that had none, so the webhook was rejected. Synthesize a stable dedup
+    # key from (campaign + lead_email + sent_time) when message_id is missing.
     message_id = (
-        payload.get("message_id")
+        payload.get("sl_message_id")
+        or payload.get("message_id")
         or payload.get("reply_message_id")
         or payload.get("email_id")
         or ""
     )
     if not message_id:
-        logger.warning("Smartlead reply missing message_id: %s", payload)
-        return "no_message_id"
+        # Synthesize a dedup key — same lead replying to same campaign at the
+        # same timestamp will collide and dedup correctly.
+        synthetic_lead = (
+            payload.get("sl_lead_email")
+            or payload.get("lead_email")
+            or payload.get("to_email")
+            or ""
+        )
+        synthetic_ts = (
+            payload.get("sl_sent_time")
+            or payload.get("sent_time")
+            or payload.get("time_replied")
+            or payload.get("reply_time")
+            or ""
+        )
+        if synthetic_lead:
+            message_id = f"sl-synth:{smartlead_campaign_id}:{synthetic_lead}:{synthetic_ts}"
+            logger.warning(
+                "Smartlead reply missing message_id — using synthetic key %s",
+                message_id,
+            )
+        else:
+            logger.warning(
+                "Smartlead reply missing message_id AND lead_email: payload keys=%s",
+                sorted(payload.keys()),
+            )
+            return "no_message_id"
 
     # Dedup on message_id (stored in the legacy column `instantly_email_id`).
     existing = await db.execute(
@@ -224,10 +265,14 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
         return s or None
 
     candidates = {
-        "from_email": _norm(payload.get("from_email")),
-        "to_email": _norm(payload.get("to_email")),
+        # Smartlead's actual field (confirmed via diagnostic ring buffer
+        # 2026-06-08): `sl_lead_email` contains the LEAD email; from_email
+        # contains OUR eaccount. Try sl_lead_email first.
+        "sl_lead_email": _norm(payload.get("sl_lead_email")),
         "lead_email": _norm(payload.get("lead_email")),
         "reply_email": _norm(payload.get("reply_email")),
+        "to_email": _norm(payload.get("to_email")),
+        "from_email": _norm(payload.get("from_email")),
         "to_address_email": _norm(payload.get("to_address_email")),
         "from_address_email": _norm(payload.get("from_address_email")),
         "sl_email_address": _norm(payload.get("sl_email_address")),
