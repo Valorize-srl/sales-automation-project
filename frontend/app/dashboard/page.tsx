@@ -262,9 +262,12 @@ export default function DashboardPage() {
               </div>
               <p className="text-3xl font-bold">{value.toLocaleString()}</p>
               {sub && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {sub} {subLabel ?? "rate"}
-                </p>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className={`text-lg font-semibold ${color}`}>{sub}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {subLabel ?? "rate"}
+                  </span>
+                </div>
               )}
             </div>
           ))}
