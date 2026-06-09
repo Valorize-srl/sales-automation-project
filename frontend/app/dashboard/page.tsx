@@ -51,6 +51,10 @@ interface KpiCard {
   label: string;
   value: number;
   sub?: string;
+  /** Explicit name of the rate shown in `sub` (e.g. "Open rate" / "Reply rate").
+   * Falls back to the generic "rate" so cards without a meaningful named
+   * percentage don't have to set it. */
+  subLabel?: string;
   icon: React.ElementType;
   color: string;
 }
@@ -146,6 +150,7 @@ export default function DashboardPage() {
           label: "Opened",
           value: stats.total_opened,
           sub: pct(stats.total_opened, stats.total_sent),
+          subLabel: "Open rate",
           icon: Eye,
           color: "text-amber-600",
         },
@@ -153,6 +158,7 @@ export default function DashboardPage() {
           label: "Replies",
           value: stats.total_replied,
           sub: pct(stats.total_replied, stats.total_sent),
+          subLabel: "Reply rate",
           icon: MessageSquareReply,
           color: "text-green-600",
         },
@@ -248,14 +254,18 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {cards.map(({ label, value, sub, icon: Icon, color }) => (
+          {cards.map(({ label, value, sub, subLabel, icon: Icon, color }) => (
             <div key={label} className="rounded-lg border bg-card p-5">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <Icon className={`h-4 w-4 ${color}`} />
               </div>
               <p className="text-3xl font-bold">{value.toLocaleString()}</p>
-              {sub && <p className="text-xs text-muted-foreground mt-1">{sub} rate</p>}
+              {sub && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {sub} {subLabel ?? "rate"}
+                </p>
+              )}
             </div>
           ))}
         </div>
