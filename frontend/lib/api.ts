@@ -584,6 +584,13 @@ class ApiClient {
     return this.put(`/companies/${companyId}`, data);
   }
 
+  /** Manually create a single company (used by the "Aggiungi azienda" dialog
+   * in /leads). After creation, optionally adds the new company to a lead
+   * list by chaining `addCompaniesToList()`. */
+  async createCompany(data: import("@/types").CompanyCreate): Promise<import("@/types").Company> {
+    return this.post("/companies", data);
+  }
+
   /** Quick-create a Person record linked directly to a company (used by the
    * Clay table's "+ Nuovo DM" affordance on the Decision Makers cell). */
   async createCompanyPerson(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Download } from "lucide-react";
+import { Upload, Sparkles, Trash2, Tag, Tag as TagIcon, Download, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ClayCompaniesTable } from "@/components/leads/clay-companies-table";
@@ -16,6 +16,7 @@ import { FindymailFindDMViaLinkedInDialog } from "@/components/leads/findymail-f
 import { FindymailFindCompanyInfoDialog } from "@/components/leads/findymail-find-company-info-dialog";
 import { ApolloSearchPeopleDialog } from "@/components/leads/apollo-search-people-dialog";
 import { EnrichmentDrawer } from "@/components/leads/enrichment-drawer";
+import { AddCompanyDialog } from "@/components/leads/add-company-dialog";
 import { LeadListsSidebar } from "@/components/leads/lead-lists-sidebar";
 import { FilterPanel } from "@/components/leads/filter-panel";
 import { PaginationControls } from "@/components/ui/pagination-controls";
@@ -45,6 +46,7 @@ export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [selectAllMatching, setSelectAllMatching] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [addCompanyOpen, setAddCompanyOpen] = useState(false);
   const [detailCompany, setDetailCompany] = useState<Company | null>(null);
   const [companyDetailOpen, setCompanyDetailOpen] = useState(false);
   const [detailPerson, setDetailPerson] = useState<Person | null>(null);
@@ -659,6 +661,9 @@ export default function LeadsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setAddCompanyOpen(true)}>
+                <Plus className="h-3.5 w-3.5" /> Aggiungi azienda
+              </Button>
               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setCsvOpen(true)}>
                 <Upload className="h-3.5 w-3.5" /> Import CSV
               </Button>
@@ -800,6 +805,12 @@ export default function LeadsPage() {
             open={csvOpen}
             onOpenChange={setCsvOpen}
             onImportComplete={() => { loadCompanies(1); loadAux(); }}
+          />
+
+          <AddCompanyDialog
+            open={addCompanyOpen}
+            onOpenChange={setAddCompanyOpen}
+            onCompleted={() => { loadCompanies(1); setListsRefreshKey((k) => k + 1); }}
           />
 
           <BulkScrapeDialog

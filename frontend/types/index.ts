@@ -132,6 +132,21 @@ export interface PersonUpdate {
   converted?: boolean;
 }
 
+export interface CompanyCreate {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  industry?: string | null;
+  location?: string | null;
+  province?: string | null;
+  signals?: string | null;
+  website?: string | null;
+  notes?: string | null;
+  revenue?: number | null;
+  employee_count?: number | null;
+}
+
 export interface CompanyUpdate {
   name?: string | null;
   email?: string | null;
