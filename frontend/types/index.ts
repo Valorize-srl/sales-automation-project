@@ -535,6 +535,9 @@ export interface CompanyFilters {
   zip_code_prefix?: string;
   // Presence toggle for VAT number / Partita IVA
   has_vat?: boolean;
+  // Prefix match on the indexed fiscal columns (B-tree, sub-ms latency)
+  vat_number_prefix?: string;
+  tax_id_prefix?: string;
   // Advanced filters (encoded as the `filters` JSON query param)
   cf?: Record<string, string | { eq?: string; contains?: string; min?: number; max?: number }>;
   name_contains?: string;

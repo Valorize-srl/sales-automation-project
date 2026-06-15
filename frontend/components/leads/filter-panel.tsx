@@ -154,6 +154,20 @@ export function FilterPanel({ filters, onFiltersChange, industries, customFieldK
           </Select>
         </div>
 
+        {/* P.IVA prefix lookup (uses B-tree index) */}
+        <div className="space-y-1">
+          <label className="text-muted-foreground">P.IVA (inizia con)</label>
+          <Input value={filters.vat_number_prefix ?? ""} onChange={(e) => set({ vat_number_prefix: e.target.value || undefined })}
+            className="h-7 text-xs" placeholder="es. 01234" />
+        </div>
+
+        {/* Codice Fiscale prefix lookup (uses B-tree index) */}
+        <div className="space-y-1">
+          <label className="text-muted-foreground">CF (inizia con)</label>
+          <Input value={filters.tax_id_prefix ?? ""} onChange={(e) => set({ tax_id_prefix: e.target.value || undefined })}
+            className="h-7 text-xs" placeholder="es. RSSMRA" />
+        </div>
+
         {/* City */}
         <div className="space-y-1">
           <label className="text-muted-foreground">Città (contiene)</label>
