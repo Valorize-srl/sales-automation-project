@@ -1041,7 +1041,7 @@ export function ClayCompaniesTable({
           <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search company name…"
+            placeholder="Cerca nome, P.IVA, CF…"
             className="h-7 text-xs pl-8"
           />
           {search && (

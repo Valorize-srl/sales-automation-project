@@ -303,7 +303,12 @@ def _build_company_filter_query(
 
     q = select(Company)
     if search:
-        q = q.where(Company.name.ilike(f"%{search}%"))
+        like = f"%{search}%"
+        q = q.where(or_(
+            Company.name.ilike(like),
+            Company.vat_number.ilike(like),
+            Company.tax_id.ilike(like),
+        ))
     if industry is not None:
         q = q.where(Company.industry == industry)
     if province is not None:
