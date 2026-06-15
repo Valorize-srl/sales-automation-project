@@ -33,7 +33,6 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
   const [revenue, setRevenue] = useState("");
   const [vatNumber, setVatNumber] = useState("");
   const [taxId, setTaxId] = useState("");
-  const [sourceCompanyId, setSourceCompanyId] = useState("");
   const [notes, setNotes] = useState("");
 
   // Destination list
@@ -56,7 +55,7 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
     setName(""); setWebsite(""); setLinkedinUrl(""); setEmail(""); setPhone("");
     setIndustry(""); setLocation(""); setProvince(""); setZipCode("");
     setEmployeeCount(""); setRevenue("");
-    setVatNumber(""); setTaxId(""); setSourceCompanyId("");
+    setVatNumber(""); setTaxId("");
     setNotes(""); setListChoice(""); setNewListName("");
     setSaving(false); setError(null);
   };
@@ -114,7 +113,9 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
         revenue: revenue.trim() ? parseInt(revenue.replace(/[^\d]/g, ""), 10) : null,
         vat_number: vatNumber.trim() || null,
         tax_id: taxId.trim() || null,
-        source_company_id: sourceCompanyId.trim() || null,
+        // Manual entries always have a null source — this distinguishes them
+        // from rows imported from Seikoo (which carry the Seikoo UUID).
+        source_company_id: null,
         notes: notes.trim() || null,
       });
 
@@ -287,19 +288,9 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
             </div>
           </div>
 
-          <div>
-            <Label className="text-xs">ID Seikoo (origine)</Label>
-            <Input
-              value={sourceCompanyId}
-              onChange={(e) => setSourceCompanyId(e.target.value)}
-              placeholder="UUID Seikoo (lascia vuoto per voci manuali)"
-              maxLength={64}
-              className="mt-1 text-sm"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Solo formato UUID (es. 0e4f773f-a64d-4fba-bd99-f09873d41f98). Per le voci manuali lascia vuoto.
-            </p>
-          </div>
+          <p className="text-[10px] text-muted-foreground -mt-2">
+            Le aziende create da qui vengono marcate come <strong>origine manuale</strong> (nessun ID Seikoo).
+          </p>
 
           <div>
             <Label className="text-xs">Note</Label>

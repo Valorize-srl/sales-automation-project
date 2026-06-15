@@ -446,18 +446,21 @@ const FIXED_COLUMNS: ColumnDef[] = [
     ),
   },
   {
-    id: "source_company_id", label: "ID Seikoo", iconKind: "text", maxWidth: "180px",
-    renderCell: (c, ctx) => (
-      <EditableCell
-        value={c.source_company_id ?? null}
-        onSave={(v) => ctx.onCompanyFieldSave(c.id, "source_company_id", v)}
-        display={
-          c.source_company_id
-            ? <span className="text-sm tabular-nums">{c.source_company_id}</span>
-            : <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">manuale</Badge>
-        }
-      />
-    ),
+    // Read-only by design — the column is a Postgres UUID. Manual entries
+    // get NULL ("manuale"); Seikoo-imported rows get a UUID we don't want
+    // users hand-editing.
+    id: "source_company_id", label: "Origine", iconKind: "text", maxWidth: "180px",
+    renderCell: (c) =>
+      c.source_company_id
+        ? (
+          <span
+            className="text-[11px] tabular-nums text-muted-foreground truncate inline-block max-w-full"
+            title={c.source_company_id}
+          >
+            Seikoo · {c.source_company_id.slice(0, 8)}…
+          </span>
+        )
+        : <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">manuale</Badge>,
   },
 ];
 
