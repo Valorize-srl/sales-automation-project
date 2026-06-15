@@ -33,7 +33,7 @@ class LeadListService:
     async def create_list(
         self,
         name: str,
-        ai_agent_id: Optional[int] = None,
+        ai_agent_id: Optional[int] = None,  # deprecated: AI Agents removed in PR #17, kept for API compat
         client_tag: Optional[str] = None,
         description: Optional[str] = None,
         filters_snapshot: Optional[dict] = None,
@@ -56,7 +56,6 @@ class LeadListService:
             Created LeadList instance
         """
         lead_list = LeadList(
-            ai_agent_id=ai_agent_id,
             name=name,
             client_tag=client_tag,
             description=description,
@@ -65,33 +64,27 @@ class LeadListService:
         self.db.add(lead_list)
         await self.db.flush()
 
-        people_count = 0
         companies_count = 0
 
-        # Assign people to this list
-        if person_ids:
-            result = await self.db.execute(
-                select(Person).where(Person.id.in_(person_ids))
-            )
-            for p in result.scalars().all():
-                p.list_id = lead_list.id
-                people_count += 1
-
-        # Assign companies to this list
+        # Attach companies via the M2M `company_lead_list` table.
         if company_ids:
             result = await self.db.execute(
-                select(Company).where(Company.id.in_(company_ids))
+                select(Company)
+                .options(selectinload(Company.lists))
+                .where(Company.id.in_(company_ids))
             )
             for c in result.scalars().all():
-                c.list_id = lead_list.id
-                companies_count += 1
+                if lead_list not in c.lists:
+                    c.lists.append(lead_list)
+                    companies_count += 1
 
-        lead_list.people_count = people_count
+        # NB: `person_ids` is accepted for API compatibility but is a no-op:
+        # people are linked to companies, and companies are linked to lists.
         lead_list.companies_count = companies_count
 
         await self.db.commit()
         await self.db.refresh(lead_list)
-        logger.info(f"Created Lead List: {name} ({people_count} people, {companies_count} companies)")
+        logger.info(f"Created Lead List: {name} ({companies_count} companies)")
         return lead_list
 
     async def get_list(self, list_id: int) -> Optional[LeadList]:
