@@ -582,7 +582,7 @@ export default function LeadsPage() {
   /** Inline edit of a top-level Company field from the Clay table cells. */
   const handleCompanyFieldSave = async (
     companyId: number,
-    field: "name" | "website" | "linkedin_url" | "industry" | "province" | "location" | "revenue" | "employee_count",
+    field: "name" | "website" | "linkedin_url" | "industry" | "province" | "location" | "revenue" | "employee_count" | "zip_code" | "vat_number" | "tax_id" | "source_company_id",
     value: string | number | null,
   ) => {
     try {

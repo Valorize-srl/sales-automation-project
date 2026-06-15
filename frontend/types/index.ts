@@ -140,11 +140,15 @@ export interface CompanyCreate {
   industry?: string | null;
   location?: string | null;
   province?: string | null;
+  zip_code?: string | null;
   signals?: string | null;
   website?: string | null;
   notes?: string | null;
   revenue?: number | null;
   employee_count?: number | null;
+  vat_number?: string | null;
+  tax_id?: string | null;
+  source_company_id?: string | null;
 }
 
 export interface CompanyUpdate {
@@ -155,12 +159,16 @@ export interface CompanyUpdate {
   industry?: string | null;
   location?: string | null;
   province?: string | null;
+  zip_code?: string | null;
   signals?: string | null;
   website?: string | null;
   client_tag?: string | null;
   notes?: string | null;
   revenue?: number | null;
   employee_count?: number | null;
+  vat_number?: string | null;
+  tax_id?: string | null;
+  source_company_id?: string | null;
   generic_emails?: string[] | null;
 }
 
@@ -186,6 +194,7 @@ export interface Company {
   industry: string | null;
   location: string | null;
   province: string | null;
+  zip_code: string | null;
   signals: string | null;
   website: string | null;
   client_tag: string | null;
@@ -193,6 +202,11 @@ export interface Company {
   // Raw firmographics
   revenue: number | null;
   employee_count: number | null;
+  // Fiscal IDs
+  vat_number: string | null;
+  tax_id: string | null;
+  // External origin id (e.g. Seikoo company id); null = manual / other source
+  source_company_id: string | null;
   custom_fields: Record<string, string> | null;
   list_ids?: number[];
   // Aggregated work emails of decision makers (Person.email of linked persons)
@@ -517,6 +531,10 @@ export interface CompanyFilters {
   score_min?: number;
   score_max?: number;
   decision_maker_name_contains?: string;
+  // CAP prefix match (e.g. "20" → 20xxx Milano area)
+  zip_code_prefix?: string;
+  // Presence toggle for VAT number / Partita IVA
+  has_vat?: boolean;
   // Advanced filters (encoded as the `filters` JSON query param)
   cf?: Record<string, string | { eq?: string; contains?: string; min?: number; max?: number }>;
   name_contains?: string;

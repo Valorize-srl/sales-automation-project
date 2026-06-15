@@ -25,7 +25,11 @@ export type EditableCompanyField =
   | "province"
   | "location"
   | "revenue"
-  | "employee_count";
+  | "employee_count"
+  | "zip_code"
+  | "vat_number"
+  | "tax_id"
+  | "source_company_id";
 
 interface Props {
   companies: Company[];
@@ -410,6 +414,50 @@ const FIXED_COLUMNS: ColumnDef[] = [
         </div>
       );
     },
+  },
+  {
+    id: "zip_code", label: "CAP", iconKind: "text",
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.zip_code ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "zip_code", v)}
+        display={<span className="text-sm tabular-nums">{c.zip_code || <span className="text-muted-foreground text-xs">—</span>}</span>}
+      />
+    ),
+  },
+  {
+    id: "vat_number", label: "P.IVA", iconKind: "text", maxWidth: "180px",
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.vat_number ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "vat_number", v)}
+        display={<span className="text-sm tabular-nums">{c.vat_number || <span className="text-muted-foreground text-xs">—</span>}</span>}
+      />
+    ),
+  },
+  {
+    id: "tax_id", label: "Codice Fiscale", iconKind: "text", maxWidth: "200px",
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.tax_id ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "tax_id", v)}
+        display={<span className="text-sm tabular-nums">{c.tax_id || <span className="text-muted-foreground text-xs">—</span>}</span>}
+      />
+    ),
+  },
+  {
+    id: "source_company_id", label: "ID Seikoo", iconKind: "text", maxWidth: "180px",
+    renderCell: (c, ctx) => (
+      <EditableCell
+        value={c.source_company_id ?? null}
+        onSave={(v) => ctx.onCompanyFieldSave(c.id, "source_company_id", v)}
+        display={
+          c.source_company_id
+            ? <span className="text-sm tabular-nums">{c.source_company_id}</span>
+            : <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">manuale</Badge>
+        }
+      />
+    ),
   },
 ];
 

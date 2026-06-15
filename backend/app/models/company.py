@@ -34,10 +34,19 @@ class Company(Base):
     industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     province: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    zip_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     signals: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     website: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_tag: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Fiscal identifiers (IT: P.IVA 11 digits, CF 11-16 chars)
+    vat_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+    tax_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+
+    # External origin: e.g. Seikoo's company id when the row was imported from
+    # Seikoo. NULL means "inserted manually / from a different source".
+    source_company_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
     # Raw firmographics (used by Clay-style dashboard + Lead Planner)
     revenue: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
