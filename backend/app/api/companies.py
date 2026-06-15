@@ -291,6 +291,8 @@ def _build_company_filter_query(
     has_dm_with_linkedin=None,
     zip_code_prefix=None,
     has_vat=None,
+    vat_number_prefix=None,
+    tax_id_prefix=None,
     filters=None,
 ):
     """Build the SQLAlchemy SELECT for /companies (and /companies/ids).
@@ -303,12 +305,10 @@ def _build_company_filter_query(
 
     q = select(Company)
     if search:
-        like = f"%{search}%"
-        q = q.where(or_(
-            Company.name.ilike(like),
-            Company.vat_number.ilike(like),
-            Company.tax_id.ilike(like),
-        ))
+        # Name-only substring search. Fiscal lookup lives in dedicated
+        # prefix filters (vat_number_prefix / tax_id_prefix) so the
+        # "Search company name" box does what it says.
+        q = q.where(Company.name.ilike(f"%{search}%"))
     if industry is not None:
         q = q.where(Company.industry == industry)
     if province is not None:
@@ -406,6 +406,12 @@ def _build_company_filter_query(
         q = q.where(Company.vat_number.isnot(None), Company.vat_number != "")
     elif has_vat is False:
         q = q.where(or_(Company.vat_number.is_(None), Company.vat_number == ""))
+    # Prefix-only on the indexed vat_number / tax_id columns. Leading
+    # wildcards on these would force a seq scan over 5M+ rows.
+    if vat_number_prefix:
+        q = q.where(Company.vat_number.ilike(f"{vat_number_prefix}%"))
+    if tax_id_prefix:
+        q = q.where(Company.tax_id.ilike(f"{tax_id_prefix}%"))
 
     if filters:
         try:
@@ -459,6 +465,8 @@ async def list_company_ids(
     decision_maker_name_contains: Optional[str] = Query(None),
     zip_code_prefix: Optional[str] = Query(None),
     has_vat: Optional[bool] = Query(None),
+    vat_number_prefix: Optional[str] = Query(None),
+    tax_id_prefix: Optional[str] = Query(None),
     filters: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -480,6 +488,7 @@ async def list_company_ids(
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
         decision_maker_name_contains=decision_maker_name_contains,
         zip_code_prefix=zip_code_prefix, has_vat=has_vat,
+        vat_number_prefix=vat_number_prefix, tax_id_prefix=tax_id_prefix,
         filters=filters,
     )
     id_query = base_query.with_only_columns(Company.id)
@@ -509,6 +518,8 @@ async def list_companies(
     decision_maker_name_contains: Optional[str] = Query(None, description="Filter to companies with at least one Person whose name matches"),
     zip_code_prefix: Optional[str] = Query(None, description="Match companies whose zip_code starts with this prefix"),
     has_vat: Optional[bool] = Query(None, description="Filter by presence of a populated vat_number"),
+    vat_number_prefix: Optional[str] = Query(None, description="Match companies whose vat_number starts with this prefix"),
+    tax_id_prefix: Optional[str] = Query(None, description="Match companies whose tax_id starts with this prefix"),
     filters: Optional[str] = Query(None, description="JSON-encoded advanced filters, incl. custom_fields"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -535,6 +546,7 @@ async def list_companies(
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
         decision_maker_name_contains=decision_maker_name_contains,
         zip_code_prefix=zip_code_prefix, has_vat=has_vat,
+        vat_number_prefix=vat_number_prefix, tax_id_prefix=tax_id_prefix,
         filters=filters,
     )
 
