@@ -292,10 +292,13 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
             <Input
               value={sourceCompanyId}
               onChange={(e) => setSourceCompanyId(e.target.value)}
-              placeholder="vuoto se l'azienda non viene da Seikoo"
+              placeholder="UUID Seikoo (lascia vuoto per voci manuali)"
               maxLength={64}
               className="mt-1 text-sm"
             />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Solo formato UUID (es. 0e4f773f-a64d-4fba-bd99-f09873d41f98). Per le voci manuali lascia vuoto.
+            </p>
           </div>
 
           <div>
