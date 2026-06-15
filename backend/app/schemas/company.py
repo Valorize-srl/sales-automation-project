@@ -103,6 +103,20 @@ class CompanyResponse(BaseModel):
     tax_id: Optional[str] = None
     source_company_id: Optional[str] = None
     list_ids: list[int] = []
+
+    @field_validator(
+        "zip_code", "vat_number", "tax_id", "source_company_id",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_to_str(cls, v):
+        """Prod added source_company_id as a UUID column out-of-band, so SQLAlchemy
+        hands us a uuid.UUID here even though we declare String. Stringify
+        anything non-None before Pydantic validates."""
+        if v is None:
+            return v
+        return str(v)
+
     # Aggregated work emails of decision makers (Person.email of linked persons)
     work_emails: list[str] = []
     # Compact summary of linked decision makers for the Clay-style table

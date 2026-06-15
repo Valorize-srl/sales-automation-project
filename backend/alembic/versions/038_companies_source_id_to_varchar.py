@@ -1,17 +1,28 @@
-"""Coerce companies.source_company_id to VARCHAR(64).
+"""No-op placeholder for source_company_id type coercion.
 
-Production DB had `source_company_id` added out-of-band as UUID. Our model
-declares it as String(64); SQLAlchemy returns a `uuid.UUID` instance which
-Pydantic v2 then rejects with `string_type`. Symptom: every GET /companies
-that touched a row with a populated id failed 500.
+Original plan was to ALTER COLUMN companies.source_company_id TYPE VARCHAR(64)
+because prod added it out-of-band as UUID. Pydantic v2 was 500'ing on GET
+/companies because uuid.UUID isn't accepted for `Optional[str]`.
 
-Convert in place. PostgreSQL can cast uuid → text losslessly; rows without
-an id stay NULL. Same trick used for any of the other three columns that
-might also have been created with an unexpected type.
+Problem: companies has ~5M rows. ALTER COLUMN TYPE rewrites the entire
+table; Railway killed the deploy after a few minutes of locked DDL.
+
+Resolution moved to the application layer:
+- CompanyResponse adds a field_validator that stringifies the four new
+  columns before Pydantic touches them. Reads work whether the underlying
+  column is uuid or varchar.
+- Writes go through Pydantic CompanyCreate/Update which accept str; for
+  the UUID-typed column Postgres auto-casts on INSERT iff the supplied
+  text is valid UUID format. Manual inserts that need a non-UUID id will
+  hit a clean ProgrammingError at POST time instead of a silent 500
+  later — acceptable for now.
+
+This file exists only so deployed instances that already advanced their
+alembic_version past 037 don't get stuck.
 
 Revision ID: 038
 """
-from alembic import op
+from alembic import op  # noqa: F401  (kept for symmetry; unused)
 
 
 revision = "038"
@@ -21,29 +32,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Cast → text first (handles uuid, int, etc.), then size-cap. NULL-safe.
-    op.execute(
-        "ALTER TABLE companies "
-        "ALTER COLUMN source_company_id TYPE VARCHAR(64) "
-        "USING source_company_id::text"
-    )
-    op.execute(
-        "ALTER TABLE companies "
-        "ALTER COLUMN zip_code TYPE VARCHAR(20) "
-        "USING zip_code::text"
-    )
-    op.execute(
-        "ALTER TABLE companies "
-        "ALTER COLUMN vat_number TYPE VARCHAR(32) "
-        "USING vat_number::text"
-    )
-    op.execute(
-        "ALTER TABLE companies "
-        "ALTER COLUMN tax_id TYPE VARCHAR(32) "
-        "USING tax_id::text"
-    )
+    pass
 
 
 def downgrade() -> None:
-    # No-op: text → previous types would be lossy / unknown.
     pass
