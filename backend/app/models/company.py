@@ -4,6 +4,7 @@ from datetime import datetime
 
 from typing import Optional
 from sqlalchemy import String, Text, DateTime, Index, JSON, ForeignKey, Integer, BigInteger, Table, Column
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -44,9 +45,14 @@ class Company(Base):
     vat_number: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
     tax_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
 
-    # External origin: e.g. Seikoo's company id when the row was imported from
-    # Seikoo. NULL means "inserted manually / from a different source".
-    source_company_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
+    # External origin: e.g. Seikoo's company id (UUID) when the row was imported
+    # from Seikoo. NULL means "inserted manually / from a different source".
+    # The column was created in prod as PG uuid, so we keep the type aligned;
+    # Pydantic stringifies on the way out, and `as_uuid=False` makes asyncpg
+    # accept plain strings on the way in.
+    source_company_id: Mapped[Optional[str]] = mapped_column(
+        PG_UUID(as_uuid=False), nullable=True, index=True
+    )
 
     # Raw firmographics (used by Clay-style dashboard + Lead Planner)
     revenue: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
