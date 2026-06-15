@@ -131,6 +131,29 @@ export function FilterPanel({ filters, onFiltersChange, industries, customFieldK
             className="h-7 text-xs" placeholder="es. MI, RM" />
         </div>
 
+        {/* CAP (prefix match) */}
+        <div className="space-y-1">
+          <label className="text-muted-foreground">CAP (inizia con)</label>
+          <Input value={filters.zip_code_prefix ?? ""} onChange={(e) => set({ zip_code_prefix: e.target.value || undefined })}
+            className="h-7 text-xs" placeholder="es. 20 → Milano area" />
+        </div>
+
+        {/* P.IVA presence toggle */}
+        <div className="space-y-1">
+          <label className="text-muted-foreground">P.IVA</label>
+          <Select
+            value={filters.has_vat === undefined ? "any" : filters.has_vat ? "yes" : "no"}
+            onValueChange={(v) => setBool("has_vat", v as "any" | "yes" | "no")}
+          >
+            <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any</SelectItem>
+              <SelectItem value="yes">Ha P.IVA</SelectItem>
+              <SelectItem value="no">Senza P.IVA</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* City */}
         <div className="space-y-1">
           <label className="text-muted-foreground">Città (contiene)</label>

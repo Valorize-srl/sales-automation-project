@@ -28,8 +28,12 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
   const [industry, setIndustry] = useState("");
   const [location, setLocation] = useState("");
   const [province, setProvince] = useState("");
+  const [zipCode, setZipCode] = useState("");
   const [employeeCount, setEmployeeCount] = useState("");
   const [revenue, setRevenue] = useState("");
+  const [vatNumber, setVatNumber] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [sourceCompanyId, setSourceCompanyId] = useState("");
   const [notes, setNotes] = useState("");
 
   // Destination list
@@ -50,8 +54,10 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
 
   const reset = () => {
     setName(""); setWebsite(""); setLinkedinUrl(""); setEmail(""); setPhone("");
-    setIndustry(""); setLocation(""); setProvince(""); setEmployeeCount("");
-    setRevenue(""); setNotes(""); setListChoice(""); setNewListName("");
+    setIndustry(""); setLocation(""); setProvince(""); setZipCode("");
+    setEmployeeCount(""); setRevenue("");
+    setVatNumber(""); setTaxId(""); setSourceCompanyId("");
+    setNotes(""); setListChoice(""); setNewListName("");
     setSaving(false); setError(null);
   };
 
@@ -103,8 +109,12 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
         industry: industry.trim() || null,
         location: location.trim() || null,
         province: province.trim() || null,
+        zip_code: zipCode.trim() || null,
         employee_count: employeeCount.trim() ? parseInt(employeeCount, 10) : null,
         revenue: revenue.trim() ? parseInt(revenue.replace(/[^\d]/g, ""), 10) : null,
+        vat_number: vatNumber.trim() || null,
+        tax_id: taxId.trim() || null,
+        source_company_id: sourceCompanyId.trim() || null,
         notes: notes.trim() || null,
       });
 
@@ -223,6 +233,16 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
               />
             </div>
             <div>
+              <Label className="text-xs">CAP</Label>
+              <Input
+                value={zipCode}
+                onChange={(e) => setZipCode(e.target.value)}
+                placeholder="20100"
+                maxLength={20}
+                className="mt-1 text-sm"
+              />
+            </div>
+            <div>
               <Label className="text-xs">Dipendenti</Label>
               <Input
                 type="number"
@@ -233,6 +253,9 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
                 className="mt-1 text-sm"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">Fatturato (€)</Label>
               <Input
@@ -242,6 +265,37 @@ export function AddCompanyDialog({ open, onOpenChange, onCompleted }: Props) {
                 className="mt-1 text-sm"
               />
             </div>
+            <div>
+              <Label className="text-xs">P.IVA</Label>
+              <Input
+                value={vatNumber}
+                onChange={(e) => setVatNumber(e.target.value)}
+                placeholder="12345678901"
+                maxLength={32}
+                className="mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Codice Fiscale</Label>
+              <Input
+                value={taxId}
+                onChange={(e) => setTaxId(e.target.value)}
+                placeholder="RSSMRA80A01H501Z"
+                maxLength={32}
+                className="mt-1 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">ID Seikoo (origine)</Label>
+            <Input
+              value={sourceCompanyId}
+              onChange={(e) => setSourceCompanyId(e.target.value)}
+              placeholder="vuoto se l'azienda non viene da Seikoo"
+              maxLength={64}
+              className="mt-1 text-sm"
+            />
           </div>
 
           <div>

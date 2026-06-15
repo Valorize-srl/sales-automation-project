@@ -41,6 +41,7 @@ router = APIRouter()
 COMPANY_FIELDS = [
     "name", "email", "phone", "linkedin_url", "industry",
     "location", "signals", "website", "revenue", "employee_count", "province",
+    "zip_code", "vat_number", "tax_id", "source_company_id",
 ]
 
 COMPANY_MAPPING_SYSTEM_PROMPT = """You are a data mapping assistant. You receive CSV column headers \
@@ -54,10 +55,14 @@ Company fields to map:
 - industry: Industry sector or category
 - location: City or location text
 - province: Italian "Provincia" 2-letter code (MI, RM, BG, etc.) if a dedicated column exists
+- zip_code: Postal code / CAP (5 digits in Italy). Headers: "CAP", "Postal Code", "ZIP", "Codice Postale"
 - signals: Funding events, acquisitions, news, or other business signals
 - website: Company website URL
 - revenue: Annual revenue / fatturato (any numeric or formatted column like "729.269.649 €")
 - employee_count: Headcount / number of employees / dipendenti
+- vat_number: VAT / Partita IVA (IT P.IVA is 11 digits). Headers: "P.IVA", "Partita IVA", "VAT", "VAT Number"
+- tax_id: Italian Codice Fiscale (16 chars for persons, 11 for companies). Headers: "CF", "Codice Fiscale", "Tax ID"
+- source_company_id: External origin id, typically the company id in Seikoo. Headers: "ID Seikoo", "Seikoo ID", "Source ID", "External ID"
 
 Rules:
 - Map each CSV column to the most appropriate company field
@@ -284,6 +289,8 @@ def _build_company_filter_query(
     has_decision_makers=None,
     has_dm_with_email=None,
     has_dm_with_linkedin=None,
+    zip_code_prefix=None,
+    has_vat=None,
     filters=None,
 ):
     """Build the SQLAlchemy SELECT for /companies (and /companies/ids).
@@ -387,6 +394,14 @@ def _build_company_filter_query(
     if employee_count_max is not None:
         q = q.where(Company.employee_count <= employee_count_max)
 
+    # zip_code prefix match (e.g. "20" → all 20xxx CAPs).
+    if zip_code_prefix:
+        q = q.where(Company.zip_code.ilike(f"{zip_code_prefix}%"))
+    if has_vat is True:
+        q = q.where(Company.vat_number.isnot(None), Company.vat_number != "")
+    elif has_vat is False:
+        q = q.where(or_(Company.vat_number.is_(None), Company.vat_number == ""))
+
     if filters:
         try:
             advanced = json.loads(filters)
@@ -437,6 +452,8 @@ async def list_company_ids(
     employee_count_min: Optional[int] = Query(None),
     employee_count_max: Optional[int] = Query(None),
     decision_maker_name_contains: Optional[str] = Query(None),
+    zip_code_prefix: Optional[str] = Query(None),
+    has_vat: Optional[bool] = Query(None),
     filters: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -456,7 +473,9 @@ async def list_company_ids(
         has_dm_with_linkedin=has_dm_with_linkedin,
         revenue_min=revenue_min, revenue_max=revenue_max,
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
-        decision_maker_name_contains=decision_maker_name_contains, filters=filters,
+        decision_maker_name_contains=decision_maker_name_contains,
+        zip_code_prefix=zip_code_prefix, has_vat=has_vat,
+        filters=filters,
     )
     id_query = base_query.with_only_columns(Company.id)
     rows = (await db.execute(id_query)).all()
@@ -483,6 +502,8 @@ async def list_companies(
     employee_count_min: Optional[int] = Query(None),
     employee_count_max: Optional[int] = Query(None),
     decision_maker_name_contains: Optional[str] = Query(None, description="Filter to companies with at least one Person whose name matches"),
+    zip_code_prefix: Optional[str] = Query(None, description="Match companies whose zip_code starts with this prefix"),
+    has_vat: Optional[bool] = Query(None, description="Filter by presence of a populated vat_number"),
     filters: Optional[str] = Query(None, description="JSON-encoded advanced filters, incl. custom_fields"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -507,7 +528,9 @@ async def list_companies(
         has_dm_with_linkedin=has_dm_with_linkedin,
         revenue_min=revenue_min, revenue_max=revenue_max,
         employee_count_min=employee_count_min, employee_count_max=employee_count_max,
-        decision_maker_name_contains=decision_maker_name_contains, filters=filters,
+        decision_maker_name_contains=decision_maker_name_contains,
+        zip_code_prefix=zip_code_prefix, has_vat=has_vat,
+        filters=filters,
     )
 
     # Count total matching records
@@ -855,6 +878,8 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
             "name": 255, "email": 255, "phone": 50, "linkedin_url": 500,
             "industry": 255, "location": 255, "website": 500,
             "province": 10, "client_tag": 200, "signals": 65000,
+            "zip_code": 20, "vat_number": 32, "tax_id": 32,
+            "source_company_id": 64,
         }
         EMAIL_DOMAIN_LIMIT = 100  # applied to _extract_domain output
 
@@ -932,10 +957,14 @@ async def import_csv(data: CompanyCSVImportRequest, db: AsyncSession = Depends(g
                     industry=_val(row, data.mapping.industry, "industry"),
                     location=_val(row, data.mapping.location, "location"),
                     province=_val(row, data.mapping.province, "province"),
+                    zip_code=_val(row, data.mapping.zip_code, "zip_code"),
                     signals=_val(row, data.mapping.signals, "signals"),
                     website=_val(row, data.mapping.website, "website"),
                     revenue=rev_val,
                     employee_count=emp_val,
+                    vat_number=_val(row, data.mapping.vat_number, "vat_number"),
+                    tax_id=_val(row, data.mapping.tax_id, "tax_id"),
+                    source_company_id=_val(row, data.mapping.source_company_id, "source_company_id"),
                     custom_fields=cf or None,
                 )
                 # Wrap each row's INSERT in a savepoint so a single bad row

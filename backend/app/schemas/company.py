@@ -25,10 +25,14 @@ class CompanyCSVMapping(BaseModel):
     industry: Optional[str] = None
     location: Optional[str] = None
     province: Optional[str] = None
+    zip_code: Optional[str] = None
     signals: Optional[str] = None
     website: Optional[str] = None
     revenue: Optional[str] = None
     employee_count: Optional[str] = None
+    vat_number: Optional[str] = None
+    tax_id: Optional[str] = None
+    source_company_id: Optional[str] = None
 
 
 class CompanyCreate(BaseModel):
@@ -39,12 +43,16 @@ class CompanyCreate(BaseModel):
     industry: Optional[str] = None
     location: Optional[str] = None
     province: Optional[str] = None
+    zip_code: Optional[str] = None
     signals: Optional[str] = None
     website: Optional[str] = None
     notes: Optional[str] = None
     revenue: Optional[int] = None
     employee_count: Optional[int] = None
     custom_fields: Optional[dict] = None
+    vat_number: Optional[str] = None
+    tax_id: Optional[str] = None
+    source_company_id: Optional[str] = None
 
 
 class CompanyUpdate(BaseModel):
@@ -55,6 +63,7 @@ class CompanyUpdate(BaseModel):
     industry: Optional[str] = None
     location: Optional[str] = None
     province: Optional[str] = None
+    zip_code: Optional[str] = None
     signals: Optional[str] = None
     website: Optional[str] = None
     client_tag: Optional[str] = None
@@ -62,6 +71,9 @@ class CompanyUpdate(BaseModel):
     revenue: Optional[int] = None
     employee_count: Optional[int] = None
     custom_fields: Optional[dict] = None
+    vat_number: Optional[str] = None
+    tax_id: Optional[str] = None
+    source_company_id: Optional[str] = None
     # Replaces the entire generic_emails list when provided. Stored as a
     # JSON-encoded string in the DB; the API handler does the json.dumps.
     generic_emails: Optional[list[str]] = None
@@ -79,6 +91,7 @@ class CompanyResponse(BaseModel):
     industry: Optional[str]
     location: Optional[str]
     province: Optional[str] = None
+    zip_code: Optional[str] = None
     signals: Optional[str]
     website: Optional[str]
     client_tag: Optional[str] = None
@@ -86,6 +99,9 @@ class CompanyResponse(BaseModel):
     revenue: Optional[int] = None
     employee_count: Optional[int] = None
     custom_fields: Optional[dict] = None
+    vat_number: Optional[str] = None
+    tax_id: Optional[str] = None
+    source_company_id: Optional[str] = None
     list_ids: list[int] = []
     # Aggregated work emails of decision makers (Person.email of linked persons)
     work_emails: list[str] = []
