@@ -78,8 +78,15 @@ class CompanyEnrichmentService:
                 error="No website URL"
             )
 
-        # Check if recently enriched (skip unless forced)
-        if not force and company.enrichment_date:
+        # Skip only se l'ultimo tentativo è andato A BUON FINE recente.
+        # I fallimenti vanno SEMPRE ritentati — il sito potrebbe essere stato
+        # temporaneamente down, o (come nel bug timezone 2026-06-16) il
+        # fallimento può essere stato indotto da un bug nostro.
+        if (
+            not force
+            and company.enrichment_date
+            and company.enrichment_status == "completed"
+        ):
             # Le righe scritte dal vecchio codice (datetime.utcnow() naive)
             # sono ancora in DB. Trattale come UTC per evitare di crashare
             # con "can't subtract offset-naive and offset-aware datetimes".
