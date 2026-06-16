@@ -78,14 +78,20 @@ class CompanyEnrichmentService:
                 error="No website URL"
             )
 
-        # Skip only se l'ultimo tentativo è andato A BUON FINE recente.
-        # I fallimenti vanno SEMPRE ritentati — il sito potrebbe essere stato
-        # temporaneamente down, o (come nel bug timezone 2026-06-16) il
-        # fallimento può essere stato indotto da un bug nostro.
+        # Skip solo se l'ultimo tentativo recente ha EFFETTIVAMENTE trovato
+        # email salvate. Riproviamo:
+        # - i fallimenti (sito magari temporaneamente down, oppure bug
+        #   nostro come il timezone bug del 2026-06-16),
+        # - i "completed" con 0 email salvate (il vecchio scraper provava
+        #   solo path inglesi → marcava complete senza trovare niente:
+        #   riprovare con i path italiani recupera molto).
+        # Un'azienda con generic_emails popolato negli ultimi 7 giorni
+        # invece non viene ri-scrapata.
         if (
             not force
             and company.enrichment_date
             and company.enrichment_status == "completed"
+            and company.generic_emails  # almeno 1 email salvata in passato
         ):
             # Le righe scritte dal vecchio codice (datetime.utcnow() naive)
             # sono ancora in DB. Trattale come UTC per evitare di crashare
