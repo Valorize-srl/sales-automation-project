@@ -54,6 +54,10 @@ export default function LeadsPage() {
   const [addToListMenuOpen, setAddToListMenuOpen] = useState(false);
   const [bulkScrapeOpen, setBulkScrapeOpen] = useState(false);
   const [bulkScrapeCompanies, setBulkScrapeCompanies] = useState<Company[]>([]);
+  // When the user picked "Select all matching" we don't materialize Company
+  // objects (would be 250K+ rows in browser RAM). We pass just the matching
+  // ids to the dialog, which runs the server-side enrich-batch in chunks.
+  const [bulkScrapeIds, setBulkScrapeIds] = useState<number[]>([]);
   const [bulkScrapePreparing, setBulkScrapePreparing] = useState(false);
   const [linkedInDMOpen, setLinkedInDMOpen] = useState(false);
   const [linkedInDMCompanies, setLinkedInDMCompanies] = useState<Company[]>([]);
@@ -191,28 +195,23 @@ export default function LeadsPage() {
   const openBulkScrape = async () => {
 
     if (selectAllMatching) {
+      // Big set: resolve only the matching ids in one call (~250 KB of
+      // integers vs ~250 MB of Company objects from paginated GET /companies).
+      // Dialog will run in bulk mode: server-side enrich-batch in chunks.
       setBulkScrapePreparing(true);
       try {
-        const PAGE_SIZE = 200;
-        const acc: Company[] = [];
-        let p = 1;
-        // First page tells us total_pages
-        const first = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
-        acc.push(...first.companies);
-        while (p < first.total_pages) {
-          p += 1;
-          const next = await api.getCompaniesFiltered({ ...effectiveFilters, page: p, page_size: PAGE_SIZE });
-          acc.push(...next.companies);
-        }
-        setBulkScrapeCompanies(acc);
+        const ids = await api.getCompanyIdsFiltered(effectiveFilters);
+        setBulkScrapeIds(ids);
+        setBulkScrapeCompanies([]); // hint to the dialog: we're in bulk mode
         setBulkScrapeOpen(true);
       } catch (e) {
-        showFlash("err", `Recupero aziende fallito: ${e instanceof Error ? e.message : e}`);
+        showFlash("err", `Recupero ID aziende fallito: ${e instanceof Error ? e.message : e}`);
       } finally {
         setBulkScrapePreparing(false);
       }
       return;
     }
+    setBulkScrapeIds([]);
     if (selectedIds.size > 0) {
       setBulkScrapeCompanies(companies.filter((c) => selectedIds.has(c.id)));
     } else {
@@ -817,6 +816,7 @@ export default function LeadsPage() {
             open={bulkScrapeOpen}
             onOpenChange={setBulkScrapeOpen}
             companies={bulkScrapeCompanies}
+            companyIds={bulkScrapeIds.length > 0 ? bulkScrapeIds : undefined}
             onCompleted={() => loadCompanies(page)}
           />
 

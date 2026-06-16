@@ -44,6 +44,10 @@ class EnrichBatchRequest(BaseModel):
     """Request for batch enrichment."""
     company_ids: list[int]
     force: bool = False  # Force re-enrichment even if recently enriched
+    # Max concurrent scrapes within this batch. Default 10 — bumped from
+    # the legacy 3 once the frontend started feeding ~100 ids at a time
+    # so per-chunk latency stays in the ~30s range.
+    max_concurrent: int = 10
 
     class Config:
         from_attributes = True

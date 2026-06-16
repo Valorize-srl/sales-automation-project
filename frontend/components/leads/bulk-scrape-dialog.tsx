@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Globe, Loader2, Mail, Linkedin, CheckCircle, AlertCircle,
-  Save, XCircle, ChevronDown, ChevronRight,
+  Save, XCircle, ChevronDown, ChevronRight, Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,29 +23,100 @@ interface CompanyScrapeState {
 interface BulkScrapeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  companies: Company[];
+  /** Preview mode (manual save per row). Used for hand-picked small selections. */
+  companies?: Company[];
+  /** Bulk mode (server-side enrich-batch, auto-saved to DB). Used when the
+   *  user picked "Select all matching" on a large filtered set. */
+  companyIds?: number[];
   onCompleted?: () => void;
 }
 
-export function BulkScrapeDialog({ open, onOpenChange, companies, onCompleted }: BulkScrapeDialogProps) {
-  const withWebsite = companies.filter((c) => c.website);
-  const withoutWebsite = companies.filter((c) => !c.website);
+// Server-side bulk enrichment runs in chunks; the backend's enrich-batch is
+// already async-concurrent inside each chunk (max_concurrent=10).
+const BULK_CHUNK_SIZE = 50;
+const BULK_MAX_CONCURRENT = 10;
 
+interface BulkProgress {
+  processed: number;
+  enriched: number;
+  failed: number;
+  skipped: number;
+  total: number;
+}
+
+export function BulkScrapeDialog({ open, onOpenChange, companies, companyIds, onCompleted }: BulkScrapeDialogProps) {
+  // Bulk mode is selected when companyIds is provided. companies prop is
+  // the small-selection preview path.
+  const mode: "bulk" | "preview" = companyIds && companyIds.length > 0 ? "bulk" : "preview";
+  const companiesProp = useMemo(() => companies ?? [], [companies]);
+  const withWebsite = companiesProp.filter((c) => c.website);
+  const withoutWebsite = companiesProp.filter((c) => !c.website);
+
+  // Preview mode state
   const [rows, setRows] = useState<CompanyScrapeState[]>([]);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
+
+  // Bulk mode state
+  const [bulk, setBulk] = useState<BulkProgress>({ processed: 0, enriched: 0, failed: 0, skipped: 0, total: 0 });
+  const stopRequestedRef = useRef(false);
 
   const resetState = () => {
     setRows([]);
     setRunning(false);
     setDone(false);
     setSavingAll(false);
+    setBulk({ processed: 0, enriched: 0, failed: 0, skipped: 0, total: 0 });
+    stopRequestedRef.current = false;
   };
 
   const handleOpen = (isOpen: boolean) => {
     if (!isOpen) resetState();
     onOpenChange(isOpen);
+  };
+
+  /** Bulk mode: send chunks of ids to the server-side enricher. Each call
+   *  writes results directly to the DB, so closing the dialog mid-run still
+   *  preserves all progress already made. Rilanciando lo stesso filtro le
+   *  aziende già completate vengono skippate dal backend (auto-resume). */
+  const startBulkEnrichment = async () => {
+    if (!companyIds || companyIds.length === 0) return;
+    stopRequestedRef.current = false;
+    setRunning(true);
+    setDone(false);
+    setBulk({ processed: 0, enriched: 0, failed: 0, skipped: 0, total: companyIds.length });
+
+    for (let i = 0; i < companyIds.length; i += BULK_CHUNK_SIZE) {
+      if (stopRequestedRef.current) break;
+      const chunk = companyIds.slice(i, i + BULK_CHUNK_SIZE);
+      try {
+        const resp = await api.enrichCompaniesBatch(chunk, false, BULK_MAX_CONCURRENT);
+        setBulk((prev) => ({
+          ...prev,
+          processed: prev.processed + chunk.length,
+          enriched: prev.enriched + (resp.enriched ?? 0),
+          failed: prev.failed + (resp.failed ?? 0),
+          skipped: prev.skipped + (resp.skipped ?? 0),
+        }));
+      } catch (e) {
+        // Whole chunk failed (network/server error). Count the chunk as
+        // failed and keep going.
+        setBulk((prev) => ({
+          ...prev,
+          processed: prev.processed + chunk.length,
+          failed: prev.failed + chunk.length,
+        }));
+      }
+    }
+
+    setRunning(false);
+    setDone(true);
+    onCompleted?.();
+  };
+
+  const requestStop = () => {
+    stopRequestedRef.current = true;
   };
 
   const startScraping = async () => {
@@ -146,6 +217,100 @@ export function BulkScrapeDialog({ open, onOpenChange, companies, onCompleted }:
       return next;
     });
   };
+
+  // Bulk-mode UI: no per-row preview, just counters + progress bar.
+  // The backend writes results directly to DB so we don't need to render
+  // emails/linkedin for every row.
+  if (mode === "bulk") {
+    const total = companyIds!.length;
+    const pct = total > 0 ? Math.round((bulk.processed / total) * 100) : 0;
+    return (
+      <Dialog open={open} onOpenChange={handleOpen}>
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              Scraping in batch — {total.toLocaleString("it-IT")} aziende
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+            {!running && !done && (
+              <div className="space-y-3">
+                <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1.5">
+                  <p>
+                    Verranno arricchite fino a <span className="font-medium">{total.toLocaleString("it-IT")}</span> aziende.
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Lo scraping gira lato server in chunk da {BULK_CHUNK_SIZE}.
+                    Le email e i profili LinkedIn trovati vengono salvati direttamente in
+                    DB. Puoi chiudere il dialog: i dati già scrapati restano salvati e
+                    rilanciando lo stesso filtro le aziende completate vengono saltate
+                    automaticamente (auto-resume).
+                  </p>
+                </div>
+                <Button onClick={startBulkEnrichment} className="gap-2">
+                  <Globe className="h-4 w-4" />
+                  Avvia scraping ({total.toLocaleString("it-IT")} aziende)
+                </Button>
+              </div>
+            )}
+
+            {(running || done) && (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {bulk.processed.toLocaleString("it-IT")} / {total.toLocaleString("it-IT")} processate
+                    </span>
+                    <span>{pct}%</span>
+                  </div>
+                  <Progress value={pct} className="h-2" />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-md border bg-emerald-50 dark:bg-emerald-950/30 p-2">
+                    <p className="text-emerald-700 dark:text-emerald-300 font-bold text-lg">
+                      {bulk.enriched.toLocaleString("it-IT")}
+                    </p>
+                    <p className="text-emerald-700 dark:text-emerald-400">arricchite</p>
+                  </div>
+                  <div className="rounded-md border bg-amber-50 dark:bg-amber-950/30 p-2">
+                    <p className="text-amber-700 dark:text-amber-300 font-bold text-lg">
+                      {bulk.skipped.toLocaleString("it-IT")}
+                    </p>
+                    <p className="text-amber-700 dark:text-amber-400">saltate</p>
+                  </div>
+                  <div className="rounded-md border bg-red-50 dark:bg-red-950/30 p-2">
+                    <p className="text-red-700 dark:text-red-300 font-bold text-lg">
+                      {bulk.failed.toLocaleString("it-IT")}
+                    </p>
+                    <p className="text-red-700 dark:text-red-400">fallite</p>
+                  </div>
+                </div>
+
+                {running && (
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Scraping in corso…
+                    <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs ml-2" onClick={requestStop}>
+                      <Square className="h-3 w-3" /> Stop
+                    </Button>
+                  </div>
+                )}
+                {done && (
+                  <p className="text-sm text-center text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5">
+                    <CheckCircle className="h-4 w-4" />
+                    Scraping completato.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>

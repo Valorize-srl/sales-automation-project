@@ -137,9 +137,14 @@ class ApiClient {
 
   async enrichCompaniesBatch(
     companyIds: number[],
-    force = false
+    force = false,
+    maxConcurrent?: number,
   ): Promise<import("@/types").CompanyEnrichmentResponse> {
-    return this.post(`/companies/enrich-batch`, { company_ids: companyIds, force });
+    return this.post(`/companies/enrich-batch`, {
+      company_ids: companyIds,
+      force,
+      ...(maxConcurrent ? { max_concurrent: maxConcurrent } : {}),
+    });
   }
   // ============================================================================
   // Lead Lists
