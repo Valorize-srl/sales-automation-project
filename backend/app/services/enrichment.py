@@ -8,7 +8,7 @@ for companies by scraping their websites.
 import json
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from dataclasses import dataclass
 
@@ -80,7 +80,13 @@ class CompanyEnrichmentService:
 
         # Check if recently enriched (skip unless forced)
         if not force and company.enrichment_date:
-            days_since_enrichment = (datetime.utcnow() - company.enrichment_date).days
+            # Le righe scritte dal vecchio codice (datetime.utcnow() naive)
+            # sono ancora in DB. Trattale come UTC per evitare di crashare
+            # con "can't subtract offset-naive and offset-aware datetimes".
+            db_date = company.enrichment_date
+            if db_date.tzinfo is None:
+                db_date = db_date.replace(tzinfo=timezone.utc)
+            days_since_enrichment = (datetime.now(timezone.utc) - db_date).days
             if days_since_enrichment < 7:
                 logger.debug(
                     f"Company {company.name} enriched {days_since_enrichment} days ago, skipping"
@@ -106,7 +112,7 @@ class CompanyEnrichmentService:
                     f"Failed to enrich {company.name}: {finder_result.error}"
                 )
                 company.enrichment_status = "failed"
-                company.enrichment_date = datetime.utcnow()
+                company.enrichment_date = datetime.now(timezone.utc)
 
                 return EnrichmentResult(
                     company_id=company.id,
@@ -139,7 +145,7 @@ class CompanyEnrichmentService:
             # Update company record
             company.generic_emails = json.dumps(sorted(all_emails))
             company.enrichment_source = enrichment_source
-            company.enrichment_date = datetime.utcnow()
+            company.enrichment_date = datetime.now(timezone.utc)
             company.enrichment_status = "completed"
 
             # If company has no primary email but we found one, set it
@@ -163,7 +169,7 @@ class CompanyEnrichmentService:
         except Exception as e:
             logger.error(f"Error enriching {company.name}: {e}", exc_info=True)
             company.enrichment_status = "failed"
-            company.enrichment_date = datetime.utcnow()
+            company.enrichment_date = datetime.now(timezone.utc)
 
             return EnrichmentResult(
                 company_id=company.id,
