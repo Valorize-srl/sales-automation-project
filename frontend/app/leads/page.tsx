@@ -129,20 +129,21 @@ export default function LeadsPage() {
   );
 
   const loadAux = useCallback(async () => {
-    try {
-      const [keys, inds, lists, camps] = await Promise.all([
-        api.listCustomFieldKeys(),
-        api.getCompanyIndustries(),
-        api.listLeadLists(),
-        api.getCampaigns().catch(() => ({ campaigns: [], total: 0 })),
-      ]);
-      setCustomFieldKeys(keys);
-      setIndustries(inds);
-      setAllLists(lists.lists || []);
-      setAllCampaigns(("campaigns" in camps ? camps.campaigns : []) as Campaign[]);
-    } catch (e) {
-      console.error("Failed to load aux data", e);
-    }
+    // Each endpoint isolated with its own catch: one slow/failing call
+    // (es. /companies/custom-field-keys che fa seq-scan su 5M righe JSON
+    // e va in timeout) NON deve azzerare gli altri tre. Prima erano tutti
+    // dentro Promise.all "tutti-o-niente" → un singolo timeout svuotava
+    // allLists e nascondeva il dropdown "Aggiungi a lista".
+    const [keys, inds, lists, camps] = await Promise.all([
+      api.listCustomFieldKeys().catch(() => [] as string[]),
+      api.getCompanyIndustries().catch(() => [] as string[]),
+      api.listLeadLists().catch(() => ({ lists: [], total: 0 })),
+      api.getCampaigns().catch(() => ({ campaigns: [], total: 0 })),
+    ]);
+    setCustomFieldKeys(keys);
+    setIndustries(inds);
+    setAllLists(lists.lists || []);
+    setAllCampaigns(("campaigns" in camps ? camps.campaigns : []) as Campaign[]);
   }, []);
 
   useEffect(() => { loadAux(); }, [loadAux]);
