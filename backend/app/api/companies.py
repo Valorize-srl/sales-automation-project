@@ -1138,9 +1138,13 @@ async def enrich_companies_batch(
 
     enrichment_service = CompanyEnrichmentService(db)
     try:
+        # Clamp to [1, 30] — beyond ~30 concurrent scrapes the email finder
+        # starts hitting our outbound HTTP budget, throwing more errors than
+        # results.
+        max_conc = max(1, min(30, int(request.max_concurrent or 10)))
         results = await enrichment_service.enrich_companies_batch(
             companies,
-            max_concurrent=3,
+            max_concurrent=max_conc,
             force=request.force
         )
         await db.commit()
