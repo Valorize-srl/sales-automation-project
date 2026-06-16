@@ -90,6 +90,34 @@ async def enrich_responses(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.post("/remap-info-request-to-interested")
+async def remap_info_request_to_interested(db: AsyncSession = Depends(get_db)):
+    """One-shot backfill: rows whose `lead_category` is a variant of
+    "Information Request" stop being POSITIVE and become INTERESTED.
+
+    Aligns with the product decision (2026-06-16) that requests for
+    information are a strong-intent signal and belong in the Interested
+    bucket. The ingestion-time mapping in `smartlead_categories.py` is
+    already updated for new webhooks; this handles the historical rows.
+    """
+    from sqlalchemy import update, func as sa_func
+
+    info_keys = {
+        "information request", "info request", "requested info",
+    }
+    stmt = (
+        update(EmailResponse)
+        .where(
+            sa_func.lower(EmailResponse.lead_category).in_(info_keys),
+            EmailResponse.sentiment != Sentiment.INTERESTED,
+        )
+        .values(sentiment=Sentiment.INTERESTED)
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"updated": int(result.rowcount or 0)}
+
+
 @router.post("/sync-smartlead-categories")
 async def sync_smartlead_categories(db: AsyncSession = Depends(get_db)):
     """Backfill `lead_category` (and derived `sentiment`) on EmailResponse rows

@@ -26,9 +26,12 @@ _DEFAULT_CATEGORY_TO_SENTIMENT: dict[str, Sentiment] = {
     "meeting request": Sentiment.INTERESTED,
     "meeting_request": Sentiment.INTERESTED,
     "booked meeting": Sentiment.INTERESTED,
-    "information request": Sentiment.POSITIVE,
-    "info request": Sentiment.POSITIVE,
-    "requested info": Sentiment.POSITIVE,
+    # "Information Request" is treated as Interested per product
+    # decision (2026-06-16): chiedere informazioni è un'intent
+    # forte e va in pari livello di priorità con le meeting request.
+    "information request": Sentiment.INTERESTED,
+    "info request": Sentiment.INTERESTED,
+    "requested info": Sentiment.INTERESTED,
     "positive": Sentiment.POSITIVE,
     "not now": Sentiment.NEUTRAL,
     "not_now": Sentiment.NEUTRAL,
@@ -78,9 +81,13 @@ class _CategoryCache:
         if st == "positive":
             # Smartlead "positive" covers both raw interest ("Interested",
             # "Meeting Request") and informational ("Information Request").
-            # Bias toward INTERESTED for the meeting-y labels.
+            # Per product decision (2026-06-16) Info Request is now treated
+            # as Interested, joining Meeting Request and Booked Meeting.
             key = (name or "").strip().lower()
-            if key in {"interested", "meeting request", "booked meeting"}:
+            if key in {
+                "interested", "meeting request", "booked meeting",
+                "information request", "info request", "requested info",
+            }:
                 return Sentiment.INTERESTED
             return Sentiment.POSITIVE
         if st == "negative":
