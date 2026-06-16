@@ -168,6 +168,35 @@ export function FilterPanel({ filters, onFiltersChange, industries, customFieldK
             className="h-7 text-xs" placeholder="es. RSSMRA" />
         </div>
 
+        {/* Eolo cluster toggles — multi-select OR */}
+        <div className="space-y-1 col-span-2">
+          <label className="text-muted-foreground">Zone Eolo (cluster)</label>
+          <div className="flex gap-1.5 flex-wrap">
+            {[
+              { value: "verde_ftth", label: "Verde FTTH", active: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+              { value: "verde_fwa",  label: "Verde FWA",  active: "bg-green-100 text-green-800 border-green-300" },
+              { value: "gialli",     label: "Gialli",     active: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+            ].map(({ value, label, active }) => {
+              const on = (filters.eolo_clusters ?? []).includes(value);
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    const cur = new Set(filters.eolo_clusters ?? []);
+                    if (cur.has(value)) cur.delete(value); else cur.add(value);
+                    const next = Array.from(cur);
+                    set({ eolo_clusters: next.length ? next : undefined });
+                  }}
+                  className={`h-7 px-2 text-xs rounded-md border transition-colors ${on ? active + " ring-1" : "bg-background border-input hover:bg-accent"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* City */}
         <div className="space-y-1">
           <label className="text-muted-foreground">Città (contiene)</label>

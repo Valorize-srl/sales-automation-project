@@ -538,6 +538,10 @@ export interface CompanyFilters {
   // Prefix match on the indexed fiscal columns (B-tree, sub-ms latency)
   vat_number_prefix?: string;
   tax_id_prefix?: string;
+  // Eolo coverage clusters — union match on companies whose zip_code is
+  // in the CAP set of any of the listed clusters. Backend converts the
+  // array to a comma-separated string via String(array) in the encoder.
+  eolo_clusters?: string[];
   // Advanced filters (encoded as the `filters` JSON query param)
   cf?: Record<string, string | { eq?: string; contains?: string; min?: number; max?: number }>;
   name_contains?: string;

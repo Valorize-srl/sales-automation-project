@@ -293,6 +293,7 @@ def _build_company_filter_query(
     has_vat=None,
     vat_number_prefix=None,
     tax_id_prefix=None,
+    eolo_clusters=None,
     filters=None,
 ):
     """Build the SQLAlchemy SELECT for /companies (and /companies/ids).
@@ -413,6 +414,18 @@ def _build_company_filter_query(
     if tax_id_prefix:
         q = q.where(Company.tax_id.ilike(f"{tax_id_prefix}%"))
 
+    # Eolo cluster filter: zip_code must belong to the union of CAPs for
+    # the requested clusters. Caps come from an in-memory dict keyed by
+    # cluster name (verde_ftth | verde_fwa | gialli | rossi | no_sell).
+    if eolo_clusters:
+        from app.services.eolo_zones import eolo_zones as _eolo
+        caps = _eolo.caps_for_clusters(eolo_clusters)
+        if caps:
+            q = q.where(Company.zip_code.in_(caps))
+        else:
+            # All requested clusters unknown → no rows match.
+            q = q.where(Company.id.is_(None))
+
     if filters:
         try:
             advanced = json.loads(filters)
@@ -467,6 +480,7 @@ async def list_company_ids(
     has_vat: Optional[bool] = Query(None),
     vat_number_prefix: Optional[str] = Query(None),
     tax_id_prefix: Optional[str] = Query(None),
+    eolo_clusters: Optional[str] = Query(None, description="Comma-separated Eolo clusters: verde_ftth,verde_fwa,gialli,rossi,no_sell"),
     filters: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -476,6 +490,10 @@ async def list_company_ids(
     (add to list / delete) can operate on the entire filtered set
     without paginating through every page first.
     """
+    clusters_list = (
+        [c.strip().lower() for c in eolo_clusters.split(",") if c.strip()]
+        if eolo_clusters else None
+    )
     base_query = _build_company_filter_query(
         search=search, industry=industry, client_tag=client_tag, province=province,
         location=location,
@@ -489,6 +507,7 @@ async def list_company_ids(
         decision_maker_name_contains=decision_maker_name_contains,
         zip_code_prefix=zip_code_prefix, has_vat=has_vat,
         vat_number_prefix=vat_number_prefix, tax_id_prefix=tax_id_prefix,
+        eolo_clusters=clusters_list,
         filters=filters,
     )
     id_query = base_query.with_only_columns(Company.id)
@@ -520,6 +539,7 @@ async def list_companies(
     has_vat: Optional[bool] = Query(None, description="Filter by presence of a populated vat_number"),
     vat_number_prefix: Optional[str] = Query(None, description="Match companies whose vat_number starts with this prefix"),
     tax_id_prefix: Optional[str] = Query(None, description="Match companies whose tax_id starts with this prefix"),
+    eolo_clusters: Optional[str] = Query(None, description="Comma-separated Eolo clusters: verde_ftth,verde_fwa,gialli,rossi,no_sell"),
     filters: Optional[str] = Query(None, description="JSON-encoded advanced filters, incl. custom_fields"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -534,6 +554,10 @@ async def list_companies(
     """
     import math
 
+    clusters_list = (
+        [c.strip().lower() for c in eolo_clusters.split(",") if c.strip()]
+        if eolo_clusters else None
+    )
     base_query = _build_company_filter_query(
         search=search, industry=industry, client_tag=client_tag, province=province,
         location=location,
@@ -547,6 +571,7 @@ async def list_companies(
         decision_maker_name_contains=decision_maker_name_contains,
         zip_code_prefix=zip_code_prefix, has_vat=has_vat,
         vat_number_prefix=vat_number_prefix, tax_id_prefix=tax_id_prefix,
+        eolo_clusters=clusters_list,
         filters=filters,
     )
 
