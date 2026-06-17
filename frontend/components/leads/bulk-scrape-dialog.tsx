@@ -32,9 +32,13 @@ interface BulkScrapeDialogProps {
 }
 
 // Server-side bulk enrichment runs in chunks; the backend's enrich-batch is
-// already async-concurrent inside each chunk (max_concurrent=10).
+// already async-concurrent inside each chunk (max_concurrent=15).
+// In-flight chunks paralleli (PARALLEL_CHUNKS=2) raddoppiano il throughput
+// senza saturare i pool HTTP outbound del backend: 2 × 15 = 30 outbound
+// contemporanei al picco.
 const BULK_CHUNK_SIZE = 50;
-const BULK_MAX_CONCURRENT = 10;
+const BULK_MAX_CONCURRENT = 15;
+const PARALLEL_CHUNKS = 2;
 
 interface BulkProgress {
   processed: number;
@@ -79,7 +83,32 @@ export function BulkScrapeDialog({ open, onOpenChange, companies, companyIds, on
   /** Bulk mode: send chunks of ids to the server-side enricher. Each call
    *  writes results directly to the DB, so closing the dialog mid-run still
    *  preserves all progress already made. Rilanciando lo stesso filtro le
-   *  aziende già completate vengono skippate dal backend (auto-resume). */
+   *  aziende già completate vengono skippate dal backend (auto-resume).
+   *
+   *  Chunks vengono lanciati a wave: PARALLEL_CHUNKS chunk in volo
+   *  contemporaneamente. setBulk((prev) => ...) è race-safe in React 18:
+   *  ogni callback vede la latest committed state, niente lost updates. */
+  const runOneChunk = async (chunk: number[]) => {
+    try {
+      const resp = await api.enrichCompaniesBatch(chunk, false, BULK_MAX_CONCURRENT);
+      setBulk((prev) => ({
+        ...prev,
+        processed: prev.processed + chunk.length,
+        enriched: prev.enriched + (resp.enriched ?? 0),
+        failed: prev.failed + (resp.failed ?? 0),
+        skipped: prev.skipped + (resp.skipped ?? 0),
+      }));
+    } catch {
+      // Whole chunk failed (network/server error). Count the chunk as
+      // failed and keep going.
+      setBulk((prev) => ({
+        ...prev,
+        processed: prev.processed + chunk.length,
+        failed: prev.failed + chunk.length,
+      }));
+    }
+  };
+
   const startBulkEnrichment = async () => {
     if (!companyIds || companyIds.length === 0) return;
     stopRequestedRef.current = false;
@@ -87,27 +116,17 @@ export function BulkScrapeDialog({ open, onOpenChange, companies, companyIds, on
     setDone(false);
     setBulk({ processed: 0, enriched: 0, failed: 0, skipped: 0, total: companyIds.length });
 
+    // Precompute all chunks once.
+    const chunks: number[][] = [];
     for (let i = 0; i < companyIds.length; i += BULK_CHUNK_SIZE) {
+      chunks.push(companyIds.slice(i, i + BULK_CHUNK_SIZE));
+    }
+
+    // Process PARALLEL_CHUNKS wave at a time.
+    for (let i = 0; i < chunks.length; i += PARALLEL_CHUNKS) {
       if (stopRequestedRef.current) break;
-      const chunk = companyIds.slice(i, i + BULK_CHUNK_SIZE);
-      try {
-        const resp = await api.enrichCompaniesBatch(chunk, false, BULK_MAX_CONCURRENT);
-        setBulk((prev) => ({
-          ...prev,
-          processed: prev.processed + chunk.length,
-          enriched: prev.enriched + (resp.enriched ?? 0),
-          failed: prev.failed + (resp.failed ?? 0),
-          skipped: prev.skipped + (resp.skipped ?? 0),
-        }));
-      } catch (e) {
-        // Whole chunk failed (network/server error). Count the chunk as
-        // failed and keep going.
-        setBulk((prev) => ({
-          ...prev,
-          processed: prev.processed + chunk.length,
-          failed: prev.failed + chunk.length,
-        }));
-      }
+      const wave = chunks.slice(i, i + PARALLEL_CHUNKS);
+      await Promise.all(wave.map(runOneChunk));
     }
 
     setRunning(false);
