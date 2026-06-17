@@ -288,25 +288,38 @@ export function BulkScrapeDialog({ open, onOpenChange, companies, companyIds, on
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="rounded-md border bg-emerald-50 dark:bg-emerald-950/30 p-2">
+                  <div
+                    className="rounded-md border bg-emerald-50 dark:bg-emerald-950/30 p-2"
+                    title="Aziende processate dallo scraper in questa sessione. Quelle che avevano email pubbliche sul sito sono state salvate in DB; le altre hanno completato il tentativo ma non avevano email visibili."
+                  >
                     <p className="text-emerald-700 dark:text-emerald-300 font-bold text-lg">
                       {bulk.enriched.toLocaleString("it-IT")}
                     </p>
                     <p className="text-emerald-700 dark:text-emerald-400">arricchite</p>
                   </div>
-                  <div className="rounded-md border bg-amber-50 dark:bg-amber-950/30 p-2">
+                  <div
+                    className="rounded-md border bg-amber-50 dark:bg-amber-950/30 p-2"
+                    title="Aziende già scrapate con email salvate negli ultimi 7 giorni — niente da rifare, ci risparmiamo il tempo."
+                  >
                     <p className="text-amber-700 dark:text-amber-300 font-bold text-lg">
                       {bulk.skipped.toLocaleString("it-IT")}
                     </p>
                     <p className="text-amber-700 dark:text-amber-400">saltate</p>
                   </div>
-                  <div className="rounded-md border bg-red-50 dark:bg-red-950/30 p-2">
+                  <div
+                    className="rounded-md border bg-red-50 dark:bg-red-950/30 p-2"
+                    title="Aziende dove lo scraper ha avuto un errore: sito irraggiungibile, timeout, certificato SSL invalido, 403 da WAF, ecc."
+                  >
                     <p className="text-red-700 dark:text-red-300 font-bold text-lg">
                       {bulk.failed.toLocaleString("it-IT")}
                     </p>
                     <p className="text-red-700 dark:text-red-400">fallite</p>
                   </div>
                 </div>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  <strong>Saltate</strong> = già scrapate con email negli ultimi 7 giorni (auto-resume).
+                  Le <strong>fallite</strong> verranno ritentate al prossimo Avvia.
+                </p>
 
                 {running && (
                   <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
