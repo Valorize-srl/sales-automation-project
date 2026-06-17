@@ -56,7 +56,12 @@ class EmailFinder:
 
     def __init__(self):
         self.http_client = httpx.AsyncClient(
-            timeout=10.0,  # 10 second timeout
+            # 5s timeout per page. Le PMI italiane con sito lento spesso non
+            # rispondono mai (server saturi, hosting low-end). Tagliando da
+            # 10s a 5s dimezziamo il tempo speso sui timeout-cases (~60% dei
+            # casi) e accettiamo di perdere quel sottoinsieme marginale di
+            # siti che rispondono tra 5s e 10s.
+            timeout=5.0,
             follow_redirects=True,
             headers={
                 # Use a real browser User-Agent. Identifying as a bot caused

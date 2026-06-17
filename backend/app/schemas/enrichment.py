@@ -44,10 +44,10 @@ class EnrichBatchRequest(BaseModel):
     """Request for batch enrichment."""
     company_ids: list[int]
     force: bool = False  # Force re-enrichment even if recently enriched
-    # Max concurrent scrapes within this batch. Default 10 — bumped from
-    # the legacy 3 once the frontend started feeding ~100 ids at a time
-    # so per-chunk latency stays in the ~30s range.
-    max_concurrent: int = 10
+    # Max concurrent scrapes within this batch. 15 va in coppia con il
+    # timeout HTTP di 5s e i 2 chunk paralleli del dialog → 30 outbound
+    # contemporanei al picco, tollerabile per Railway.
+    max_concurrent: int = 15
 
     class Config:
         from_attributes = True
