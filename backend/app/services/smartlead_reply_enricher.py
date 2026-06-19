@@ -48,7 +48,18 @@ async def enrich_response(
     needs_category = not (response.lead_category or "").strip()
     needs_smartlead_lead_id = not response.smartlead_lead_id
     needs_stats_id = not response.smartlead_message_stats_id
-    needs_sender_email = not (response.sender_email or "").strip()
+    # Il vecchio webhook handler usava to_email come fallback per
+    # sender_email; ma to_email nel payload Smartlead reply è l'email
+    # del LEAD, non la nostra casella. Result: sender_email == from_email
+    # per molte righe storiche → da reimpostare.
+    current_sender = (response.sender_email or "").strip().lower()
+    current_from = (response.from_email or "").strip().lower()
+    sender_looks_wrong = (
+        not current_sender
+        or current_sender == current_from
+        or current_sender == (lead_email or "").strip().lower()
+    )
+    needs_sender_email = sender_looks_wrong
 
     if not (needs_body or needs_category or needs_smartlead_lead_id
             or needs_stats_id or needs_sender_email):
