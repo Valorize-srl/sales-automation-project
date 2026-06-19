@@ -76,6 +76,7 @@ export function ResponseDetailDialog({
   const [editedReply, setEditedReply] = useState("");
   const [editing, setEditing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [convertedState, setConvertedState] = useState<boolean | null>(null);
@@ -186,8 +187,14 @@ export function ResponseDetailDialog({
 
   const handleSend = async () => {
     setSending(true);
+    setSendError(null);
     try {
       await onSend(response.id);
+    } catch (e: unknown) {
+      // Estrai un messaggio human-readable dall'errore: api.ts lancia un
+      // Error con `.message` che già contiene il `detail` del backend.
+      const msg = e instanceof Error ? e.message : "Errore sconosciuto";
+      setSendError(msg);
     } finally {
       setSending(false);
     }
@@ -368,6 +375,32 @@ export function ResponseDetailDialog({
           )}
         </div>
 
+        {/* Sender hint: la reply parte dalla stessa casella che ha ricevuto
+            il messaggio originale (requisito utente). Visibile solo se
+            abbiamo identificato il sender_email. */}
+        {isActionable && response.sender_email && (
+          <>
+            <Separator />
+            <div className="text-xs flex items-center gap-1.5 text-muted-foreground bg-muted/40 rounded px-2.5 py-1.5 border">
+              <Send className="h-3 w-3 shrink-0" />
+              <span>Risponderà da:</span>
+              <strong className="text-foreground">{response.sender_email}</strong>
+              <span className="text-[10px] hidden sm:inline">
+                (stessa casella che ha ricevuto il messaggio)
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* Banner errore Send: mostra il vero detail HTTP del backend
+            invece di swallowarlo silenziosamente. Senza questo banner
+            l'utente non capisce mai perché il Send non parte. */}
+        {sendError && (
+          <div className="text-xs rounded border border-red-300 bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-200 px-3 py-2">
+            <strong>Invio fallito:</strong> {sendError}
+          </div>
+        )}
+
         {/* Action buttons */}
         {isActionable && (
           <>
@@ -430,8 +463,18 @@ export function ResponseDetailDialog({
                   variant="default"
                   className="gap-1"
                   onClick={handleSend}
-                  disabled={sending || !response.instantly_email_id}
-                  title={!response.instantly_email_id ? "Email cannot be sent: this reply was imported before the Smartlead webhook went live and has no thread id." : ""}
+                  disabled={
+                    sending
+                    || !response.smartlead_message_stats_id
+                    || !response.smartlead_lead_id
+                    || !response.sender_email
+                  }
+                  title={
+                    !response.smartlead_message_stats_id ? "Reply importata prima dell'aggancio webhook Smartlead — manca l'email_stats_id. Lancia /admin/enrich-responses oppure rispondi via Gmail/Outlook." :
+                    !response.smartlead_lead_id ? "Smartlead lead_id mancante. Lancia /admin/enrich-responses." :
+                    !response.sender_email ? "Mittente non identificato — non è sicuro inviare senza sapere da quale casella partirà." :
+                    ""
+                  }
                 >
                   {sending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />

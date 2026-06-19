@@ -41,13 +41,17 @@ async def enrich_response(
     changes: dict[str, bool] = {
         "body": False, "subject": False, "category": False,
         "thread_id": False, "message_id": False, "smartlead_lead_id": False,
+        "stats_id": False, "sender_email": False,
     }
 
     needs_body = not (response.message_body or "").strip()
     needs_category = not (response.lead_category or "").strip()
     needs_smartlead_lead_id = not response.smartlead_lead_id
+    needs_stats_id = not response.smartlead_message_stats_id
+    needs_sender_email = not (response.sender_email or "").strip()
 
-    if not (needs_body or needs_category or needs_smartlead_lead_id):
+    if not (needs_body or needs_category or needs_smartlead_lead_id
+            or needs_stats_id or needs_sender_email):
         return changes
 
     # 1. Resolve smartlead lead_id by email (if we don't already have it).
@@ -65,8 +69,14 @@ async def enrich_response(
                 response.smartlead_lead_id = sl_lead_id
                 changes["smartlead_lead_id"] = True
 
-    # 2. Fetch message-history → fill body/subject/message_id/thread_id.
-    if sl_lead_id and (needs_body or not response.thread_id or not response.instantly_email_id):
+    # 2. Fetch message-history → fill body/subject/message_id/thread_id +
+    #    stats_id (per il reply-email-thread) + sender_email (la nostra
+    #    casella che ha inviato il messaggio originale = il SENT message).
+    needs_history = (
+        needs_body or not response.thread_id or not response.instantly_email_id
+        or needs_stats_id or needs_sender_email
+    )
+    if sl_lead_id and needs_history:
         try:
             hist = await smartlead_service.get_lead_message_history(
                 smartlead_campaign_id, sl_lead_id,
@@ -95,6 +105,26 @@ async def enrich_response(
             if mid_new and not response.instantly_email_id:
                 response.instantly_email_id = mid_new
                 changes["message_id"] = True
+            stats_new = (latest.get("stats_id") or latest.get("email_stats_id") or "").strip() or None
+            if needs_stats_id and stats_new:
+                response.smartlead_message_stats_id = stats_new
+                changes["stats_id"] = True
+
+        # The latest SENT message = the outbound mail from our sender that
+        # the lead replied to. Its `email_from_account` or `from_email` is
+        # the sender we'll need to reply from.
+        sent_msgs = [m for m in (messages or []) if (m.get("type") or "").upper() == "SENT"]
+        sent_msgs.sort(key=lambda m: m.get("time") or "", reverse=True)
+        if needs_sender_email and sent_msgs:
+            latest_sent = sent_msgs[0]
+            sender_new = (
+                (latest_sent.get("email_from_account") or "").strip()
+                or (latest_sent.get("from_email") or "").strip()
+                or (latest_sent.get("email_from") or "").strip()
+            )
+            if sender_new:
+                response.sender_email = sender_new.lower()
+                changes["sender_email"] = True
 
     # 3. Fetch category from statistics if still missing.
     if needs_category:

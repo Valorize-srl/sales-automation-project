@@ -71,6 +71,8 @@ export interface EmailResponse {
   campaign_id: number;
   lead_id: number | null;
   instantly_email_id: string | null;
+  smartlead_lead_id: string | null;
+  smartlead_message_stats_id: string | null;
   from_email: string | null;
   sender_email: string | null;
   subject: string | null;

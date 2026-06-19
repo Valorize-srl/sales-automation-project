@@ -39,7 +39,10 @@ async def enrich_responses(db: AsyncSession = Depends(get_db)):
     Use after the webhook handler stored partial rows (Smartlead's
     EMAIL_REPLY payload often arrives without body and without category).
     """
-    # All inbound rows that look incomplete (no body OR no category).
+    # All inbound rows that look incomplete: missing body, category,
+    # smartlead_lead_id (required for Send), smartlead_message_stats_id
+    # (required by Smartlead reply-email-thread), or sender_email
+    # (required to know which sender account replies).
     from sqlalchemy import func as sa_func, or_
     incomplete_result = await db.execute(
         select(EmailResponse, Campaign)
@@ -49,6 +52,10 @@ async def enrich_responses(db: AsyncSession = Depends(get_db)):
                 EmailResponse.message_body.is_(None),
                 sa_func.length(EmailResponse.message_body) == 0,
                 EmailResponse.lead_category.is_(None),
+                EmailResponse.smartlead_lead_id.is_(None),
+                EmailResponse.smartlead_message_stats_id.is_(None),
+                EmailResponse.sender_email.is_(None),
+                sa_func.length(EmailResponse.sender_email) == 0,
             )
         )
     )

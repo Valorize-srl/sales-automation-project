@@ -360,19 +360,42 @@ async def _handle_reply(payload: dict, db: AsyncSession) -> str:
     body_html = payload.get("body_html") or payload.get("html") or ""
     body = body_text or body_html or ""
 
+    # Sender = il NOSTRO account di invio. Nel payload Smartlead reale
+    # questa è `from_email` (sì, controintuitivo: Smartlead chiama "from"
+    # il mittente della mail uscita, non del reply in arrivo). Conferma
+    # dal sample webhook 18-06: from_email=b.m@internetperte.net,
+    # sl_lead_email=air@garbageweb.it.
     sender_email = (
         payload.get("eaccount")
         or payload.get("sender_email")
+        or payload.get("from_email")
         or payload.get("to_email")
     )
 
-    smartlead_lead_id = payload.get("lead_id") or payload.get("smartlead_lead_id")
+    # Smartlead lead id: nel payload reale il nome è `sl_email_lead_id`,
+    # NON `lead_id` o `smartlead_lead_id` (bug pre-18/06: il check
+    # cercava nomi che il payload non ha → smartlead_lead_id sempre NULL
+    # → Send button su /responses fallisce sempre con 400 "No Smartlead
+    # lead id". Confermato da diagnostica su 258 responses.
+    smartlead_lead_id = (
+        payload.get("sl_email_lead_id")
+        or payload.get("sl_lead_id")
+        or payload.get("lead_id")
+        or payload.get("smartlead_lead_id")
+    )
+
+    # email_stats_id: required dal Smartlead reply-email-thread endpoint
+    # per (a) agganciare la reply al thread giusto e (b) inviare dalla
+    # stessa casella che ha mandato il messaggio originale (lo stats_id è
+    # univocamente legato a (campaign, sender_account, lead)).
+    stats_id = payload.get("stats_id") or payload.get("email_stats_id")
 
     record = EmailResponse(
         campaign_id=campaign.id,
         lead_id=lead.id if lead else None,
         instantly_email_id=str(message_id),  # column reused for Smartlead message_id
         smartlead_lead_id=str(smartlead_lead_id) if smartlead_lead_id is not None else None,
+        smartlead_message_stats_id=str(stats_id) if stats_id else None,
         lead_category=str(cat_name) if cat_name else None,
         from_email=lead_email,
         sender_email=str(sender_email).lower() if sender_email else None,

@@ -11,6 +11,8 @@ class EmailResponseOut(BaseModel):
     campaign_id: int
     lead_id: Optional[int] = None
     instantly_email_id: Optional[str] = None
+    smartlead_lead_id: Optional[str] = None
+    smartlead_message_stats_id: Optional[str] = None
     from_email: Optional[str] = None
     sender_email: Optional[str] = None
     subject: Optional[str] = None

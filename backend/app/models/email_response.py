@@ -39,6 +39,12 @@ class EmailResponse(Base):
     lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("leads.id", ondelete="CASCADE"), nullable=True)
     instantly_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     smartlead_lead_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # Smartlead identifier required by /campaigns/{id}/reply-email-thread to
+    # send a reply on the right thread from the right sender account.
+    # Comes from the webhook payload field `stats_id` (UUID-like string).
+    smartlead_message_stats_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     # Original Smartlead category label (e.g. "Interested", "Meeting Request",
     # "Wrong Person"). Mapped onto the coarser `sentiment` enum elsewhere;
     # kept verbatim here for richer UI display.
