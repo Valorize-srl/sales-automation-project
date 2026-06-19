@@ -56,6 +56,10 @@ async def enrich_responses(db: AsyncSession = Depends(get_db)):
                 EmailResponse.smartlead_message_stats_id.is_(None),
                 EmailResponse.sender_email.is_(None),
                 sa_func.length(EmailResponse.sender_email) == 0,
+                # sender_email sbagliato (== from_email): bug del vecchio
+                # webhook handler che usava to_email come fallback.
+                sa_func.lower(EmailResponse.sender_email)
+                    == sa_func.lower(EmailResponse.from_email),
             )
         )
     )
