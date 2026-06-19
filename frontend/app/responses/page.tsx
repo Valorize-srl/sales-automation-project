@@ -157,6 +157,9 @@ export default function ResponsesPage() {
         description: err instanceof Error ? err.message : "Failed to send reply",
         variant: "destructive",
       });
+      // Re-throw così il dialog può mostrare il banner errore inline.
+      // Il toast resta come fallback se il dialog non è aperto (lista row).
+      throw err;
     }
   };
 

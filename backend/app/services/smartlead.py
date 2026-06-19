@@ -359,24 +359,38 @@ class SmartleadService:
         self,
         campaign_id: str | int,
         *,
-        lead_id: str | int,
+        email_stats_id: str,
         email_body: str,
         reply_message_id: str,
         reply_email_time: str,
+        lead_id: str | int | None = None,
     ) -> dict:
         """POST /campaigns/{id}/reply-email-thread.
 
-        Smartlead delivers the reply through the same email account the
-        original thread is on (no eaccount arg needed, unlike Instantly).
+        `email_stats_id` is REQUIRED per Smartlead docs (the field comes from
+        the webhook as `stats_id`). It uniquely identifies the original
+        outbound message and tells Smartlead which sender account to reply
+        from — so the reply always goes out from the same eaccount that
+        sent the original mail.
+
+        `reply_message_id` is the RFC Message-ID of the original outbound
+        email (we store it in the legacy column `instantly_email_id`); it
+        populates In-Reply-To / References on SMTP so Gmail/Outlook show
+        the reply in-thread.
+
+        `lead_id` is kept as an optional extra param for compat — Smartlead
+        accepts it but is redundant when email_stats_id is set.
         """
+        body = {
+            "email_stats_id": email_stats_id,
+            "email_body": email_body,
+            "reply_message_id": reply_message_id,
+            "reply_email_time": reply_email_time,
+        }
+        if lead_id is not None:
+            body["lead_id"] = lead_id
         return await self._request(
-            "POST", f"/campaigns/{campaign_id}/reply-email-thread",
-            json={
-                "lead_id": lead_id,
-                "email_body": email_body,
-                "reply_message_id": reply_message_id,
-                "reply_email_time": reply_email_time,
-            },
+            "POST", f"/campaigns/{campaign_id}/reply-email-thread", json=body,
         )
 
     # ---------------------------------------------------------------------

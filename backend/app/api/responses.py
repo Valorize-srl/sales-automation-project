@@ -391,14 +391,40 @@ async def send_reply(
     if not reply_text:
         raise HTTPException(400, "No reply text available")
 
-    # `instantly_email_id` is the legacy column name; it stores the Smartlead
-    # message_id of the original inbound email captured by the webhook.
+    # Required hooks per Smartlead reply-email-thread (vedi
+    # backend/app/services/smartlead.py:reply_to_thread).
+    # - smartlead_message_stats_id (`stats_id` in webhook) → required dal
+    #   Smartlead API; identifica univocamente (campaign, sender_account,
+    #   lead) e GARANTISCE che la reply parta dalla stessa casella che ha
+    #   inviato il messaggio originale (requisito utente esplicito).
+    # - instantly_email_id → nome legacy della colonna, contiene il
+    #   Message-ID RFC originale (es. <ac26be3@dominio.it>): serve per gli
+    #   header SMTP In-Reply-To / References → reply in-thread su
+    #   Gmail/Outlook.
+    # - smartlead_lead_id → ridondante quando stats_id è valorizzato, ma
+    #   passato anche lui per compat.
+    # - sender_email → safety check: senza non sappiamo da quale casella
+    #   parte la reply, NON inviare (rischio di rispondere dal sender
+    #   sbagliato).
+    if not resp.smartlead_message_stats_id:
+        raise HTTPException(
+            400,
+            "No Smartlead email_stats_id on this response — reply imported "
+            "before webhook upgrade. Run /admin/backfill-response-stats-ids "
+            "or rispondi manualmente via Gmail/Outlook.",
+        )
     if not resp.instantly_email_id:
-        raise HTTPException(400, "No Smartlead message id on this response — cannot reply")
+        raise HTTPException(400, "No Smartlead message_id on this response — cannot reply.")
     if not resp.smartlead_lead_id:
-        raise HTTPException(400, "No Smartlead lead id on this response — cannot reply")
+        raise HTTPException(400, "No Smartlead lead_id on this response — cannot reply.")
+    if not resp.sender_email:
+        raise HTTPException(
+            400,
+            "Sender mittente non identificato sulla response — non è sicuro "
+            "inviare senza sapere da quale casella partirà la reply.",
+        )
     if not resp.campaign or not resp.campaign.instantly_campaign_id:
-        raise HTTPException(400, "Linked campaign has no Smartlead id — cannot reply")
+        raise HTTPException(400, "Linked campaign has no Smartlead id — cannot reply.")
 
     email_html = "<div>{}</div>".format(
         html.escape(reply_text).replace("\r\n", "<br>").replace("\n", "<br>")
@@ -406,15 +432,17 @@ async def send_reply(
 
     try:
         logger.info(
-            "Sending Smartlead reply for response %s in campaign smartlead_id=%s lead_id=%s",
+            "Sending Smartlead reply for response %s | campaign=%s lead=%s stats_id=%s sender=%s",
             response_id, resp.campaign.instantly_campaign_id, resp.smartlead_lead_id,
+            resp.smartlead_message_stats_id, resp.sender_email,
         )
         await smartlead_service.reply_to_thread(
             resp.campaign.instantly_campaign_id,
-            lead_id=resp.smartlead_lead_id,
+            email_stats_id=resp.smartlead_message_stats_id,
             email_body=email_html,
             reply_message_id=resp.instantly_email_id,
             reply_email_time=datetime.now(timezone.utc).isoformat(),
+            lead_id=resp.smartlead_lead_id,
         )
         resp.status = ResponseStatus.SENT
         await db.flush()
